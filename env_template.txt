@@ -1,0 +1,15 @@
+# FlareWeather Backend Environment Variables
+# Copy this file to .env and fill in your actual API keys
+
+# OpenAI API Key for AI insights generation
+OPENAI_API_KEY=your_openai_api_key_here
+
+# Optional: Weather API key (if using paid weather services)
+# WEATHER_API_KEY=your_weather_api_key_here
+
+# Optional: Database configuration (if adding database later)
+# DATABASE_URL=sqlite:///./flareweather.db
+
+# Optional: Server configuration
+# HOST=0.0.0.0
+# PORT=8000
