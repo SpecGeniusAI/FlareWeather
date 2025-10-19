@@ -1,30 +1,87 @@
-import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from models import CorrelationRequest, InsightResponse
-from logic import calculate_correlations, generate_correlation_summary
-from ai import generate_insight
+from pydantic import BaseModel
+from typing import List, Dict, Optional
+import pandas as pd
+import numpy as np
+import os
+from openai import OpenAI
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Initialize OpenAI client only if API key is available
+api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=api_key) if api_key else None
 
 app = FastAPI(title="FlareWeather API", version="1.0.0")
 
-# Configure CORS based on environment
-cors_origins = os.getenv("CORS_ORIGINS", "*").split(",") if os.getenv("CORS_ORIGINS") else ["*"]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=True,
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"]
 )
 
+class SymptomEntry(BaseModel):
+    timestamp: str
+    symptom_type: str
+    severity: int
+
+class WeatherSnapshot(BaseModel):
+    timestamp: str
+    temperature: float
+    humidity: float
+    pressure: float
+    wind: float
+
+class CorrelationRequest(BaseModel):
+    symptoms: List[SymptomEntry]
+    weather: List[WeatherSnapshot]
+    user_id: Optional[str] = None
+
+class InsightResponse(BaseModel):
+    correlation_summary: str
+    strongest_factors: Dict[str, float]
+    ai_message: str
+
+def calculate_correlations(symptoms, weather):
+    df_s = pd.DataFrame([s.dict() for s in symptoms])
+    df_w = pd.DataFrame([w.dict() for w in weather])
+    df = pd.merge_asof(df_s.sort_values("timestamp"),
+                       df_w.sort_values("timestamp"),
+                       on="timestamp",
+                       direction="nearest",
+                       tolerance=pd.Timedelta("3h"))
+    correlations = {}
+    for col in ["temperature", "humidity", "pressure", "wind"]:
+        correlations[col] = df["severity"].corr(df[col])
+    top = dict(sorted(correlations.items(), key=lambda x: abs(x[1]), reverse=True)[:3])
+    return top
+
+def generate_insight(correlations):
+    if not client:
+        return "AI insights are not available. Please configure your OpenAI API key."
+    
+    prompt = f"""
+    You are FlareWeather, a health and weather assistant.
+    Based on these correlations: {correlations},
+    explain the connection between the user's symptoms and weather patterns
+    in two sentences with an empathetic, health-positive tone.
+    """
+    completion = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return completion.choices[0].message.content.strip()
+
 @app.post("/analyze", response_model=InsightResponse)
 async def analyze_data(request: CorrelationRequest):
     top_corr = calculate_correlations(request.symptoms, request.weather)
-    correlation_summary = generate_correlation_summary(top_corr)
     ai_summary = generate_insight(top_corr)
     return InsightResponse(
-        correlation_summary=correlation_summary,
+        correlation_summary=str(top_corr),
         strongest_factors=top_corr,
         ai_message=ai_summary
     )
@@ -36,3 +93,7 @@ async def root():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
