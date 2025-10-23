@@ -32,7 +32,7 @@ final class AIInsightsService: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String? = nil
     
-    private let baseURL = "http://127.0.0.1:8000" // TODO: Replace with deployed URL after deployment
+    private let baseURL = "https://flareweather-production.up.railway.app"
     
     func analyze(symptoms: [SymptomEntryPayload], weather: [WeatherSnapshotPayload]) async {
         guard let url = URL(string: "\(baseURL)/analyze") else { return }
