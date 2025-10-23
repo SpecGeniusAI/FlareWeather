@@ -8,7 +8,15 @@ echo "📦 Installing Python dependencies..."
 pip install -r requirements.txt
 
 # Navigate to backend directory for the app
+echo "📁 Navigating to backend directory..."
 cd FlareWeather/flareweather-backend
+
+# Check if main.py exists
+echo "🔍 Checking for main.py..."
+ls -la main.py
+
+# Set Python path to current directory
+export PYTHONPATH="${PYTHONPATH}:$(pwd)"
 
 # Start the FastAPI server
 echo "🌐 Starting FastAPI server..."
