@@ -1,0 +1,11 @@
+# Railway configuration for FlareWeather Backend
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "./start.sh"
+restartPolicyType = "on_failure"
+
+[env]
+PYTHON_VERSION = "3.11"
+PORT = "8000"
