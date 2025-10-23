@@ -3,12 +3,12 @@
 # FlareWeather Backend Startup Script for Railway
 echo "🚀 Starting FlareWeather Backend..."
 
-# Navigate to backend directory
-cd FlareWeather/flareweather-backend
-
-# Install dependencies
+# Install dependencies from root requirements.txt
 echo "📦 Installing Python dependencies..."
 pip install -r requirements.txt
+
+# Navigate to backend directory for the app
+cd FlareWeather/flareweather-backend
 
 # Start the FastAPI server
 echo "🌐 Starting FastAPI server..."
