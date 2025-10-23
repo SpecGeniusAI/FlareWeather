@@ -19,7 +19,7 @@ async def health_check():
     return {"status": "healthy"}
 
 @app.post("/analyze")
-async def analyze_data():
+async def analyze_data(data: dict = None):
     return {
         "correlation_summary": "Mock analysis complete",
         "strongest_factors": {"temperature": 0.5, "humidity": 0.3},
