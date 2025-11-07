@@ -3,9 +3,13 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "uvicorn app:app --host 0.0.0.0 --port 8000"
+startCommand = "uvicorn app:app --host 0.0.0.0 --port $PORT"
 restartPolicyType = "on_failure"
 
 [env]
 PYTHON_VERSION = "3.11"
-PORT = "8000"
+# PORT is automatically set by Railway
+# DATABASE_URL is automatically set when PostgreSQL service is added
+# You need to add these environment variables in Railway dashboard:
+# - OPENAI_API_KEY (required for AI insights)
+# - JWT_SECRET_KEY (required for authentication)

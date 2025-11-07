@@ -5,4 +5,11 @@ numpy
 openai
 python-dotenv
 pydantic
+email-validator
 requests
+chromadb
+python-jose[cryptography]
+passlib[bcrypt]
+sqlalchemy
+psycopg2-binary
+python-multipart

@@ -15,6 +15,10 @@ def calculate_correlations(symptoms: List[SymptomEntry], weather: List[WeatherSn
     Returns:
         Dictionary with top 3 strongest correlations (absolute value)
     """
+    # Handle empty inputs
+    if not symptoms or not weather:
+        return {}
+    
     # Convert to DataFrames
     df_s = pd.DataFrame([{
         'timestamp': s.timestamp,
@@ -30,26 +34,50 @@ def calculate_correlations(symptoms: List[SymptomEntry], weather: List[WeatherSn
         'wind': w.wind
     } for w in weather])
     
+    # Sort by timestamp for merge_asof
+    df_s = df_s.sort_values("timestamp").reset_index(drop=True)
+    df_w = df_w.sort_values("timestamp").reset_index(drop=True)
+    
     # Merge dataframes by timestamp with 3-hour tolerance
-    df = pd.merge_asof(
-        df_s.sort_values("timestamp"),
-        df_w.sort_values("timestamp"),
-        on="timestamp",
-        direction="nearest",
-        tolerance=pd.Timedelta("3h")
-    )
+    try:
+        df = pd.merge_asof(
+            df_s,
+            df_w,
+            on="timestamp",
+            direction="nearest",
+            tolerance=pd.Timedelta("3h")
+        )
+    except Exception as e:
+        # If merge fails, return empty correlations
+        print(f"Warning: Failed to merge dataframes: {e}")
+        return {}
+    
+    # Check if we have enough data points for correlation (need at least 2)
+    if len(df) < 2:
+        return {}
     
     # Calculate correlations for each weather variable
     correlations = {}
     weather_columns = ["temperature", "humidity", "pressure", "wind"]
     
     for col in weather_columns:
-        if col in df.columns and not df[col].isna().all():
-            corr_value = df["severity"].corr(df[col])
-            if not np.isnan(corr_value):
-                correlations[col] = corr_value
+        if col in df.columns:
+            # Check if column has valid data
+            valid_data = df[[col, "severity"]].dropna()
+            if len(valid_data) >= 2:
+                try:
+                    corr_value = valid_data["severity"].corr(valid_data[col])
+                    if not np.isnan(corr_value) and not np.isinf(corr_value):
+                        correlations[col] = float(corr_value)
+                except Exception as e:
+                    # Skip this column if correlation calculation fails
+                    print(f"Warning: Failed to calculate correlation for {col}: {e}")
+                    continue
     
     # Return top 3 strongest correlations (by absolute value)
+    if not correlations:
+        return {}
+    
     top_correlations = dict(
         sorted(correlations.items(), key=lambda x: abs(x[1]), reverse=True)[:3]
     )
@@ -57,29 +85,55 @@ def calculate_correlations(symptoms: List[SymptomEntry], weather: List[WeatherSn
     return top_correlations
 
 
-def generate_correlation_summary(correlations: Dict[str, float]) -> str:
+def generate_correlation_summary(correlations: Dict[str, float], symptoms: List[SymptomEntry] = None) -> str:
     """
-    Generate a human-readable summary of the correlation results.
+    Generate a human-readable summary of the correlation results, focusing on forecasting.
     
     Args:
         correlations: Dictionary of weather variable correlations
+        symptoms: Optional list of symptoms to identify which symptoms are affected
         
     Returns:
-        String summary of correlations
+        String summary of correlations focused on forecasting
     """
     if not correlations:
-        return "No significant correlations found between symptoms and weather patterns."
+        return "No significant correlations found. Keep tracking symptoms to identify patterns."
+    
+    # Get symptom types if available
+    symptom_types = []
+    if symptoms:
+        symptom_types = list(set([s.symptom_type for s in symptoms if s.symptom_type]))
     
     summary_parts = []
     
-    for variable, correlation in correlations.items():
+    # Sort by absolute correlation strength
+    sorted_correlations = sorted(correlations.items(), key=lambda x: abs(x[1]), reverse=True)
+    
+    for variable, correlation in sorted_correlations:
         strength = "strong" if abs(correlation) > 0.7 else "moderate" if abs(correlation) > 0.4 else "weak"
-        direction = "positive" if correlation > 0 else "negative"
+        direction = "increases" if correlation > 0 else "decreases"
         
-        summary_parts.append(
-            f"{variable.title()} shows a {strength} {direction} correlation "
-            f"(r={correlation:.3f}) with symptom severity."
-        )
+        # Map weather variable to human-readable names
+        weather_name = {
+            "temperature": "Temperature",
+            "humidity": "Humidity",
+            "pressure": "Barometric Pressure",
+            "wind": "Wind Speed"
+        }.get(variable, variable.title())
+        
+        if symptom_types:
+            symptoms_str = ", ".join(symptom_types[:2])  # Show up to 2 symptom types
+            if len(symptom_types) > 2:
+                symptoms_str += f", and {len(symptom_types) - 2} more"
+            summary_parts.append(
+                f"{weather_name} has a {strength} effect on {symptoms_str} - "
+                f"when {weather_name.lower()} {direction}, symptom severity tends to {direction}."
+            )
+        else:
+            summary_parts.append(
+                f"{weather_name} shows a {strength} {direction.replace('increases', 'positive').replace('decreases', 'negative')} correlation "
+                f"(r={correlation:.3f}) with your symptoms."
+            )
     
     return " ".join(summary_parts)
 
