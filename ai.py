@@ -293,7 +293,9 @@ def _filter_app_messages(text: Optional[str]) -> Optional[str]:
     
     # First, normalize the text (replace em-dashes, line breaks, multiple spaces with single space)
     # This makes it easier to match phrases that might have different formatting
-    normalized_text = re.sub(r'[—–-\n\r]+', ' ', text)  # Replace em-dashes and line breaks with space
+    # Note: Need to escape dashes or put them at the end of character class to avoid range interpretation
+    normalized_text = re.sub(r'[\n\r]+', ' ', text)  # Replace line breaks with space first
+    normalized_text = re.sub(r'[—–-]+', ' ', normalized_text)  # Replace em-dashes and hyphens with space
     normalized_text = re.sub(r'\s+', ' ', normalized_text)  # Replace multiple spaces with single space
     normalized_text_lower = normalized_text.lower()
     
@@ -339,7 +341,8 @@ def _filter_app_messages(text: Optional[str]) -> Optional[str]:
                 continue
             
             # Normalize sentence for comparison
-            sentence_normalized = re.sub(r'[—–-\n\r]+', ' ', sentence_clean)
+            sentence_normalized = re.sub(r'[\n\r]+', ' ', sentence_clean)
+            sentence_normalized = re.sub(r'[—–-]+', ' ', sentence_normalized)
             sentence_normalized = re.sub(r'\s+', ' ', sentence_normalized).lower()
             
             # Check if sentence contains any filter phrases
@@ -380,7 +383,8 @@ def _filter_app_messages(text: Optional[str]) -> Optional[str]:
                 continue
             
             # Normalize sentence for comparison
-            sentence_normalized = re.sub(r'[—–-\n\r]+', ' ', sentence_clean)
+            sentence_normalized = re.sub(r'[\n\r]+', ' ', sentence_clean)
+            sentence_normalized = re.sub(r'[—–-]+', ' ', sentence_normalized)
             sentence_normalized = re.sub(r'\s+', ' ', sentence_normalized).lower()
             
             # Check for keyword combinations that indicate app usage instructions
@@ -741,7 +745,7 @@ Output your response as valid JSON in this exact format:
 }}
 
 {personalization}
-Write personally and directly to this user. Use "you" and "your" throughout. Be empathetic and understanding.
+Write personally and directly to this user. Use "you" and "your" throughout. Be empathetic and understanding."""
         
     else:
         # No papers - use generic sources
