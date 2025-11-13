@@ -6,43 +6,61 @@ from sqlalchemy.orm import Session
 import uuid
 import json
 
-from models import (
-    CorrelationRequest, 
-    SymptomEntryPayload, 
-    WeatherSnapshotPayload,
-    SymptomEntry,
-    WeatherSnapshot,
-    InsightResponse,
-    SignupRequest,
-    LoginRequest,
-    AppleSignInRequest,
-    AuthResponse,
-    UserResponse,
-    FeedbackRequest,
-    FeedbackResponse
-)
-from logic import calculate_correlations, generate_correlation_summary, get_upcoming_pressure_change
-from ai import generate_insight_with_papers, generate_flare_risk_assessment, generate_weekly_forecast_insight, _choose_forecast, _analyze_pressure_window
-from app_store_notifications import router as apple_notifications_router
-from rag.query import query_rag
-from paper_search import search_papers, format_papers_for_prompt
-from database import get_db, init_db, User, InsightFeedback
-from auth import (
-    verify_password,
-    get_password_hash,
-    create_access_token,
-    get_current_user,
-    ACCESS_TOKEN_EXPIRE_MINUTES
-)
+# Import with error handling to catch import errors early
+try:
+    from models import (
+        CorrelationRequest, 
+        SymptomEntryPayload, 
+        WeatherSnapshotPayload,
+        SymptomEntry,
+        WeatherSnapshot,
+        InsightResponse,
+        SignupRequest,
+        LoginRequest,
+        AppleSignInRequest,
+        AuthResponse,
+        UserResponse,
+        FeedbackRequest,
+        FeedbackResponse
+    )
+    from logic import calculate_correlations, generate_correlation_summary, get_upcoming_pressure_change
+    from ai import generate_insight_with_papers, generate_flare_risk_assessment, generate_weekly_forecast_insight, _choose_forecast, _analyze_pressure_window
+    from rag.query import query_rag
+    from paper_search import search_papers, format_papers_for_prompt
+    from database import get_db, init_db, User, InsightFeedback
+    from auth import (
+        verify_password,
+        get_password_hash,
+        create_access_token,
+        get_current_user,
+        ACCESS_TOKEN_EXPIRE_MINUTES
+    )
+    # Try to import app store notifications (optional)
+    try:
+        from app_store_notifications import router as apple_notifications_router
+        apple_notifications_router_available = True
+    except ImportError as e:
+        print(f"⚠️  App Store Notifications not available: {e}")
+        apple_notifications_router = None
+        apple_notifications_router_available = False
+    print("✅ All imports successful")
+except ImportError as e:
+    print(f"❌ Critical import error: {e}")
+    import traceback
+    traceback.print_exc()
+    raise
 
 app = FastAPI(title="FlareWeather API")
 
 # Include Apple App Store Notifications router (if available)
-try:
-    app.include_router(apple_notifications_router)
-    print("✅ App Store Notifications router included")
-except Exception as e:
-    print(f"⚠️  App Store Notifications router error (non-fatal): {e}")
+if apple_notifications_router_available and apple_notifications_router:
+    try:
+        app.include_router(apple_notifications_router)
+        print("✅ App Store Notifications router included")
+    except Exception as e:
+        print(f"⚠️  App Store Notifications router error (non-fatal): {e}")
+else:
+    print("ℹ️  App Store Notifications router not available (skipping)")
 
 # Initialize database on startup
 @app.on_event("startup")
