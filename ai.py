@@ -687,26 +687,56 @@ User's Health Conditions: {diagnoses_str if user_diagnoses else "Weather-sensiti
 Research Papers:
 {papers_text}
 
-Your task is to:
-1. Analyze the current weather AND hourly forecast in relation to THIS SPECIFIC USER'S conditions (but do NOT assume they have specific weather sensitivities - only mention weather factors that are scientifically known to affect their condition type)
-2. Assign a Flare Risk rating: LOW, MODERATE, or HIGH
-3. Generate a friendly, 1-sentence forecast message that speaks directly to the user (use "you", "your symptoms", etc.)
-4. Provide a personalized, plain-language explanation for *why* the risk is what it is, specifically referencing:
-   - How current weather patterns may affect their conditions ({diagnoses_str if user_diagnoses else "their condition"})
-   - If you see significant weather changes in the hourly forecast (e.g., pressure drops, temperature swings, humidity spikes), mention specific times when symptom triggers might occur later today (e.g., "Pressure is expected to drop around 3PM, which may trigger symptoms")
-   - ONLY mention weather factors that are currently happening or clearly forecasted, not assumed sensitivities
-5. Include 1–2 trusted source references (e.g., Mayo Clinic, NIH, Arthritis Foundation, or from the research papers provided)
-6. If the flare risk is MODERATE or HIGH, add a "support_note" with 1–2 sentences of emotionally supportive, low-pressure encouragement. Omit this field for LOW risk.
+Your task is to create a HIGHLY PERSONALIZED, ACTIONABLE insight that helps this specific user plan their day:
 
-IMPORTANT: 
-- Personalize everything. Write as if you know this person's specific experience with {diagnoses_str if user_diagnoses else "their condition"}. Use "you" and "your" throughout.
-- NEVER tell the user how they feel or what symptoms they're experiencing. Use language like "may affect", "could trigger", "might experience", "some people with [condition] find", "weather patterns associated with", etc.
-- NEVER make definitive statements about the user's current state (e.g., don't say "you're feeling", "your symptoms are", "you have"). Only discuss potential effects and patterns.
-- Reference potential symptoms that people with their conditions might experience, but frame it as possibilities, not certainties.
-- If the hourly forecast shows significant weather changes later in the day (pressure drops >5 hPa, temperature swings >5°C, humidity changes >15%), specifically mention when these changes might trigger symptoms (e.g., "Around 2-4 PM" or "This evening") but use conditional language.
-- DO NOT assume the user has specific weather sensitivities (like "your known sensitivity to humidity"). Only discuss the current and forecasted weather conditions and how they may affect their condition type.
-- Focus on what's happening with the weather right now and what's predicted to happen later today.
-- NEVER mention logging symptoms, updating Flare, or any app-specific actions. Do NOT tell users to "drop a quick update" or "log how you feel" or similar app usage instructions in any field (forecast, why, support_note, or anywhere else).
+1. **Analyze the weather data deeply**: Look at current conditions AND the hourly forecast. Identify specific patterns:
+   - Pressure changes: Is it dropping/rising? By how much? When?
+   - Temperature swings: Are there significant changes coming?
+   - Humidity shifts: Will it spike or drop?
+   - Wind changes: Any notable shifts?
+
+2. **Assign Flare Risk**: LOW, MODERATE, or HIGH based on the severity of weather changes and how they typically affect {diagnoses_str if user_diagnoses else "weather-sensitive conditions"}.
+
+3. **Generate a specific, actionable forecast** (1 sentence): 
+   - BAD EXAMPLES (DO NOT USE - THESE WILL BE REJECTED):
+     * "Weather patterns may affect your symptoms. Monitor how you feel today."
+     * "Weather may affect you today."
+     * "Be careful today."
+     * "Monitor how you feel."
+   - GOOD EXAMPLES (USE THESE AS TEMPLATES):
+     * "Pressure is dropping 8 hPa between 2-5 PM, which often triggers migraines—consider planning lighter activities this afternoon."
+     * "Barometric pressure will fall from 1013 to 1005 hPa by 4 PM, potentially increasing joint stiffness—warmth and gentle movement may help."
+     * "Humidity spikes to 85% around 1 PM, which can worsen fatigue—plan for rest breaks during that window."
+   - REQUIREMENTS: Must include SPECIFIC TIMES (e.g., "2-5 PM", "by 4 PM") AND SPECIFIC WEATHER CHANGES (e.g., "dropping 8 hPa", "spikes to 85%"). Without both, your forecast will be REJECTED.
+
+4. **Write a detailed, personalized "why" explanation** (3-4 sentences):
+   - Start with what's happening RIGHT NOW with the weather
+   - Explain HOW this specific weather pattern typically affects {diagnoses_str if user_diagnoses else "their condition"} (reference research if available)
+   - Mention SPECIFIC TIMES from the hourly forecast when changes will occur
+   - Be specific about which symptoms people with {diagnoses_str if user_diagnoses else "their condition"} might experience (e.g., "joint stiffness", "fatigue spikes", "migraine triggers")
+   - Use conditional language: "may", "could", "might", "often", "some people find"
+   
+   Example of a GOOD "why":
+   "Barometric pressure is currently at {pressure:.0f} hPa and will drop to {pressure-5:.0f} hPa by 3 PM—a 5 hPa decrease over 4 hours. Research shows that rapid pressure drops like this can trigger inflammation responses in people with arthritis, often leading to increased joint stiffness and discomfort. The pressure change is most significant between 1-4 PM, so you might notice symptoms building during that window. Some people with arthritis find that staying warm, moving gently, and avoiding sudden position changes helps during these shifts."
+
+5. **Include 1–2 trusted sources**: Use research papers provided or trusted medical sources (Mayo Clinic, NIH, Arthritis Foundation, Cleveland Clinic).
+
+6. **Support note** (only for MODERATE/HIGH): 1-2 sentences of compassionate, practical encouragement.
+
+CRITICAL QUALITY STANDARDS - YOUR RESPONSE WILL BE REJECTED IF IT'S TOO GENERIC:
+
+- **Be SPECIFIC**: Name exact times (e.g., "2-5 PM", "by 4 PM", "this afternoon"), exact pressure/temperature changes (e.g., "dropping 8 hPa", "rising 5°C"), exact symptoms (e.g., "joint stiffness", "migraine triggers")
+- **Be ACTIONABLE**: Tell them what they can do (e.g., "plan lighter activities this afternoon", "stay hydrated during the pressure drop")
+- **Be PERSONAL**: Write as if you understand their specific experience with {diagnoses_str if user_diagnoses else "their condition"}
+- **Use "you" and "your"**: Make it feel like a personal conversation
+- **NEVER be vague**: Generic statements like "weather may affect you" or "monitor how you feel" will be REJECTED. You MUST include specific times and weather changes.
+- **NEVER assume current symptoms**: Don't say "you're feeling" or "your symptoms are"—only discuss potential effects
+- **NEVER mention app usage**: No references to logging, updating, or using Flare
+
+**VALIDATION**: Your forecast will be automatically rejected if it:
+- Contains phrases like "weather patterns may affect" or "monitor how you feel" without specific times/changes
+- Is shorter than 30 characters
+- Lacks specific times (PM, AM, afternoon, evening) AND specific weather changes (hPa, °C, pressure drop/rise)
 
 Output your response as valid JSON in this exact format:
 {{
@@ -775,26 +805,56 @@ Current Weather Data{location_str}:
 {hourly_forecast_text}
 User's Health Conditions: {diagnoses_str if user_diagnoses else "Weather-sensitive chronic condition"}
 
-Your task is to:
-1. Analyze the current weather AND hourly forecast in relation to THIS SPECIFIC USER'S conditions (but do NOT assume they have specific weather sensitivities - only mention weather factors that are scientifically known to affect their condition type)
-2. Assign a Flare Risk rating: LOW, MODERATE, or HIGH
-3. Generate a friendly, 1-sentence forecast message that speaks directly to the user (use "you", "your symptoms", etc.)
-4. Provide a personalized, plain-language explanation for *why* the risk is what it is, specifically referencing:
-   - How current weather patterns may affect their conditions ({diagnoses_str if user_diagnoses else "their condition"})
-   - If you see significant weather changes in the hourly forecast (e.g., pressure drops, temperature swings, humidity spikes), mention specific times when symptom triggers might occur later today (e.g., "Pressure is expected to drop around 3PM, which may trigger symptoms")
-   - ONLY mention weather factors that are currently happening or clearly forecasted, not assumed sensitivities
-5. Include 1–2 trusted source references (e.g., Mayo Clinic, NIH, Arthritis Foundation, Cleveland Clinic)
-6. If the flare risk is MODERATE or HIGH, add a "support_note" with 1–2 sentences of emotionally supportive, low-pressure encouragement. Omit this field for LOW risk.
+Your task is to create a HIGHLY PERSONALIZED, ACTIONABLE insight that helps this specific user plan their day:
 
-IMPORTANT: 
-- Personalize everything. Write as if you know this person's specific experience with {diagnoses_str if user_diagnoses else "their condition"}. Use "you" and "your" throughout.
-- NEVER tell the user how they feel or what symptoms they're experiencing. Use language like "may affect", "could trigger", "might experience", "some people with [condition] find", "weather patterns associated with", etc.
-- NEVER make definitive statements about the user's current state (e.g., don't say "you're feeling", "your symptoms are", "you have"). Only discuss potential effects and patterns.
-- Reference potential symptoms that people with their conditions might experience, but frame it as possibilities, not certainties.
-- If the hourly forecast shows significant weather changes later in the day (pressure drops >5 hPa, temperature swings >5°C, humidity changes >15%), specifically mention when these changes might trigger symptoms (e.g., "Around 2-4 PM" or "This evening") but use conditional language.
-- DO NOT assume the user has specific weather sensitivities (like "your known sensitivity to humidity"). Only discuss the current and forecasted weather conditions and how they may affect their condition type.
-- Focus on what's happening with the weather right now and what's predicted to happen later today.
-- NEVER mention logging symptoms, updating Flare, or any app-specific actions. Do NOT tell users to "drop a quick update" or "log how you feel" or similar app usage instructions in any field (forecast, why, support_note, or anywhere else).
+1. **Analyze the weather data deeply**: Look at current conditions AND the hourly forecast. Identify specific patterns:
+   - Pressure changes: Is it dropping/rising? By how much? When?
+   - Temperature swings: Are there significant changes coming?
+   - Humidity shifts: Will it spike or drop?
+   - Wind changes: Any notable shifts?
+
+2. **Assign Flare Risk**: LOW, MODERATE, or HIGH based on the severity of weather changes and how they typically affect {diagnoses_str if user_diagnoses else "weather-sensitive conditions"}.
+
+3. **Generate a specific, actionable forecast** (1 sentence): 
+   - BAD EXAMPLES (DO NOT USE - THESE WILL BE REJECTED):
+     * "Weather patterns may affect your symptoms. Monitor how you feel today."
+     * "Weather may affect you today."
+     * "Be careful today."
+     * "Monitor how you feel."
+   - GOOD EXAMPLES (USE THESE AS TEMPLATES):
+     * "Pressure is dropping 8 hPa between 2-5 PM, which often triggers migraines—consider planning lighter activities this afternoon."
+     * "Barometric pressure will fall from 1013 to 1005 hPa by 4 PM, potentially increasing joint stiffness—warmth and gentle movement may help."
+     * "Humidity spikes to 85% around 1 PM, which can worsen fatigue—plan for rest breaks during that window."
+   - REQUIREMENTS: Must include SPECIFIC TIMES (e.g., "2-5 PM", "by 4 PM") AND SPECIFIC WEATHER CHANGES (e.g., "dropping 8 hPa", "spikes to 85%"). Without both, your forecast will be REJECTED.
+
+4. **Write a detailed, personalized "why" explanation** (3-4 sentences):
+   - Start with what's happening RIGHT NOW with the weather
+   - Explain HOW this specific weather pattern typically affects {diagnoses_str if user_diagnoses else "their condition"} (reference research if available)
+   - Mention SPECIFIC TIMES from the hourly forecast when changes will occur
+   - Be specific about which symptoms people with {diagnoses_str if user_diagnoses else "their condition"} might experience (e.g., "joint stiffness", "fatigue spikes", "migraine triggers")
+   - Use conditional language: "may", "could", "might", "often", "some people find"
+   
+   Example of a GOOD "why":
+   "Barometric pressure is currently at {pressure:.0f} hPa and will drop to {pressure-5:.0f} hPa by 3 PM—a 5 hPa decrease over 4 hours. Research shows that rapid pressure drops like this can trigger inflammation responses in people with arthritis, often leading to increased joint stiffness and discomfort. The pressure change is most significant between 1-4 PM, so you might notice symptoms building during that window. Some people with arthritis find that staying warm, moving gently, and avoiding sudden position changes helps during these shifts."
+
+5. **Include 1–2 trusted sources**: Use research papers provided or trusted medical sources (Mayo Clinic, NIH, Arthritis Foundation, Cleveland Clinic).
+
+6. **Support note** (only for MODERATE/HIGH): 1-2 sentences of compassionate, practical encouragement.
+
+CRITICAL QUALITY STANDARDS - YOUR RESPONSE WILL BE REJECTED IF IT'S TOO GENERIC:
+
+- **Be SPECIFIC**: Name exact times (e.g., "2-5 PM", "by 4 PM", "this afternoon"), exact pressure/temperature changes (e.g., "dropping 8 hPa", "rising 5°C"), exact symptoms (e.g., "joint stiffness", "migraine triggers")
+- **Be ACTIONABLE**: Tell them what they can do (e.g., "plan lighter activities this afternoon", "stay hydrated during the pressure drop")
+- **Be PERSONAL**: Write as if you understand their specific experience with {diagnoses_str if user_diagnoses else "their condition"}
+- **Use "you" and "your"**: Make it feel like a personal conversation
+- **NEVER be vague**: Generic statements like "weather may affect you" or "monitor how you feel" will be REJECTED. You MUST include specific times and weather changes.
+- **NEVER assume current symptoms**: Don't say "you're feeling" or "your symptoms are"—only discuss potential effects
+- **NEVER mention app usage**: No references to logging, updating, or using Flare
+
+**VALIDATION**: Your forecast will be automatically rejected if it:
+- Contains phrases like "weather patterns may affect" or "monitor how you feel" without specific times/changes
+- Is shorter than 30 characters
+- Lacks specific times (PM, AM, afternoon, evening) AND specific weather changes (hPa, °C, pressure drop/rise)
 
 Output your response as valid JSON in this exact format:
 {{
@@ -814,7 +874,7 @@ Make the tone calm, supportive, and practical. Never alarmist. Keep it short and
         completion = client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "You are Flare, a gentle and trustworthy assistant who helps people living with chronic pain, fatigue, and invisible illnesses understand how upcoming weather changes may affect their symptoms. Use compassionate, validating language. Do not make medical claims. Instead, offer gentle guidance based on weather trends, known sensitivities, and research-backed correlations. Speak like someone who understands what it's like to plan your energy around flares — informative but never alarmist."},
+                {"role": "system", "content": "You are Flare, a gentle and trustworthy assistant who helps people living with chronic pain, fatigue, and invisible illnesses understand how upcoming weather changes may affect their symptoms. Your insights must be HIGHLY SPECIFIC, ACTIONABLE, and PERSONALIZED. Always include exact times, exact weather changes, and specific symptoms that might occur. Never be vague or generic. Use compassionate, validating language. Do not make medical claims. Instead, offer gentle guidance based on weather trends, known sensitivities, and research-backed correlations. Speak like someone who understands what it's like to plan your energy around flares — informative but never alarmist."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.7,
@@ -897,9 +957,44 @@ Make the tone calm, supportive, and practical. Never alarmist. Keep it short and
     severity_label, signed_delta, direction = _analyze_pressure_window(hourly_forecast, current_weather)
     alert_severity = severity_label
 
-    forecast = _choose_forecast(risk, severity_label)
-    if forecast_from_model and risk == "LOW" and random.random() < 0.3:
+    # Validate AI forecast - reject if too generic
+    def is_generic_forecast(text: str) -> bool:
+        """Check if forecast is too generic/vague to be useful."""
+        if not text:
+            return True
+        text_lower = text.lower()
+        generic_phrases = [
+            "weather patterns may affect",
+            "monitor how you feel",
+            "weather may affect",
+            "be careful",
+            "take care",
+            "watch for",
+            "may experience",
+            "could be affected"
+        ]
+        # If it's very short (< 30 chars) or contains generic phrases without specifics, it's generic
+        if len(text) < 30:
+            return True
+        # Check if it has generic phrases but no specific details (times, numbers, specific symptoms)
+        has_generic = any(phrase in text_lower for phrase in generic_phrases)
+        has_specifics = any(indicator in text_lower for indicator in [
+            "pm", "am", ":", "hpa", "°c", "°f", "pressure", "drop", "rise", 
+            "between", "around", "by", "today", "this afternoon", "this evening",
+            "morning", "afternoon", "evening", "tonight"
+        ])
+        # If it has generic phrases but no specifics, it's too generic
+        return has_generic and not has_specifics
+    
+    # Always prefer AI forecast if it's specific and actionable
+    if forecast_from_model and not is_generic_forecast(forecast_from_model):
         forecast = forecast_from_model
+        print(f"✅ Using AI-generated forecast: {forecast[:100]}...")
+    else:
+        # Fall back to our pool if AI forecast is generic or missing
+        forecast = _choose_forecast(risk, severity_label)
+        if forecast_from_model:
+            print(f"⚠️  Rejected generic AI forecast, using pool: {forecast_from_model[:100]}...")
 
     support_note = _choose_support_note(user_diagnoses, severity_label, signed_delta, direction, risk)
     personal_anecdote = None
