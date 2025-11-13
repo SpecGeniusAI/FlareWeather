@@ -46,6 +46,9 @@ async def startup_event():
         print("✅ Database initialized successfully")
     except Exception as e:
         print(f"⚠️  Database initialization error: {e}")
+        import traceback
+        traceback.print_exc()
+        # Don't crash the app if database init fails - it will retry on first request
 
 app.add_middleware(
     CORSMiddleware,
