@@ -874,7 +874,7 @@ Make the tone calm, supportive, and practical. Never alarmist. Keep it short and
         completion = client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "You are Flare, a gentle and trustworthy assistant who helps people living with chronic pain, fatigue, and invisible illnesses understand how upcoming weather changes may affect their symptoms. Your insights must be HIGHLY SPECIFIC, ACTIONABLE, and PERSONALIZED. Always include exact times, exact weather changes, and specific symptoms that might occur. Never be vague or generic. Use compassionate, validating language. Do not make medical claims. Instead, offer gentle guidance based on weather trends, known sensitivities, and research-backed correlations. Speak like someone who understands what it's like to plan your energy around flares — informative but never alarmist."},
+                {"role": "system", "content": "You are Flare, a gentle and trustworthy assistant who helps people living with chronic pain, fatigue, and invisible illnesses understand how upcoming weather changes may affect their symptoms. Use compassionate, validating language. Do not make medical claims. Instead, offer gentle guidance based on weather trends, known sensitivities, and research-backed correlations. Speak like someone who understands what it's like to plan your energy around flares — informative but never alarmist. Write naturally and personally, as if you're talking to a friend who shares your experience with weather sensitivity."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.7,
@@ -960,65 +960,14 @@ Make the tone calm, supportive, and practical. Never alarmist. Keep it short and
     severity_label, signed_delta, direction = _analyze_pressure_window(hourly_forecast, current_weather)
     alert_severity = severity_label
 
-    # Validate AI forecast - reject if too generic
-    def is_generic_forecast(text: str) -> bool:
-        """Check if forecast is too generic/vague to be useful."""
-        if not text:
-            return True
-        text_lower = text.lower()
-        
-        # List of generic phrases that indicate a bad forecast
-        generic_phrases = [
-            "weather patterns may affect",
-            "monitor how you feel",
-            "weather may affect",
-            "be careful",
-            "take care",
-            "watch for",
-            "may experience",
-            "could be affected"
-        ]
-        
-        # If it's very short, it's definitely generic
-        if len(text) < 30:
-            return True
-        
-        # Check if it contains any generic phrases
-        has_generic = any(phrase in text_lower for phrase in generic_phrases)
-        
-        # If it has generic phrases, it's automatically rejected (no exceptions)
-        if has_generic:
-            print(f"🚫 Rejecting forecast with generic phrase: {text[:100]}")
-            return True
-        
-        # Even without generic phrases, check if it has the required specifics
-        # Must have BOTH a time indicator AND a weather measurement/change
-        has_time = any(indicator in text_lower for indicator in [
-            "pm", "am", ":", "between", "around", "by", "this afternoon", "this evening",
-            "morning", "afternoon", "evening", "tonight", "later today"
-        ])
-        
-        has_weather_detail = any(indicator in text_lower for indicator in [
-            "hpa", "hpa", "°c", "°f", "pressure", "drop", "rise", "fall", "increase", "decrease",
-            "humidity", "temperature", "wind", "spike", "crash", "swing", "change"
-        ])
-        
-        # If it doesn't have both time AND weather detail, it's too generic
-        if not (has_time and has_weather_detail):
-            print(f"🚫 Rejecting forecast missing specifics (time: {has_time}, weather: {has_weather_detail}): {text[:100]}")
-            return True
-        
-        return False
-    
-    # Always prefer AI forecast if it's specific and actionable
-    if forecast_from_model and not is_generic_forecast(forecast_from_model):
+    # Always prefer AI forecast - trust the AI to do a good job
+    if forecast_from_model:
         forecast = forecast_from_model
         print(f"✅ Using AI-generated forecast: {forecast[:100]}...")
     else:
-        # Fall back to our pool if AI forecast is generic or missing
+        # Fall back to our pool if AI didn't provide a forecast
         forecast = _choose_forecast(risk, severity_label)
-        if forecast_from_model:
-            print(f"⚠️  Rejected generic AI forecast, using pool: {forecast_from_model[:100]}...")
+        print(f"⚠️  No AI forecast, using pool: {forecast[:100]}...")
 
     support_note = _choose_support_note(user_diagnoses, severity_label, signed_delta, direction, risk)
     personal_anecdote = None
