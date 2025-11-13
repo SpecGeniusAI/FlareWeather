@@ -689,54 +689,29 @@ Research Papers:
 
 Your task is to provide a personalized, empathetic insight that helps this user understand how today's weather may affect them:
 
-1. **Analyze the weather data deeply**: Look at current conditions AND the hourly forecast. Identify specific patterns:
-   - Pressure changes: Is it dropping/rising? By how much? When?
-   - Temperature swings: Are there significant changes coming?
-   - Humidity shifts: Will it spike or drop?
-   - Wind changes: Any notable shifts?
+1. **Analyze the weather**: Look at current conditions and the hourly forecast. Identify any significant changes (pressure drops/rises, temperature swings, humidity spikes, etc.) and when they'll occur.
 
-2. **Assign Flare Risk**: LOW, MODERATE, or HIGH based on the severity of weather changes and how they typically affect {diagnoses_str if user_diagnoses else "weather-sensitive conditions"}.
+2. **Assign Flare Risk**: LOW, MODERATE, or HIGH based on how weather changes typically affect {diagnoses_str if user_diagnoses else "weather-sensitive conditions"}.
 
-3. **Generate a specific, actionable forecast** (1 sentence): 
-   - BAD EXAMPLES (DO NOT USE - THESE WILL BE REJECTED):
-     * "Weather patterns may affect your symptoms. Monitor how you feel today."
-     * "Weather may affect you today."
-     * "Be careful today."
-     * "Monitor how you feel."
-   - GOOD EXAMPLES (USE THESE AS TEMPLATES):
-     * "Pressure is dropping 8 hPa between 2-5 PM, which often triggers migraines—consider planning lighter activities this afternoon."
-     * "Barometric pressure will fall from 1013 to 1005 hPa by 4 PM, potentially increasing joint stiffness—warmth and gentle movement may help."
-     * "Humidity spikes to 85% around 1 PM, which can worsen fatigue—plan for rest breaks during that window."
-   - REQUIREMENTS: Must include SPECIFIC TIMES (e.g., "2-5 PM", "by 4 PM") AND SPECIFIC WEATHER CHANGES (e.g., "dropping 8 hPa", "spikes to 85%"). Without both, your forecast will be REJECTED.
+3. **Generate a forecast** (1 sentence): Write a friendly, direct message about what to expect. Include specific times if there are notable weather changes coming. Be actionable—suggest what might help.
 
-4. **Write a detailed, personalized "why" explanation** (3-4 sentences):
-   - Start with what's happening RIGHT NOW with the weather
-   - Explain HOW this specific weather pattern typically affects {diagnoses_str if user_diagnoses else "their condition"} (reference research if available)
-   - Mention SPECIFIC TIMES from the hourly forecast when changes will occur
-   - Be specific about which symptoms people with {diagnoses_str if user_diagnoses else "their condition"} might experience (e.g., "joint stiffness", "fatigue spikes", "migraine triggers")
+4. **Explain why** (3-4 sentences): 
+   - Describe what's happening with the weather right now
+   - Explain how this weather pattern typically affects {diagnoses_str if user_diagnoses else "their condition"}
+   - If the hourly forecast shows significant changes, mention when they'll occur
    - Use conditional language: "may", "could", "might", "often", "some people find"
-   
-   Example of a GOOD "why":
-   "Barometric pressure is currently at {pressure:.0f} hPa and will drop to {pressure-5:.0f} hPa by 3 PM—a 5 hPa decrease over 4 hours. Research shows that rapid pressure drops like this can trigger inflammation responses in people with arthritis, often leading to increased joint stiffness and discomfort. The pressure change is most significant between 1-4 PM, so you might notice symptoms building during that window. Some people with arthritis find that staying warm, moving gently, and avoiding sudden position changes helps during these shifts."
+   - Be specific about potential symptoms but frame them as possibilities
 
 5. **Include 1–2 trusted sources**: Use research papers provided or trusted medical sources (Mayo Clinic, NIH, Arthritis Foundation, Cleveland Clinic).
 
 6. **Support note** (only for MODERATE/HIGH): 1-2 sentences of compassionate, practical encouragement.
 
-CRITICAL QUALITY STANDARDS - YOUR RESPONSE WILL BE REJECTED IF IT'S TOO GENERIC:
-
-- **Be SPECIFIC**: Name exact times (e.g., "2-5 PM", "by 4 PM", "this afternoon"), exact pressure/temperature changes (e.g., "dropping 8 hPa", "rising 5°C"), exact symptoms (e.g., "joint stiffness", "migraine triggers")
-- **Be ACTIONABLE**: Tell them what they can do (e.g., "plan lighter activities this afternoon", "stay hydrated during the pressure drop")
-- **Be PERSONAL**: Write as if you understand their specific experience with {diagnoses_str if user_diagnoses else "their condition"}
-- **Use "you" and "your"**: Make it feel like a personal conversation
-- **NEVER be vague**: Generic statements like "weather may affect you" or "monitor how you feel" will be REJECTED. You MUST include specific times and weather changes.
-- **NEVER assume current symptoms**: Don't say "you're feeling" or "your symptoms are"—only discuss potential effects
-- **NEVER mention app usage**: No references to logging, updating, or using Flare
-
-**VALIDATION**: Your forecast will be automatically rejected if it:
-- Contains phrases like "weather patterns may affect" or "monitor how you feel" without specific times/changes
-- Is shorter than 30 characters
-- Lacks specific times (PM, AM, afternoon, evening) AND specific weather changes (hPa, °C, pressure drop/rise)
+IMPORTANT GUIDELINES:
+- Write personally and directly to the user using "you" and "your"
+- Be empathetic and understanding—you know what it's like to plan around flares
+- Use conditional language—never tell the user how they feel, only discuss potential effects
+- Be specific when you can (times, weather changes, symptoms), but don't force it if the weather is stable
+- Never mention logging symptoms, updating the app, or any app-specific actions
 
 Output your response as valid JSON in this exact format:
 {{
@@ -807,54 +782,29 @@ User's Health Conditions: {diagnoses_str if user_diagnoses else "Weather-sensiti
 
 Your task is to provide a personalized, empathetic insight that helps this user understand how today's weather may affect them:
 
-1. **Analyze the weather data deeply**: Look at current conditions AND the hourly forecast. Identify specific patterns:
-   - Pressure changes: Is it dropping/rising? By how much? When?
-   - Temperature swings: Are there significant changes coming?
-   - Humidity shifts: Will it spike or drop?
-   - Wind changes: Any notable shifts?
+1. **Analyze the weather**: Look at current conditions and the hourly forecast. Identify any significant changes (pressure drops/rises, temperature swings, humidity spikes, etc.) and when they'll occur.
 
-2. **Assign Flare Risk**: LOW, MODERATE, or HIGH based on the severity of weather changes and how they typically affect {diagnoses_str if user_diagnoses else "weather-sensitive conditions"}.
+2. **Assign Flare Risk**: LOW, MODERATE, or HIGH based on how weather changes typically affect {diagnoses_str if user_diagnoses else "weather-sensitive conditions"}.
 
-3. **Generate a specific, actionable forecast** (1 sentence): 
-   - BAD EXAMPLES (DO NOT USE - THESE WILL BE REJECTED):
-     * "Weather patterns may affect your symptoms. Monitor how you feel today."
-     * "Weather may affect you today."
-     * "Be careful today."
-     * "Monitor how you feel."
-   - GOOD EXAMPLES (USE THESE AS TEMPLATES):
-     * "Pressure is dropping 8 hPa between 2-5 PM, which often triggers migraines—consider planning lighter activities this afternoon."
-     * "Barometric pressure will fall from 1013 to 1005 hPa by 4 PM, potentially increasing joint stiffness—warmth and gentle movement may help."
-     * "Humidity spikes to 85% around 1 PM, which can worsen fatigue—plan for rest breaks during that window."
-   - REQUIREMENTS: Must include SPECIFIC TIMES (e.g., "2-5 PM", "by 4 PM") AND SPECIFIC WEATHER CHANGES (e.g., "dropping 8 hPa", "spikes to 85%"). Without both, your forecast will be REJECTED.
+3. **Generate a forecast** (1 sentence): Write a friendly, direct message about what to expect. Include specific times if there are notable weather changes coming. Be actionable—suggest what might help.
 
-4. **Write a detailed, personalized "why" explanation** (3-4 sentences):
-   - Start with what's happening RIGHT NOW with the weather
-   - Explain HOW this specific weather pattern typically affects {diagnoses_str if user_diagnoses else "their condition"} (reference research if available)
-   - Mention SPECIFIC TIMES from the hourly forecast when changes will occur
-   - Be specific about which symptoms people with {diagnoses_str if user_diagnoses else "their condition"} might experience (e.g., "joint stiffness", "fatigue spikes", "migraine triggers")
+4. **Explain why** (3-4 sentences): 
+   - Describe what's happening with the weather right now
+   - Explain how this weather pattern typically affects {diagnoses_str if user_diagnoses else "their condition"}
+   - If the hourly forecast shows significant changes, mention when they'll occur
    - Use conditional language: "may", "could", "might", "often", "some people find"
-   
-   Example of a GOOD "why":
-   "Barometric pressure is currently at {pressure:.0f} hPa and will drop to {pressure-5:.0f} hPa by 3 PM—a 5 hPa decrease over 4 hours. Research shows that rapid pressure drops like this can trigger inflammation responses in people with arthritis, often leading to increased joint stiffness and discomfort. The pressure change is most significant between 1-4 PM, so you might notice symptoms building during that window. Some people with arthritis find that staying warm, moving gently, and avoiding sudden position changes helps during these shifts."
+   - Be specific about potential symptoms but frame them as possibilities
 
 5. **Include 1–2 trusted sources**: Use research papers provided or trusted medical sources (Mayo Clinic, NIH, Arthritis Foundation, Cleveland Clinic).
 
 6. **Support note** (only for MODERATE/HIGH): 1-2 sentences of compassionate, practical encouragement.
 
-CRITICAL QUALITY STANDARDS - YOUR RESPONSE WILL BE REJECTED IF IT'S TOO GENERIC:
-
-- **Be SPECIFIC**: Name exact times (e.g., "2-5 PM", "by 4 PM", "this afternoon"), exact pressure/temperature changes (e.g., "dropping 8 hPa", "rising 5°C"), exact symptoms (e.g., "joint stiffness", "migraine triggers")
-- **Be ACTIONABLE**: Tell them what they can do (e.g., "plan lighter activities this afternoon", "stay hydrated during the pressure drop")
-- **Be PERSONAL**: Write as if you understand their specific experience with {diagnoses_str if user_diagnoses else "their condition"}
-- **Use "you" and "your"**: Make it feel like a personal conversation
-- **NEVER be vague**: Generic statements like "weather may affect you" or "monitor how you feel" will be REJECTED. You MUST include specific times and weather changes.
-- **NEVER assume current symptoms**: Don't say "you're feeling" or "your symptoms are"—only discuss potential effects
-- **NEVER mention app usage**: No references to logging, updating, or using Flare
-
-**VALIDATION**: Your forecast will be automatically rejected if it:
-- Contains phrases like "weather patterns may affect" or "monitor how you feel" without specific times/changes
-- Is shorter than 30 characters
-- Lacks specific times (PM, AM, afternoon, evening) AND specific weather changes (hPa, °C, pressure drop/rise)
+IMPORTANT GUIDELINES:
+- Write personally and directly to the user using "you" and "your"
+- Be empathetic and understanding—you know what it's like to plan around flares
+- Use conditional language—never tell the user how they feel, only discuss potential effects
+- Be specific when you can (times, weather changes, symptoms), but don't force it if the weather is stable
+- Never mention logging symptoms, updating the app, or any app-specific actions
 
 Output your response as valid JSON in this exact format:
 {{
