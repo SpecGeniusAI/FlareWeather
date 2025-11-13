@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field, EmailStr
 
 
@@ -99,3 +99,37 @@ class InsightResponse(BaseModel):
     forecast: Optional[str] = None  # 1-sentence forecast message
     why: Optional[str] = None  # Plain-language explanation for the risk
     weekly_forecast_insight: Optional[str] = None  # Weekly forecast preview insight
+    weekly_insight_sources: Optional[List[str]] = None  # Sources for the weekly insight
+    support_note: Optional[str] = None  # Optional emotional encouragement for moderate/high risk
+    pressure_alert: Optional[Dict[str, Any]] = None  # Optional pressure alert payload
+    alert_severity: Optional[str] = None  # low, moderate, sharp
+    personalization_score: Optional[int] = None  # 1-5 personalization rating
+    personal_anecdote: Optional[str] = None
+    behavior_prompt: Optional[str] = None
+
+
+class FeedbackRequest(BaseModel):
+    """Request model for AI insight feedback"""
+    was_helpful: bool
+    analysis_id: Optional[str] = None
+    analysis_hash: Optional[str] = None
+    user_id: Optional[str] = None
+    risk: Optional[str] = None
+    forecast: Optional[str] = None
+    why: Optional[str] = None
+    support_note: Optional[str] = None
+    citations: List[str] = Field(default_factory=list)
+    diagnoses: Optional[List[str]] = None
+    location: Optional[str] = None
+    app_version: Optional[str] = None
+    pressure_alert: Optional[Dict[str, Any]] = None
+    alert_severity: Optional[str] = None
+    personalization_score: Optional[int] = None
+    personal_anecdote: Optional[str] = None
+    behavior_prompt: Optional[str] = None
+
+
+class FeedbackResponse(BaseModel):
+    """Response model for feedback submission"""
+    status: str = "success"
+    feedback_id: str
