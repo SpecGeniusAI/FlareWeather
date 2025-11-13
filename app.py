@@ -41,6 +41,7 @@ app.include_router(apple_notifications_router)
 # Initialize database on startup
 @app.on_event("startup")
 async def startup_event():
+    print("🚀 Starting FlareWeather backend...")
     try:
         init_db()
         print("✅ Database initialized successfully")
@@ -49,6 +50,7 @@ async def startup_event():
         import traceback
         traceback.print_exc()
         # Don't crash the app if database init fails - it will retry on first request
+    print("✅ FastAPI app started successfully")
 
 app.add_middleware(
     CORSMiddleware,
@@ -122,7 +124,8 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
+    """Health check endpoint for Railway"""
+    return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
 
 
 @app.post("/auth/signup", response_model=AuthResponse)
