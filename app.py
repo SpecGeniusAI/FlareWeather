@@ -36,7 +36,13 @@ from auth import (
 )
 
 app = FastAPI(title="FlareWeather API")
-app.include_router(apple_notifications_router)
+
+# Include Apple App Store Notifications router (if available)
+try:
+    app.include_router(apple_notifications_router)
+    print("✅ App Store Notifications router included")
+except Exception as e:
+    print(f"⚠️  App Store Notifications router error (non-fatal): {e}")
 
 # Initialize database on startup
 @app.on_event("startup")
