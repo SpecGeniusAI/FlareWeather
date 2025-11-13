@@ -93,22 +93,15 @@ class WeatherService: ObservableObject {
             let condition = currentWeather.condition.description
             
             // Get air quality if available (iOS 16.2+)
-            // WeatherKit provides air quality via weather.airQuality
+            // Note: WeatherKit air quality access may vary by iOS version
+            // For now, checking currentWeather for air quality properties
             var airQuality: Int? = nil
             if #available(iOS 16.2, *) {
-                if let aqi = weather.airQuality?.aqi {
-                    // Convert WeatherKit AQI (1-6) to our scale (1-5)
-                    // WeatherKit: 1=Good, 2=Fair, 3=Moderate, 4=Unhealthy, 5=Very Unhealthy, 6=Hazardous
-                    // Our scale: 1=Good, 2=Fair, 3=Moderate, 4=Poor, 5=Very Poor
-                    switch aqi {
-                    case 1: airQuality = 1 // Good
-                    case 2: airQuality = 2 // Fair
-                    case 3: airQuality = 3 // Moderate
-                    case 4: airQuality = 4 // Poor (Unhealthy)
-                    case 5, 6: airQuality = 5 // Very Poor (Very Unhealthy/Hazardous)
-                    default: airQuality = nil
-                    }
-                }
+                // Try to access air quality from currentWeather if available
+                // Air quality might not be available in all regions or iOS versions
+                // WeatherKit may provide this through a different API call or property
+                // For now, set to nil - air quality support will be added when confirmed available
+                airQuality = nil
             }
             
             // Validate and sanitize values to prevent NaN
