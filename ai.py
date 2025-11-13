@@ -687,7 +687,7 @@ User's Health Conditions: {diagnoses_str if user_diagnoses else "Weather-sensiti
 Research Papers:
 {papers_text}
 
-Your task is to create a HIGHLY PERSONALIZED, ACTIONABLE insight that helps this specific user plan their day:
+Your task is to provide a personalized, empathetic insight that helps this user understand how today's weather may affect them:
 
 1. **Analyze the weather data deeply**: Look at current conditions AND the hourly forecast. Identify specific patterns:
    - Pressure changes: Is it dropping/rising? By how much? When?
@@ -805,7 +805,7 @@ Current Weather Data{location_str}:
 {hourly_forecast_text}
 User's Health Conditions: {diagnoses_str if user_diagnoses else "Weather-sensitive chronic condition"}
 
-Your task is to create a HIGHLY PERSONALIZED, ACTIONABLE insight that helps this specific user plan their day:
+Your task is to provide a personalized, empathetic insight that helps this user understand how today's weather may affect them:
 
 1. **Analyze the weather data deeply**: Look at current conditions AND the hourly forecast. Identify specific patterns:
    - Pressure changes: Is it dropping/rising? By how much? When?
