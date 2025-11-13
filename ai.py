@@ -891,6 +891,9 @@ Make the tone calm, supportive, and practical. Never alarmist. Keep it short and
             why = response_json.get("why", "Weather data analysis in progress.")
             sources = response_json.get("sources", [])
             
+            # Debug logging
+            print(f"📊 AI Response - Risk: {risk}, Forecast: {forecast_from_model[:100] if forecast_from_model else 'None'}...")
+            
             # Filter why immediately after parsing to catch app-specific messages
             why_before_filter = why
             why = _filter_app_messages(why)
@@ -963,6 +966,8 @@ Make the tone calm, supportive, and practical. Never alarmist. Keep it short and
         if not text:
             return True
         text_lower = text.lower()
+        
+        # List of generic phrases that indicate a bad forecast
         generic_phrases = [
             "weather patterns may affect",
             "monitor how you feel",
@@ -973,18 +978,37 @@ Make the tone calm, supportive, and practical. Never alarmist. Keep it short and
             "may experience",
             "could be affected"
         ]
-        # If it's very short (< 30 chars) or contains generic phrases without specifics, it's generic
+        
+        # If it's very short, it's definitely generic
         if len(text) < 30:
             return True
-        # Check if it has generic phrases but no specific details (times, numbers, specific symptoms)
+        
+        # Check if it contains any generic phrases
         has_generic = any(phrase in text_lower for phrase in generic_phrases)
-        has_specifics = any(indicator in text_lower for indicator in [
-            "pm", "am", ":", "hpa", "°c", "°f", "pressure", "drop", "rise", 
-            "between", "around", "by", "today", "this afternoon", "this evening",
-            "morning", "afternoon", "evening", "tonight"
+        
+        # If it has generic phrases, it's automatically rejected (no exceptions)
+        if has_generic:
+            print(f"🚫 Rejecting forecast with generic phrase: {text[:100]}")
+            return True
+        
+        # Even without generic phrases, check if it has the required specifics
+        # Must have BOTH a time indicator AND a weather measurement/change
+        has_time = any(indicator in text_lower for indicator in [
+            "pm", "am", ":", "between", "around", "by", "this afternoon", "this evening",
+            "morning", "afternoon", "evening", "tonight", "later today"
         ])
-        # If it has generic phrases but no specifics, it's too generic
-        return has_generic and not has_specifics
+        
+        has_weather_detail = any(indicator in text_lower for indicator in [
+            "hpa", "hpa", "°c", "°f", "pressure", "drop", "rise", "fall", "increase", "decrease",
+            "humidity", "temperature", "wind", "spike", "crash", "swing", "change"
+        ])
+        
+        # If it doesn't have both time AND weather detail, it's too generic
+        if not (has_time and has_weather_detail):
+            print(f"🚫 Rejecting forecast missing specifics (time: {has_time}, weather: {has_weather_detail}): {text[:100]}")
+            return True
+        
+        return False
     
     # Always prefer AI forecast if it's specific and actionable
     if forecast_from_model and not is_generic_forecast(forecast_from_model):
