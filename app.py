@@ -606,14 +606,26 @@ async def analyze_data(request: CorrelationRequest):
             print(f"❌ Error generating flare risk assessment: {e}")
             import traceback
             traceback.print_exc()
-            # Fallback to generic insight
-            risk = "MODERATE"
-            forecast = "Weather patterns may affect your symptoms. Monitor how you feel today."
-            why = "Unable to generate detailed analysis at this time."
-            ai_message = "Weather patterns may affect your symptoms. Monitor how you feel today."
+            # Fallback to better pool forecasts instead of generic message
+            # Import the helper functions
+            from ai import _choose_forecast, _analyze_pressure_window
+            try:
+                severity_label, signed_delta, direction = _analyze_pressure_window(hourly_forecast_data or [], current_weather)
+                risk = "MODERATE"
+                forecast = _choose_forecast("MODERATE", severity_label)
+                why = "Weather patterns are being analyzed. Please check back in a moment for a detailed forecast."
+                ai_message = f"{forecast} {why}"
+                alert_severity = severity_label
+            except Exception as fallback_error:
+                print(f"❌ Fallback also failed: {fallback_error}")
+                # Ultimate fallback
+                risk = "MODERATE"
+                forecast = "Conditions appear stable—today might offer you a little space."
+                why = "Weather patterns are being analyzed. Please check back in a moment for a detailed forecast."
+                ai_message = f"{forecast} {why}"
+                alert_severity = "low"
             paper_citations = []
             support_note = None
-            alert_severity = "low"
             personalization_score = 1
             personal_anecdote = None
             behavior_prompt = None

@@ -4,13 +4,6 @@ import CoreLocation
 import MapKit
 import Combine
 
-// Make MKLocalSearchCompletion identifiable for ForEach
-extension MKLocalSearchCompletion: Identifiable {
-    public var id: String {
-        return title + subtitle
-    }
-}
-
 // Location search manager for autocomplete
 class LocationSearchManager: NSObject, ObservableObject {
     @Published var searchText = ""
@@ -94,6 +87,7 @@ struct SettingsView: View {
     private var userProfiles: FetchedResults<UserProfile>
     
     @StateObject private var locationManager = LocationManager()
+    @StateObject private var notificationManager = NotificationManager()
     @StateObject private var themeManager = ThemeManager()
     @EnvironmentObject var authManager: AuthManager
     @State private var showingOnboarding = false
@@ -124,46 +118,52 @@ struct SettingsView: View {
                         .padding(.bottom, 16)
                         
                     if let user = currentUser {
-                            VStack(alignment: .leading, spacing: 16) {
-                        HStack {
-                            Image(systemName: "person.circle.fill")
-                                .font(.title2)
+                        VStack(alignment: .leading, spacing: 16) {
+                            HStack(alignment: .top, spacing: 12) {
+                                Image(systemName: "person.circle.fill")
+                                    .font(.title2)
+                                    .foregroundColor(Color.adaptiveText)
+                                
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text(user.name ?? "Unknown User")
+                                        .font(.interHeadline)
                                         .foregroundColor(Color.adaptiveText)
-                            
-                                    VStack(alignment: .leading, spacing: 12) {
-                                Text(user.name ?? "Unknown User")
-                                            .font(.interHeadline)
-                                            .foregroundColor(Color.adaptiveText)
-                                        
-                                Text("Age: \(user.age)")
+                                    
+                                    HStack {
+                                        Text("Age")
                                             .font(.interBody)
                                             .foregroundColor(Color.adaptiveMuted)
-                                        
-                                        if let diagnosesArray = user.value(forKey: "diagnoses") as? NSArray,
-                                           let diagnoses = diagnosesArray as? [String], !diagnoses.isEmpty {
-                                            VStack(alignment: .leading, spacing: 4) {
-                                                ForEach(diagnoses, id: \.self) { diagnosis in
-                                                    HStack {
-                                                        Image(systemName: "heart.text.square.fill")
-                                                            .font(.interCaption)
-                                                            .foregroundColor(Color.adaptiveMuted)
-                                                        Text(diagnosis)
-                                                            .font(.interCaption)
-                                                            .foregroundColor(Color.adaptiveMuted)
-                                                    }
+                                        Spacer()
+                                        Text("\(user.age)")
+                                            .font(.interBody)
+                                            .foregroundColor(Color.adaptiveText)
+                                    }
+                                    
+                                    if let diagnosesArray = user.value(forKey: "diagnoses") as? NSArray,
+                                       let diagnoses = diagnosesArray as? [String], !diagnoses.isEmpty {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            ForEach(diagnoses, id: \.self) { diagnosis in
+                                                HStack {
+                                                    Image(systemName: "heart.text.square.fill")
+                                                        .font(.interCaption)
+                                                        .foregroundColor(Color.adaptiveMuted)
+                                                    Text(diagnosis)
+                                                        .font(.interCaption)
+                                                        .foregroundColor(Color.adaptiveMuted)
                                                 }
                                             }
-                                            .padding(.top, 8)
                                         }
-                            }
-                            
-                            Spacer()
+                                        .padding(.top, 4)
+                                    }
                                 }
-                            
-                                Button("Edit Profile") {
-                                    showingProfileEdit = true
+                                
+                                Spacer()
                             }
-                                .buttonStyle(SecondaryButtonStyle())
+                            
+                            Button("Edit Profile") {
+                                showingProfileEdit = true
+                            }
+                            .buttonStyle(SecondaryButtonStyle())
                         }
                     } else {
                         Button("Complete Profile Setup") {
@@ -189,17 +189,99 @@ struct SettingsView: View {
                             Spacer()
                         }
                         
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Dark Mode")
-                                .font(.interBody)
+                        VStack(alignment: .leading, spacing: 16) {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Dark Mode")
+                                    .font(.interBody)
+                                    .foregroundColor(Color.adaptiveText)
+                                
+                                Picker("Color Scheme", selection: $themeManager.colorSchemePreference) {
+                                    ForEach(ColorSchemePreference.allCases, id: \.self) { preference in
+                                        Text(preference.rawValue.capitalized).tag(preference)
+                                    }
+                                }
+                                .pickerStyle(.segmented)
+                            }
+                            
+                            Divider()
+                                .background(Color.adaptiveMuted.opacity(0.3))
+                            
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Temperature Unit")
+                                    .font(.interBody)
+                                    .foregroundColor(Color.adaptiveText)
+                                
+                                Picker("Temperature Unit", selection: Binding(
+                                    get: { UserDefaults.standard.bool(forKey: "useFahrenheit") ? 1 : 0 },
+                                    set: { UserDefaults.standard.set($0 == 1, forKey: "useFahrenheit") }
+                                )) {
+                                    Text("Celsius").tag(0)
+                                    Text("Fahrenheit").tag(1)
+                                }
+                                .pickerStyle(.segmented)
+                            }
+                        }
+                    }
+                    .cardStyle()
+                    .padding(.horizontal)
+                    
+                    // Notifications
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack {
+                            Image(systemName: "bell.fill")
+                                .font(.title3)
                                 .foregroundColor(Color.adaptiveText)
                             
-                            Picker("Color Scheme", selection: $themeManager.colorSchemePreference) {
-                                ForEach(ColorSchemePreference.allCases, id: \.self) { preference in
-                                    Text(preference.rawValue.capitalized).tag(preference)
+                            Text("Notifications")
+                                .font(.interHeadline)
+                                .foregroundColor(Color.adaptiveText)
+                            
+                            Spacer()
+                            Text(notificationManager.statusDescription)
+                                .font(.interCaption)
+                                .foregroundColor(Color.adaptiveMuted)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(Color.adaptiveCardBackground.opacity(0.35))
+                                .cornerRadius(10)
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Pressure alerts give you a gentle heads up when quick weather swings could affect your symptoms.")
+                                .font(.interBody)
+                                .foregroundColor(Color.adaptiveText)
+                                .fixedSize(horizontal: false, vertical: true)
+                            
+                            if notificationManager.authorizationStatus == .notDetermined {
+                                Button {
+                                    Task { await notificationManager.requestAuthorization() }
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "bell.badge")
+                                        Text("Enable Notifications")
+                                    }
                                 }
+                                .buttonStyle(PrimaryButtonStyle())
+                            } else if notificationManager.authorizationStatus == .denied {
+                                Text("Notifications are currently turned off. You can enable them in Settings to receive pressure alerts.")
+                                    .font(.interCaption)
+                                    .foregroundColor(Color.adaptiveMuted)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                
+                                Button("Open Notification Settings") {
+                                    notificationManager.openSystemSettings()
+                                }
+                                .buttonStyle(SecondaryButtonStyle())
+                            } else {
+                                Text("You're set to receive pressure alerts. You can update preferences anytime in Settings.")
+                                    .font(.interCaption)
+                                    .foregroundColor(Color.adaptiveMuted)
+                                
+                                Button("Manage in Settings") {
+                                    notificationManager.openSystemSettings()
+                                }
+                                .buttonStyle(SecondaryButtonStyle())
                             }
-                            .pickerStyle(.segmented)
                         }
                     }
                     .cardStyle()
@@ -207,8 +289,8 @@ struct SettingsView: View {
                     
                     // Location Card
                     VStack(alignment: .leading, spacing: 16) {
-                        HStack {
-                            Image(systemName: "location.fill")
+                    HStack {
+                        Image(systemName: "location.fill")
                                 .font(.title3)
                                 .foregroundColor(Color.adaptiveText)
                             
@@ -219,82 +301,73 @@ struct SettingsView: View {
                             Spacer()
                         }
                         
-                        if let location = locationManager.location {
-                    HStack {
-                        Image(systemName: "location.fill")
-                                    .foregroundColor(Color.adaptiveMuted)
+                        if locationManager.useDeviceLocation {
+                            if let location = locationManager.location {
+                                HStack(alignment: .top, spacing: 12) {
+                                    Image(systemName: "location.fill")
+                                        .foregroundColor(Color.adaptiveMuted)
+                                    VStack(alignment: .leading, spacing: 4) {
                         Text("Current Location")
-                                    .font(.interBody)
-                                    .foregroundColor(Color.adaptiveText)
+                                            .font(.interBody)
+                                            .foregroundColor(Color.adaptiveText)
+                                        if let name = locationManager.deviceLocationName, !name.isEmpty {
+                                            Text(name)
+                                                .font(.interCaption)
+                                                .foregroundColor(Color.adaptiveMuted)
+                                        } else {
+                                            Text("\(String(format: "%.4f", location.coordinate.latitude)), \(String(format: "%.4f", location.coordinate.longitude))")
+                                                .font(.interCaption)
+                                                .foregroundColor(Color.adaptiveMuted)
+                                        }
+                                    }
                         Spacer()
-                                VStack(alignment: .trailing) {
-                                    Text("\(String(format: "%.4f", location.coordinate.latitude)), \(String(format: "%.4f", location.coordinate.longitude))")
-                                        .font(.interCaption)
+                                }
+                            } else {
+                                HStack {
+                                    ProgressView()
+                                        .scaleEffect(0.8)
+                                        .tint(Color.adaptiveText)
+                                    Text("Getting location...")
+                                        .font(.interBody)
                                         .foregroundColor(Color.adaptiveMuted)
                                 }
                             }
+                            
+                            if locationManager.authorizationStatus == .denied {
+                                Text("Location access denied. Enable it in Settings.")
+                                    .font(.interCaption)
+                                    .foregroundColor(.red)
+                            }
                         } else {
-                            HStack {
-                                Image(systemName: "location.slash.fill")
+                            HStack(alignment: .top, spacing: 12) {
+                                Image(systemName: "mappin.and.ellipse")
                                     .foregroundColor(Color.adaptiveMuted)
-                                Text("Location Not Available")
-                                    .font(.interBody)
-                                    .foregroundColor(Color.adaptiveMuted)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Selected Location")
+                                        .font(.interBody)
+                                        .foregroundColor(Color.adaptiveText)
+                                    if let name = locationManager.manualLocationName, !name.isEmpty {
+                                        Text(name)
+                                            .font(.interCaption)
+                                            .foregroundColor(Color.adaptiveMuted)
+                                    } else {
+                                        Text("Choose a city in Location Settings")
+                                            .font(.interCaption)
+                                            .foregroundColor(Color.adaptiveMuted)
+                                    }
+                                }
+                                Spacer()
                             }
                         }
                         
                         Button("Location Settings") {
-                        showingLocationSettings = true
-                    }
+                            showingLocationSettings = true
+                        }
                         .buttonStyle(SecondaryButtonStyle())
-                        
-                        if locationManager.authorizationStatus == .denied {
-                            Text("Location access denied. Enable in Settings app.")
-                                .font(.interCaption)
-                                .foregroundColor(.red)
-                        }
                     }
                     .cardStyle()
                     .padding(.horizontal)
                     
-                    // Weather Settings Card
-                    VStack(alignment: .leading, spacing: 16) {
-                        HStack {
-                            Image(systemName: "cloud.sun.fill")
-                                .font(.title3)
-                                .foregroundColor(Color.adaptiveText)
-                            
-                            Text("Weather")
-                                .font(.interHeadline)
-                                .foregroundColor(Color.adaptiveText)
-                            
-                            Spacer()
-                        }
-                        
-                    HStack {
-                        Image(systemName: "cloud.sun.fill")
-                                .foregroundColor(Color.adaptiveMuted)
-                        Text("Weather Updates")
-                                .font(.interBody)
-                                .foregroundColor(Color.adaptiveText)
-                        Spacer()
-                        Toggle("", isOn: .constant(true))
-                                .tint(Color.adaptiveCardBackground)
-                    }
-                    
-                    HStack {
-                        Image(systemName: "bell.fill")
-                                .foregroundColor(Color.adaptiveMuted)
-                        Text("Weather Alerts")
-                                .font(.interBody)
-                                .foregroundColor(Color.adaptiveText)
-                        Spacer()
-                        Toggle("", isOn: .constant(true))
-                                .tint(Color.adaptiveCardBackground)
-                        }
-                    }
-                    .cardStyle()
-                    .padding(.horizontal)
                     
                     // About Card
                     VStack(alignment: .leading, spacing: 16) {
@@ -310,35 +383,39 @@ struct SettingsView: View {
                             Spacer()
                         }
                         
-                    HStack {
-                        Text("Version")
+                        HStack {
+                            Text("Version")
                                 .font(.interBody)
                                 .foregroundColor(Color.adaptiveText)
-                        Spacer()
-                        Text("1.0.0")
+                            Spacer()
+                            Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown")
                                 .font(.interBody)
                                 .foregroundColor(Color.adaptiveMuted)
-                    }
-                    
-                    Link(destination: URL(string: "https://www.flareweather.app/privacy-policy")!) {
-                        HStack {
-                            Text("Privacy Policy")
-                            Spacer()
-                            Image(systemName: "arrow.up.right.square")
-                                .font(.caption)
                         }
-                    }
-                    .buttonStyle(SecondaryButtonStyle())
-                    
-                    Link(destination: URL(string: "https://www.flareweather.app/terms-of-service")!) {
-                        HStack {
-                            Text("Terms of Service")
-                            Spacer()
-                            Image(systemName: "arrow.up.right.square")
-                                .font(.caption)
+                        
+                        if let privacyURL = URL(string: "https://www.flareweather.app/privacy-policy") {
+                            Link(destination: privacyURL) {
+                                HStack {
+                                    Text("Privacy Policy")
+                                    Spacer()
+                                    Image(systemName: "arrow.up.right.square")
+                                        .font(.caption)
+                                }
+                            }
+                            .buttonStyle(SecondaryButtonStyle())
                         }
-                    }
-                    .buttonStyle(SecondaryButtonStyle())
+                        
+                        if let termsURL = URL(string: "https://www.flareweather.app/terms-of-service") {
+                            Link(destination: termsURL) {
+                                HStack {
+                                    Text("Terms of Service")
+                                    Spacer()
+                                    Image(systemName: "arrow.up.right.square")
+                                        .font(.caption)
+                                }
+                            }
+                            .buttonStyle(SecondaryButtonStyle())
+                        }
                     }
                     .cardStyle()
                     .padding(.horizontal)
@@ -360,6 +437,9 @@ struct SettingsView: View {
                     .padding(.horizontal)
                 }
                 .padding(.vertical)
+            }
+            .onAppear {
+                notificationManager.refreshAuthorizationStatus()
             }
             .background(Color.adaptiveBackground.ignoresSafeArea())
             .navigationTitle("Settings")
@@ -413,7 +493,7 @@ struct LocationSettingsView: View {
                         VStack(alignment: .leading, spacing: 12) {
                             Toggle("Use Device Location", isOn: $useDeviceLocation)
                                 .tint(Color.adaptiveCardBackground)
-                                .onChange(of: useDeviceLocation) { newValue in
+                                .onChange(of: useDeviceLocation) { _, newValue in
                                     if newValue {
                                         // Clear manual location when switching to device
                                         tempManualLocation = ""
@@ -433,10 +513,16 @@ struct LocationSettingsView: View {
                                             .font(.interBody)
                                             .foregroundColor(Color.adaptiveText)
                                         Spacer()
-                                        VStack(alignment: .trailing) {
-                                            Text("\(String(format: "%.4f", location.coordinate.latitude)), \(String(format: "%.4f", location.coordinate.longitude))")
-                                                .font(.interCaption)
-                                                .foregroundColor(Color.adaptiveMuted)
+                                        VStack(alignment: .trailing, spacing: 2) {
+                                            if let humanName = locationManager.deviceLocationName ?? locationManager.manualLocationName {
+                                                Text(humanName)
+                                                    .font(.interCaption)
+                                                    .foregroundColor(Color.adaptiveMuted)
+                                            } else {
+                                                Text("\(String(format: "%.4f", location.coordinate.latitude)), \(String(format: "%.4f", location.coordinate.longitude))")
+                                                    .font(.interCaption)
+                                                    .foregroundColor(Color.adaptiveMuted)
+                                            }
                                         }
                                     }
                                 } else {
@@ -473,7 +559,7 @@ struct LocationSettingsView: View {
                                                 .autocapitalization(.words)
                                                 .disableAutocorrection(false)
                                                 .focused($isSearchFieldFocused)
-                                                .onChange(of: tempManualLocation) { newValue in
+                                                .onChange(of: tempManualLocation) { _, newValue in
                                                     searchManager.searchText = newValue
                                                     // Clear selected location and errors when typing
                                                     if geocodedLocation != nil {
@@ -492,9 +578,10 @@ struct LocationSettingsView: View {
                                         
                                         // Dropdown with search results
                                         if isSearchFieldFocused && !searchManager.searchResults.isEmpty {
+                                            let displayedResults = Array(searchManager.searchResults.prefix(5).enumerated())
                                             ScrollView {
                                                 VStack(alignment: .leading, spacing: 0) {
-                                                    ForEach(Array(searchManager.searchResults.prefix(5).enumerated()), id: \.element.id) { index, result in
+                                                    ForEach(displayedResults, id: \.offset) { index, result in
                                                         Button(action: {
                                                             selectLocation(result)
                                                         }) {
@@ -521,7 +608,7 @@ struct LocationSettingsView: View {
                                                         }
                                                         .buttonStyle(.plain)
                                                         
-                                                        if index < min(4, searchManager.searchResults.count - 1) {
+                                                        if index < displayedResults.count - 1 {
                                                             Divider()
                                                                 .padding(.leading, 12)
                                                         }
@@ -561,7 +648,7 @@ struct LocationSettingsView: View {
                                         }
                                         
                                         // Show success confirmation
-                                        if let location = geocodedLocation, let locationName = selectedLocationName, !isGeocoding {
+                                        if geocodedLocation != nil, let locationName = selectedLocationName, !isGeocoding {
                                             HStack {
                                                 Image(systemName: "checkmark.circle.fill")
                                                     .foregroundColor(.green)
@@ -767,9 +854,11 @@ struct LocationSettingsView: View {
             UserDefaults.standard.removeObject(forKey: "manualLocation")
             UserDefaults.standard.removeObject(forKey: "manualLocationLat")
             UserDefaults.standard.removeObject(forKey: "manualLocationLon")
+            locationManager.manualLocationName = nil
         } else if let location = geocodedLocation {
             // Save manual location (use selectedLocationName if available, otherwise use tempManualLocation)
             let locationToSave = selectedLocationName ?? tempManualLocation
+            locationManager.manualLocationName = locationToSave
             UserDefaults.standard.set(locationToSave, forKey: "manualLocation")
             // Store coordinates for easy access
             UserDefaults.standard.set(location.coordinate.latitude, forKey: "manualLocationLat")
@@ -849,10 +938,16 @@ struct ProfileEditView: View {
                                 .background(Color.adaptiveBackground)
                                 .cornerRadius(12)
                             
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Age: \(age)")
-                                    .font(.interBody)
-                                    .foregroundColor(Color.adaptiveText)
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack {
+                                    Text("Age")
+                                        .font(.interBody)
+                                        .foregroundColor(Color.adaptiveText)
+                                    Spacer()
+                                    Text("\(age)")
+                                        .font(.interBody)
+                                        .foregroundColor(Color.adaptiveText)
+                                }
                                 Slider(value: Binding(
                                     get: { Double(age) },
                                     set: { age = Int($0) }
@@ -954,7 +1049,7 @@ struct ProfileEditView: View {
                                     .padding(12)
                                     .background(Color.adaptiveBackground)
                                     .cornerRadius(12)
-                                    .onChange(of: otherDiagnosis) { newValue in
+                                    .onChange(of: otherDiagnosis) { _, newValue in
                                         if !newValue.isEmpty {
                                             selectedDiagnoses.remove("Other")
                                             selectedDiagnoses.insert(newValue)

@@ -2,6 +2,25 @@ import SwiftUI
 import CoreLocation
 import CoreData
 
+// Helper extension for temperature conversion
+extension Double {
+    func toTemperatureString(useFahrenheit: Bool = false) -> String {
+        let useF = UserDefaults.standard.bool(forKey: "useFahrenheit")
+        let converted = useF ? (self * 9/5) + 32 : self
+        let unit = useF ? "F" : "C"
+        return "\(Int(converted))°\(unit)"
+    }
+    
+    func toTemperature(useFahrenheit: Bool = false) -> Double {
+        let useF = UserDefaults.standard.bool(forKey: "useFahrenheit")
+        return useF ? (self * 9/5) + 32 : self
+    }
+    
+    var temperatureUnit: String {
+        UserDefaults.standard.bool(forKey: "useFahrenheit") ? "F" : "C"
+    }
+}
+
 struct HomeView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @StateObject private var weatherService = WeatherService()
@@ -9,7 +28,10 @@ struct HomeView: View {
     @StateObject private var aiService = AIInsightsService()
     @State private var showingOnboarding = false
     @State private var lastRefreshTime: Date? = nil
+    @State private var aiFeedback: Bool? = nil
     @State private var hasInitialAnalysis = false
+    @State private var isManualInsightRefresh = false
+    @AppStorage("useFahrenheit") private var useFahrenheit = false
     
     // Helper function to refresh analysis
     private func refreshAnalysis(force: Bool = false) async {
@@ -25,7 +47,8 @@ struct HomeView: View {
         
         await aiService.analyzeWithWeatherOnly(
             weatherService: weatherService,
-            userProfile: userProfile
+            userProfile: userProfile,
+            force: force
         )
         
         lastRefreshTime = Date()
@@ -36,30 +59,36 @@ struct HomeView: View {
         print("🏠 HomeView: Appeared")
         print("📍 HomeView: Location auth status: \(locationManager.authorizationStatus.rawValue)")
         print("📍 HomeView: useDeviceLocation: \(locationManager.useDeviceLocation)")
+        print("🧠 HomeView: Has initial analysis: \(hasInitialAnalysis)")
         
         // Request location (will use manual if set)
         locationManager.requestLocation()
         
-        // Give it a moment to load manual location if needed
-        Task {
-            try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
-            
-            if let location = getEffectiveLocation() {
-                print("🌤️ HomeView: Has location, fetching weather...")
-                print("📍 HomeView: Current location: \(location.coordinate.latitude), \(location.coordinate.longitude)")
-                // Force refresh when view appears to ensure we have the latest data
-                await weatherService.fetchWeatherData(for: location, forceRefresh: true)
-                await weatherService.fetchWeeklyForecast(for: location)
-                await weatherService.fetchHourlyForecast(for: location)
-            } else {
-                print("⚠️ HomeView: No location available yet")
+        // Only fetch weather if we don't have data yet or if this is the first appear
+        // This prevents refiring when navigating back from Settings
+        if !hasInitialAnalysis || weatherService.weatherData == nil {
+            print("🌤️ HomeView: No weather data or first appear, fetching weather...")
+            Task {
+                try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                
+                if let location = getEffectiveLocation() {
+                    print("📍 HomeView: Current location: \(location.coordinate.latitude), \(location.coordinate.longitude)")
+                    // Only force refresh if we don't have data
+                    await weatherService.fetchWeatherData(for: location, forceRefresh: !hasInitialAnalysis)
+                    await weatherService.fetchWeeklyForecast(for: location)
+                    await weatherService.fetchHourlyForecast(for: location)
+                } else {
+                    print("⚠️ HomeView: No location available yet")
+                }
             }
+        } else {
+            print("⏭️ HomeView: Already have weather data and analysis, skipping refresh")
         }
     }
     
     // Handle location change
-    private func handleLocationChange(_ newLocation: CLLocation?) {
-        guard let location = newLocation else { return }
+    private func handleLocationChange(_ new: CLLocation?) {
+        guard let location = new else { return }
         print("🌤️ HomeView: Location changed to \(location.coordinate.latitude), \(location.coordinate.longitude), fetching weather...")
         Task {
             // Force refresh when location changes to ensure we get fresh data
@@ -80,20 +109,55 @@ struct HomeView: View {
     private func handleWeatherDataChange(_ newData: WeatherData?) {
         guard let location = getEffectiveLocation() else { return }
         print("🌤️ HomeView: Weather data updated, fetching forecast...")
+        print("🧠 HomeView: Has initial analysis: \(hasInitialAnalysis)")
+        
         Task {
             // Fetch forecast when weather data becomes available
             await weatherService.fetchWeeklyForecast(for: location)
             await weatherService.fetchHourlyForecast(for: location)
-            // Only refresh analysis if weather data actually changed (not just on view appear)
-            // The caching in AIInsightsService will prevent redundant calls
-            await refreshAnalysis()
+            
+            // Only refresh analysis if we don't have initial analysis yet
+            // The caching in AIInsightsService will prevent redundant calls if inputs haven't changed
+            if !hasInitialAnalysis {
+                print("🔄 HomeView: No initial analysis yet, triggering analysis...")
+                await refreshAnalysis()
+            } else {
+                print("⏭️ HomeView: Already have initial analysis, skipping analysis refresh")
+            }
+        }
+    }
+    
+    // Check if weather data values actually changed
+    private func weatherDataValuesChanged(old: WeatherData?, new: WeatherData?) -> Bool {
+        guard let old = old, let new = new else {
+            return new != nil // New data if old is nil but new exists
+        }
+        return old.temperature != new.temperature ||
+               old.pressure != new.pressure ||
+               old.humidity != new.humidity ||
+               old.windSpeed != new.windSpeed
+    }
+    
+    // Handle location preference change
+    private func handleLocationPreferenceChange(_ new: Bool) {
+        print("🔄 HomeView: useDeviceLocation changed to \(new)")
+        locationManager.loadManualLocation()
+        Task {
+            try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
+            if let location = getEffectiveLocation() {
+                print("🌤️ HomeView: Refreshing weather for new location preference...")
+                await weatherService.fetchWeatherData(for: location, forceRefresh: true)
+                await weatherService.fetchWeeklyForecast(for: location)
+                await weatherService.fetchHourlyForecast(for: location)
+                await refreshAnalysis()
+            }
         }
     }
     
     // Handle authorization status change
-    private func handleAuthorizationStatusChange(_ newStatus: CLAuthorizationStatus) {
-        print("📍 HomeView: Authorization status changed to: \(newStatus.rawValue)")
-        if newStatus == .authorizedWhenInUse || newStatus == .authorizedAlways {
+    private func handleAuthorizationStatusChange(_ new: CLAuthorizationStatus) {
+        print("📍 HomeView: Authorization status changed to: \(new.rawValue)")
+        if new == .authorizedWhenInUse || new == .authorizedAlways {
             print("✅ HomeView: Authorized, requesting location...")
             locationManager.requestLocation()
         }
@@ -109,13 +173,13 @@ struct HomeView: View {
     private var locationName: String? {
         if !locationManager.useDeviceLocation {
             // Use manual location name if set
-            return UserDefaults.standard.string(forKey: "manualLocation")
+            return locationManager.manualLocationName ?? UserDefaults.standard.string(forKey: "manualLocation")
         } else {
-            // Use location from weather data if available
-            return weatherService.weatherData?.location
+            // Prefer reverse geocoded name, fallback to weather service location label
+            return locationManager.deviceLocationName ?? weatherService.weatherData?.location
         }
     }
-    
+
     // Main content view with staggered animations
     private var contentView: some View {
         VStack(spacing: 16) {
@@ -127,6 +191,12 @@ struct HomeView: View {
             )
             .padding(.horizontal)
             .cardEnterAnimation(delay: 0.0)
+
+            if let pressureAlert = aiService.pressureAlert {
+                PressureAlertCardView(alert: pressureAlert)
+                    .padding(.horizontal)
+                    .cardEnterAnimation(delay: 0.05)
+            }
             
             // Current Weather Card
             WeatherCardView(
@@ -145,7 +215,8 @@ struct HomeView: View {
             // Hourly Forecast Card
             HourlyForecastCardView(
                 forecasts: weatherService.hourlyForecast,
-                isLoading: weatherService.isLoadingHourly
+                isLoading: weatherService.isLoadingHourly,
+                currentPressure: weatherService.weatherData?.pressure
             )
             .padding(.horizontal)
             .cardEnterAnimation(delay: 0.3)
@@ -160,7 +231,10 @@ struct HomeView: View {
             
             // Weekly Forecast Insight Card
             if let weeklyInsight = aiService.weeklyForecastInsight, !weeklyInsight.isEmpty {
-                WeeklyForecastInsightCardView(insight: weeklyInsight)
+                WeeklyForecastInsightCardView(
+                    insight: weeklyInsight,
+                    sources: aiService.weeklyInsightSources
+                )
                     .cardEnterAnimation(delay: 0.5)
             }
         }
@@ -186,12 +260,29 @@ struct HomeView: View {
                 
                 Spacer()
                 
-                if aiService.isLoading {
+                if aiService.isLoading || isManualInsightRefresh {
                     ProgressView()
                         .tint(Color.adaptiveText)
                         .scaleEffect(0.8)
                         .transition(.opacity.combined(with: .scale))
                         .animation(.easeInOut(duration: 0.2), value: aiService.isLoading)
+                } else {
+                    Button {
+                        guard !isManualInsightRefresh else { return }
+                        isManualInsightRefresh = true
+                        Task {
+                            await refreshAnalysis(force: true)
+                            await MainActor.run {
+                                isManualInsightRefresh = false
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.title3)
+                            .foregroundColor(Color.adaptiveText)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Refresh Insight")
                 }
             }
             
@@ -207,7 +298,7 @@ struct HomeView: View {
                 }
             } else {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text(aiService.insightMessage)
+                    Text(aiService.insightMessage.isEmpty ? "Analyzing weather patterns…" : aiService.insightMessage)
                         .font(.interBody)
                         .foregroundColor(Color.adaptiveText)
                         .lineSpacing(6)
@@ -215,12 +306,80 @@ struct HomeView: View {
                         .transition(.opacity.combined(with: .move(edge: .top)))
                         .animation(.easeInOut(duration: 0.3), value: aiService.insightMessage)
                     
+                    if let supportNote = aiService.supportNote, !supportNote.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Divider()
+                                .background(Color.adaptiveMuted.opacity(0.2))
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: "hands.sparkles.fill")
+                                    .font(.interCaption)
+                                    .foregroundColor(Color.adaptiveText)
+                                Text(supportNote)
+                                    .font(.interCaption)
+                                    .foregroundColor(Color.adaptiveText)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .lineSpacing(4)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(Color.adaptiveCardBackground.opacity(0.45))
+                            .cornerRadius(14)
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                        .animation(.easeInOut(duration: 0.3), value: aiService.supportNote)
+                    }
+
+                    if let personalAnecdote = aiService.personalAnecdote, !personalAnecdote.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Divider()
+                                .background(Color.adaptiveMuted.opacity(0.15))
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: "quote.bubble")
+                                    .font(.interCaption)
+                                    .foregroundColor(Color.adaptiveMuted)
+                                Text(personalAnecdote)
+                                    .font(.interCaption)
+                                    .foregroundColor(Color.adaptiveMuted)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    }
+
+                    if let behaviorPrompt = aiService.behaviorPrompt, !behaviorPrompt.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Divider()
+                                .background(Color.adaptiveMuted.opacity(0.15))
+                            HStack(spacing: 8) {
+                                Image(systemName: "pencil.and.list")
+                                    .font(.interCaption)
+                                    .foregroundColor(Color.adaptiveText)
+                                Text(behaviorPrompt)
+                                    .font(.interCaption)
+                                    .foregroundColor(Color.adaptiveText)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    }
+                    
                     // Medical disclaimer
                     Text("Flare isn't a substitute for medical professionals, just a weather-aware wellness guide.")
                         .font(.interSmall)
                         .foregroundColor(Color.adaptiveMuted)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 4)
+                    
+                    FeedbackPromptView(aiFeedback: $aiFeedback) { choice in
+                        if let choice = choice {
+                            print("AI Feedback: \(choice ? "Helpful" : "Not Helpful")")
+                            Task {
+                                await aiService.submitFeedback(isHelpful: choice)
+                            }
+                        } else {
+                            print("AI Feedback: Cleared")
+                        }
+                    }
                 }
             }
             
@@ -256,61 +415,152 @@ struct HomeView: View {
     
     var body: some View {
         NavigationView {
-            ScrollView {
-                contentView
-            }
+            scrollViewWithModifiers
+        }
+    }
+    
+    private var scrollViewWithModifiers: some View {
+        scrollViewContent
             .background(backgroundView)
-            .navigationTitle("FlareWeather")
-            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    LogoWordmarkView()
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Color.adaptiveCardBackground.opacity(0.95), for: .navigationBar)
             .refreshable {
-                if let location = getEffectiveLocation() {
-                    await weatherService.refreshWeatherData(for: location)
-                }
+                await handleRefresh()
+            }
+            .onAppear(perform: handleViewAppearAction)
+            .onChange(of: locationManager.location) { _, new in
+                handleLocationChange(new)
+            }
+            .onChange(of: locationManager.useDeviceLocation) { _, new in
+                handleLocationPreferenceChange(new)
+            }
+            .onChange(of: weatherService.weatherData) { old, new in
+                handleWeatherDataChangeWithCheck(old: old, new: new)
+            }
+            .onChange(of: locationManager.authorizationStatus) { _, new in
+                handleAuthorizationStatusChange(new)
+            }
+            .onChange(of: aiService.isLoading) { _, new in
+                if new { aiFeedback = nil }
+            }
+            .onChange(of: aiService.insightMessage) { old, new in
+                if old != new { aiFeedback = nil }
+            }
+    }
+    
+    private func handleRefresh() async {
+        if let location = getEffectiveLocation() {
+            await weatherService.refreshWeatherData(for: location)
+        }
+        await refreshAnalysis(force: true)
+    }
+    
+    private var scrollViewContent: some View {
+        ScrollView {
+            contentView
+        }
+    }
+    
+    private func handleViewAppearAction() {
+        handleViewAppear()
+        if !hasInitialAnalysis {
+            Task {
+                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
                 await refreshAnalysis()
+                hasInitialAnalysis = true
             }
-            .onAppear {
-                handleViewAppear()
-                // Only refresh analysis on first appear or if we don't have analysis yet
-                // The caching in AIInsightsService will handle preventing redundant calls
-                if !hasInitialAnalysis {
-                    Task {
-                        // Small delay to ensure weather data is loaded first
-                        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-                        await refreshAnalysis()
-                        hasInitialAnalysis = true
-                    }
-                } else {
-                    print("⏭️ HomeView: Already have initial analysis, skipping onAppear refresh")
-                }
-            }
-            .onChange(of: locationManager.location) { oldLocation, newLocation in
-                handleLocationChange(newLocation)
-            }
-            .onChange(of: locationManager.useDeviceLocation) { oldValue, newValue in
-                print("🔄 HomeView: useDeviceLocation changed from \(oldValue) to \(newValue)")
-                // Reload location when preference changes
-                locationManager.loadManualLocation()
-                // Wait a moment for location to update
-                Task {
-                    try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
-                    if let location = getEffectiveLocation() {
-                        print("🌤️ HomeView: Refreshing weather for new location preference...")
-                        // Force refresh with new location
-                        await weatherService.fetchWeatherData(for: location, forceRefresh: true)
-                        await weatherService.fetchWeeklyForecast(for: location)
-                        await weatherService.fetchHourlyForecast(for: location)
-                        await refreshAnalysis()
-                    }
-                }
-            }
-            .onChange(of: weatherService.weatherData) { oldData, newData in
-                handleWeatherDataChange(newData)
-            }
-            .onChange(of: locationManager.authorizationStatus) { oldStatus, newStatus in
-                handleAuthorizationStatusChange(newStatus)
+        } else {
+            print("⏭️ HomeView: Already have initial analysis, skipping onAppear refresh")
+        }
+    }
+    
+    private func handleWeatherDataChangeWithCheck(old: WeatherData?, new: WeatherData?) {
+        if weatherDataValuesChanged(old: old, new: new) {
+            print("🌤️ HomeView: Weather data values actually changed")
+            handleWeatherDataChange(new)
+        } else {
+            print("⏭️ HomeView: Weather data instance changed but values are the same, skipping")
+        }
+    }
+}
+
+private struct LogoWordmarkView: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Image("AppLogo")
+                .resizable()
+                .renderingMode(.template)
+                .scaledToFit()
+                .frame(height: 24)
+                .foregroundColor(Color.adaptiveText)
+            Text("FlareWeather")
+                .font(.interHeadline)
+                .fontWeight(.semibold)
+                .foregroundColor(Color.adaptiveText)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("FlareWeather")
+    }
+}
+
+private struct FeedbackPromptView: View {
+    @Binding var aiFeedback: Bool?
+    var submitAction: (Bool?) -> Void
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Divider()
+                .background(Color.adaptiveMuted.opacity(0.2))
+            
+            Text("Was this helpful?")
+                .font(.interCaption)
+                .fontWeight(.semibold)
+                .foregroundColor(Color.adaptiveMuted)
+            
+            HStack(spacing: 12) {
+                feedbackButton(isPositive: true, label: "Yes", icon: "hand.thumbsup.fill")
+                feedbackButton(isPositive: false, label: "No", icon: "hand.thumbsdown.fill")
             }
         }
+        .padding(.top, 4)
+        .animation(.easeInOut(duration: 0.2), value: aiFeedback)
+    }
+    
+    private func feedbackButton(isPositive: Bool, label: String, icon: String) -> some View {
+        let isSelected = aiFeedback == isPositive
+        return Button {
+            if aiFeedback == isPositive {
+                aiFeedback = nil
+                submitAction(nil)
+            } else {
+                aiFeedback = isPositive
+                submitAction(isPositive)
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.interCaption.weight(.semibold))
+                Text(label)
+                    .font(.interCaption)
+                    .fontWeight(.medium)
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 14)
+            .background(isSelected ? Color.adaptiveCardBackground.opacity(0.35) : Color.clear)
+            .foregroundColor(Color.adaptiveText)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isSelected ? Color.adaptiveCardBackground : Color.adaptiveMuted.opacity(0.4), lineWidth: 1.5)
+            )
+            .cornerRadius(12)
+            .contentShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -347,12 +597,14 @@ struct WeatherCardView: View {
                         VStack(alignment: .leading, spacing: 12) {
                             HStack(alignment: .firstTextBaseline) {
                                 let temp = weather.temperature.isNaN || weather.temperature.isInfinite ? 0 : weather.temperature
-                                Text("\(Int(temp))°")
+                                let displayTemp = temp.toTemperature()
+                                let unit = temp.temperatureUnit
+                                Text("\(Int(displayTemp))°")
                                     .font(.system(size: 64, weight: .light))
                                     .foregroundColor(Color.adaptiveText)
                                     .contentTransition(.numericText())
                                 
-                                Text("C")
+                                Text(unit)
                                     .font(.title2)
                                     .foregroundColor(Color.adaptiveMuted)
                                 
@@ -364,7 +616,7 @@ struct WeatherCardView: View {
                                         .foregroundColor(Color.adaptiveText)
                                         .fontWeight(.medium)
                                     
-                                    Text("Feels like \(Int(temp))°")
+                                    Text("Feels like \(Int(displayTemp))°")
                                         .font(.interCaption)
                                         .foregroundColor(Color.adaptiveMuted)
                                         .contentTransition(.numericText())
@@ -411,6 +663,67 @@ struct WeatherCardView: View {
                     }
                 }
             }
+        }
+        .cardStyle()
+    }
+}
+
+struct PressureAlertCardView: View {
+    let alert: PressureAlertPayload
+    @Environment(\.colorScheme) private var colorScheme
+    
+    private var alertTitle: String {
+        switch alert.alertLevel.lowercased() {
+        case "high":
+            return "Pressure Shift Incoming"
+        case "moderate":
+            return "Pressure Change Ahead"
+        default:
+            return "Pressure Wiggle Ahead"
+        }
+    }
+    
+    private var accentColor: Color {
+        switch alert.alertLevel.lowercased() {
+        case "high":
+            return colorScheme == .dark ? Color(hex: "#FF6B6B") : Color(hex: "#8B1A1A")
+        case "moderate":
+            return colorScheme == .dark ? Color(hex: "#FFB84D") : Color(hex: "#B8681A")
+        default:
+            return colorScheme == .dark ? Color(hex: "#4ECDC4") : Color(hex: "#1A6B5A")
+        }
+    }
+    
+    private var triggerTimeDescription: String {
+        guard let date = alert.triggerDate else { return "Soon" }
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                Image(systemName: "barometer")
+                    .font(.title3)
+                    .foregroundColor(accentColor)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(alertTitle)
+                        .font(.interHeadline)
+                        .foregroundColor(Color.adaptiveText)
+                    Text("Δ \(String(format: "%.1f", alert.pressureDelta)) hPa by \(triggerTimeDescription)")
+                        .font(.interCaption)
+                        .foregroundColor(accentColor)
+                }
+                Spacer()
+            }
+            
+            Text(alert.suggestedMessage)
+                .font(.interBody)
+                .foregroundColor(Color.adaptiveText)
+                .lineSpacing(5)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .cardStyle()
     }
@@ -571,7 +884,13 @@ struct ForecastDayRow: View {
     }
     
     private func weatherIcon(for iconCode: String) -> String {
-        // Map OpenWeatherMap icon codes to SF Symbols
+        // If iconCode is already an SF Symbol (from WeatherKit), return it as-is
+        // SF Symbols contain dots (e.g., "sun.max.fill"), OpenWeatherMap codes don't
+        if iconCode.contains(".") {
+            return iconCode // Already an SF Symbol from WeatherKit
+        }
+        
+        // Map OpenWeatherMap icon codes to SF Symbols (for backward compatibility)
         switch iconCode {
         case "01d", "01n": return "sun.max.fill" // Clear sky
         case "02d", "02n": return "cloud.sun.fill" // Few clouds
@@ -680,6 +999,7 @@ struct FlareRiskCardView: View {
 struct HourlyForecastCardView: View {
     let forecasts: [HourlyForecast]
     let isLoading: Bool
+    let currentPressure: Double? // Current weather pressure to use as baseline for first forecast
     
     private var timeFormatter: DateFormatter {
         let formatter = DateFormatter()
@@ -715,13 +1035,29 @@ struct HourlyForecastCardView: View {
             } else if !forecasts.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 16) {
-                        ForEach(forecasts.prefix(24)) { forecast in
-                            HourlyForecastRow(forecast: forecast, timeFormatter: timeFormatter)
+                        ForEach(Array(forecasts.prefix(24).enumerated()), id: \.element.id) { index, forecast in
+                            // Use current weather pressure as baseline for first forecast item
+                            // Otherwise use previous forecast's pressure
+                            let previousPressure = index > 0 
+                                ? forecasts[index - 1].pressure 
+                                : (currentPressure ?? forecast.pressure)
+                            HourlyForecastRow(
+                                forecast: forecast,
+                                previousPressure: previousPressure,
+                                timeFormatter: timeFormatter
+                            )
                         }
                     }
                     .padding(.horizontal, 4)
                 }
                 .animation(.easeOut(duration: 0.3), value: forecasts.count)
+                
+                Text("Arrows flag hours where pressure trends sharply. Up arrows hint at relief periods. Down arrows suggest moment to pace gently.")
+                    .font(.interCaption)
+                    .italic()
+                    .foregroundColor(Color.adaptiveMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 4)
             }
         }
         .cardStyle()
@@ -730,10 +1066,22 @@ struct HourlyForecastCardView: View {
 
 struct HourlyForecastRow: View {
     let forecast: HourlyForecast
+    let previousPressure: Double
     let timeFormatter: DateFormatter
     
     private var isCurrentHour: Bool {
         Calendar.current.isDate(forecast.time, equalTo: Date(), toGranularity: .hour)
+    }
+    
+    // Calculate pressure change from previous hour
+    private var pressureChange: Double {
+        forecast.pressure - previousPressure
+    }
+    
+    // Determine if pressure change is significant (>= 1 hPa)
+    // Lowered to 1.0 to show arrows more often - even small changes matter
+    private var hasSignificantPressureChange: Bool {
+        abs(pressureChange) >= 1.0
     }
     
     var body: some View {
@@ -751,24 +1099,30 @@ struct HourlyForecastRow: View {
                 .frame(height: 24)
             
             // Temperature
-            Text("\(Int(forecast.temperature))°")
+            Text("\(Int(forecast.temperature.toTemperature()))°")
                 .font(.interBody)
                 .fontWeight(.medium)
                 .foregroundColor(Color.adaptiveText)
                 .contentTransition(.numericText())
             
-            // Pressure change indicator (if significant)
-            if forecast.pressure < 1000 {
-                Image(systemName: "arrow.down.circle.fill")
-                    .font(.caption2)
-                    .foregroundColor(.orange)
-            } else if forecast.pressure > 1020 {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.caption2)
-                    .foregroundColor(.blue)
+            // Pressure change indicator (if significant change)
+            if hasSignificantPressureChange {
+                if pressureChange < 0 {
+                    // Pressure dropping
+                    Image(systemName: "arrow.down.circle.fill")
+                        .font(.caption)
+                        .foregroundColor(Color(hex: "#8B1A1A"))
+                        .frame(width: 16, height: 16)
+                } else {
+                    // Pressure rising
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.caption)
+                        .foregroundColor(Color(hex: "#1A6B5A"))
+                        .frame(width: 16, height: 16)
+                }
             } else {
                 Color.clear
-                    .frame(width: 12, height: 12)
+                    .frame(width: 16, height: 16)
             }
         }
         .frame(width: 60)
@@ -776,7 +1130,13 @@ struct HourlyForecastRow: View {
     }
     
     private func weatherIcon(for iconCode: String) -> String {
-        // Map OpenWeatherMap icon codes to SF Symbols
+        // If iconCode is already an SF Symbol (from WeatherKit), return it as-is
+        // SF Symbols contain dots (e.g., "sun.max.fill"), OpenWeatherMap codes don't
+        if iconCode.contains(".") {
+            return iconCode // Already an SF Symbol from WeatherKit
+        }
+        
+        // Map OpenWeatherMap icon codes to SF Symbols (for backward compatibility)
         switch iconCode {
         case "01d", "01n": return "sun.max.fill" // Clear sky
         case "02d", "02n": return "cloud.sun.fill" // Few clouds
@@ -794,6 +1154,7 @@ struct HourlyForecastRow: View {
 
 struct WeeklyForecastInsightCardView: View {
     let insight: String
+    let sources: [String]
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -814,11 +1175,27 @@ struct WeeklyForecastInsightCardView: View {
                 Spacer()
             }
             
-            Text(insight)
+            Text(insight.isEmpty ? "Preparing your weekly forecast…" : insight)
                 .font(.interBody)
                 .foregroundColor(Color.adaptiveText)
                 .lineSpacing(6)
                 .fixedSize(horizontal: false, vertical: true)
+            
+            if !sources.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Divider()
+                        .background(Color.adaptiveMuted.opacity(0.15))
+                    Text("Sources")
+                        .font(.interCaption)
+                        .foregroundColor(Color.adaptiveMuted)
+                    ForEach(sources, id: \.self) { source in
+                        Text("• \(source)")
+                            .font(.interCaption)
+                            .foregroundColor(Color.adaptiveMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
             
             // Medical disclaimer
             Text("Flare isn't a substitute for medical professionals, just a weather-aware wellness guide.")
