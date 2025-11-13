@@ -924,8 +924,8 @@ struct FlareRiskCardView: View {
             // Light red/orange in dark mode, deep burgundy in light mode
             return isDarkMode ? Color(hex: "#FF6B6B") : Color(hex: "#8B1A1A")
         case "MODERATE":
-            // Light amber/yellow in dark mode, deep rust in light mode
-            return isDarkMode ? Color(hex: "#FFB84D") : Color(hex: "#B8681A")
+            // Brighter amber/yellow in dark mode for visibility, deep rust in light mode
+            return isDarkMode ? Color(hex: "#FFA500") : Color(hex: "#B8681A")
         case "LOW":
             // Light teal/green in dark mode, deep teal in light mode
             return isDarkMode ? Color(hex: "#4ECDC4") : Color(hex: "#1A6B5A")

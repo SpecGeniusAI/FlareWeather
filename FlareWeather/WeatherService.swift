@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import WeatherKit
 
 class WeatherService: ObservableObject {
     @Published var weatherData: WeatherData?
@@ -16,33 +17,13 @@ class WeatherService: ObservableObject {
     private var hourlyCache: [HourlyForecast]?
     private var hourlyCacheTime: Date?
     private var lastLocation: CLLocation?
-    private let session = URLSession.shared
     
-    // OpenWeatherMap API key - should be set in Xcode scheme environment variables or Info.plist
-    // Get your free API key from: https://openweathermap.org/api
-    private var apiKey: String {
-        // First try to get from environment variable (set in Xcode scheme)
-        if let key = ProcessInfo.processInfo.environment["OPENWEATHER_API_KEY"], !key.isEmpty {
-            print("✅ WeatherService: API key found in environment variable")
-            return key
-        }
-        
-        // Second, try to get from Info.plist
-        if let key = Bundle.main.infoDictionary?["OpenWeatherAPIKey"] as? String, !key.isEmpty {
-            print("✅ WeatherService: API key found in Info.plist")
-            return key
-        }
-        
-        // Fallback: return empty string (will use mock data)
-        print("⚠️ WeatherService: No API key found in environment or Info.plist")
-        return ""
-    }
-    
-    private let baseURL = "https://api.openweathermap.org/data/2.5/weather"
-    private let forecastURL = "https://api.openweathermap.org/data/2.5/forecast"
-    private let airPollutionURL = "https://api.openweathermap.org/data/2.5/air_pollution"
+    // WeatherKit service instance
+    // Note: Using typealias to avoid naming conflict with this class
+    private let weatherKitService = WeatherKit.WeatherService.shared
     
     init() {
+        print("✅ WeatherService: Initialized with WeatherKit (no API key needed)")
         // Load cached data if available
         if let cache = weatherCache, !cache.isExpired {
             self.weatherData = cache.data
@@ -51,10 +32,6 @@ class WeatherService: ObservableObject {
     
     func fetchWeatherData(for location: CLLocation, forceRefresh: Bool = false) async {
         print("🌤️ WeatherService: fetchWeatherData called for location: \(location.coordinate.latitude), \(location.coordinate.longitude) (forceRefresh: \(forceRefresh))")
-        
-        // Check API key first to trigger debug message
-        let key = apiKey
-        print("🔑 WeatherService: API key check - key length: \(key.count)")
         
         await MainActor.run {
             isLoading = true
@@ -90,80 +67,69 @@ class WeatherService: ObservableObject {
             return
         }
         
-        // If no API key, use mock data
-        guard !apiKey.isEmpty else {
-            print("⚠️ WeatherService: No API key found, using mock data")
-            await MainActor.run {
-                let mockWeatherData = WeatherData(
-                    temperature: 22.0,
-                    humidity: 65.0,
-                    pressure: 1013.25,
-                    windSpeed: 5.0,
-                    condition: "Partly Cloudy",
-                    timestamp: Date(),
-                    location: "\(latitude), \(longitude)",
-                    airQuality: nil
-                )
-                self.weatherData = mockWeatherData
-                self.weatherCache = WeatherDataCache(data: mockWeatherData, timestamp: Date())
-                self.isLoading = false
-                self.errorMessage = "Using mock data - API key not configured"
-            }
-            return
-        }
-        
-        print("🌤️ WeatherService: Fetching weather for \(latitude), \(longitude)")
-        
-        // Build API URL
-        var components = URLComponents(string: baseURL)
-        components?.queryItems = [
-            URLQueryItem(name: "lat", value: "\(latitude)"),
-            URLQueryItem(name: "lon", value: "\(longitude)"),
-            URLQueryItem(name: "appid", value: apiKey),
-            URLQueryItem(name: "units", value: "metric") // Use Celsius
-        ]
-        
-        guard let url = components?.url else {
-            await MainActor.run {
-                errorMessage = "Invalid URL"
-                isLoading = false
-            }
-            return
-        }
+        print("🌤️ WeatherService: Fetching weather from WeatherKit for \(latitude), \(longitude)")
         
         do {
-            let (data, response) = try await session.data(from: url)
+            // Fetch current weather using WeatherKit
+            let weather = try await weatherKitService.weather(for: location)
             
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw WeatherError.invalidResponse
-            }
+            // Convert WeatherKit response to our WeatherData model
+            let currentWeather = weather.currentWeather
             
-            print("🌤️ WeatherService: HTTP Status: \(httpResponse.statusCode)")
+            // Temperature in Celsius
+            let temperature = currentWeather.temperature.converted(to: UnitTemperature.celsius).value
             
-            guard (200...299).contains(httpResponse.statusCode) else {
-                if httpResponse.statusCode == 401 {
-                    print("❌ WeatherService: Invalid API key (401)")
-                    throw WeatherError.invalidAPIKey
-                } else if httpResponse.statusCode == 404 {
-                    print("❌ WeatherService: Location not found (404)")
-                    throw WeatherError.locationNotFound
-                } else {
-                    print("❌ WeatherService: Server error (\(httpResponse.statusCode))")
-                    if let responseString = String(data: data, encoding: .utf8) {
-                        print("Response: \(responseString)")
+            // Humidity (0.0-1.0 in WeatherKit, convert to percentage)
+            let humidity = currentWeather.humidity * 100.0
+            
+            // Pressure (WeatherKit provides in hPa directly)
+            // Note: Pressure is always available in CurrentWeather
+            let pressureValue = currentWeather.pressure.converted(to: UnitPressure.hectopascals).value
+            
+            // Wind speed (convert from m/s to km/h)
+            let windSpeed = currentWeather.wind.speed.converted(to: UnitSpeed.kilometersPerHour).value
+            
+            // Condition description
+            let condition = currentWeather.condition.description
+            
+            // Get air quality if available (iOS 16.2+)
+            // WeatherKit provides air quality via weather.airQuality
+            var airQuality: Int? = nil
+            if #available(iOS 16.2, *) {
+                if let aqi = weather.airQuality?.aqi {
+                    // Convert WeatherKit AQI (1-6) to our scale (1-5)
+                    // WeatherKit: 1=Good, 2=Fair, 3=Moderate, 4=Unhealthy, 5=Very Unhealthy, 6=Hazardous
+                    // Our scale: 1=Good, 2=Fair, 3=Moderate, 4=Poor, 5=Very Poor
+                    switch aqi {
+                    case 1: airQuality = 1 // Good
+                    case 2: airQuality = 2 // Fair
+                    case 3: airQuality = 3 // Moderate
+                    case 4: airQuality = 4 // Poor (Unhealthy)
+                    case 5, 6: airQuality = 5 // Very Poor (Very Unhealthy/Hazardous)
+                    default: airQuality = nil
                     }
-                    throw WeatherError.serverError(httpResponse.statusCode)
                 }
             }
             
-            let weatherResponse = try JSONDecoder().decode(OpenWeatherMapResponse.self, from: data)
+            // Validate and sanitize values to prevent NaN
+            let temp = temperature.isFinite && !temperature.isNaN ? temperature : 0.0
+            let hum = humidity.isFinite && !humidity.isNaN ? humidity : 0.0
+            let press = pressureValue.isFinite && !pressureValue.isNaN ? pressureValue : 1013.25
+            let wind = windSpeed.isFinite && !windSpeed.isNaN ? windSpeed : 0.0
             
-            // Fetch air quality data in parallel
-            let airQuality = await fetchAirQuality(latitude: latitude, longitude: longitude)
+            let weatherData = WeatherData(
+                temperature: temp,
+                humidity: hum,
+                pressure: press,
+                windSpeed: wind,
+                condition: condition,
+                timestamp: Date(),
+                location: nil, // Will be set by reverse geocoding
+                airQuality: airQuality
+            )
             
-            let weatherData = convertToWeatherData(from: weatherResponse, location: "\(latitude), \(longitude)", airQuality: airQuality)
-            
-            print("✅ WeatherService: Successfully loaded weather data")
+            print("✅ WeatherService: Successfully loaded weather data from WeatherKit")
+            print("   Temperature: \(temp)°C, Humidity: \(hum)%, Pressure: \(press) hPa, Wind: \(wind) km/h")
             
             await MainActor.run {
                 self.weatherData = weatherData
@@ -172,129 +138,62 @@ class WeatherService: ObservableObject {
                 self.errorMessage = nil
             }
         } catch {
-            print("❌ WeatherService: Error - \(error.localizedDescription)")
+            print("❌ WeatherService: Error fetching weather from WeatherKit - \(error.localizedDescription)")
+            print("❌ WeatherService: Error type: \(type(of: error))")
             
-            // Fallback to mock data on error
             await MainActor.run {
-                let mockWeatherData = WeatherData(
-                    temperature: 22.0,
-                    humidity: 65.0,
-                    pressure: 1013.25,
-                    windSpeed: 5.0,
-                    condition: "Partly Cloudy",
-                    timestamp: Date(),
-                    location: "\(latitude), \(longitude)",
-                    airQuality: nil
-                )
-                self.weatherData = mockWeatherData
-                self.weatherCache = WeatherDataCache(data: mockWeatherData, timestamp: Date())
                 self.isLoading = false
-                self.errorMessage = "Using offline data: \(error.localizedDescription)"
+                
+                // Provide user-friendly error messages
+                // WeatherKit errors are typically URLError or WeatherServiceError
+                let errorMessage: String
+                if let urlError = error as? URLError {
+                    switch urlError.code {
+                    case .notConnectedToInternet, .networkConnectionLost:
+                        errorMessage = "Network error. Please check your internet connection."
+                    case .timedOut:
+                        errorMessage = "Request timed out. Please try again."
+                    case .cannotFindHost, .cannotConnectToHost:
+                        errorMessage = "Cannot connect to weather service. Please check your internet connection."
+                    default:
+                        errorMessage = "Network error: \(urlError.localizedDescription)"
+                    }
+                } else {
+                    // Check for WeatherKit authentication errors
+                    let errorDescription = error.localizedDescription.lowercased()
+                    if errorDescription.contains("jwt") || errorDescription.contains("authservice") || errorDescription.contains("weatherkit") {
+                        errorMessage = "WeatherKit authentication error. Please ensure WeatherKit is properly configured in Apple Developer Portal."
+                    } else {
+                        // Generic error message for other WeatherKit errors
+                        errorMessage = "Unable to fetch weather data: \(error.localizedDescription)"
+                    }
+                }
+                
+                self.errorMessage = errorMessage
+                
+                // Keep existing data if available
+                if self.weatherData == nil {
+                    print("⚠️ WeatherService: No cached weather data available")
+                } else {
+                    print("ℹ️ WeatherService: Keeping existing weather data due to error")
+                }
             }
         }
     }
     
     func fetchWeatherData(for city: String) async {
+        // WeatherKit requires CLLocation, not city names
+        // This method is kept for compatibility but will need location coordinates
         await MainActor.run {
             isLoading = true
             errorMessage = nil
         }
         
-        // If no API key, use mock data
-        guard !apiKey.isEmpty else {
-            await MainActor.run {
-                let mockWeatherData = WeatherData(
-                    temperature: 20.0,
-                    humidity: 70.0,
-                    pressure: 1015.0,
-                    windSpeed: 3.0,
-                    condition: "Sunny",
-                    timestamp: Date(),
-                    location: city,
-                    airQuality: nil
-                )
-                self.weatherData = mockWeatherData
-                self.weatherCache = WeatherDataCache(data: mockWeatherData, timestamp: Date())
-                self.isLoading = false
-            }
-            return
-        }
-        
-        // Build API URL for city search
-        var components = URLComponents(string: baseURL)
-        components?.queryItems = [
-            URLQueryItem(name: "q", value: city),
-            URLQueryItem(name: "appid", value: apiKey),
-            URLQueryItem(name: "units", value: "metric")
-        ]
-        
-        guard let url = components?.url else {
-            await MainActor.run {
-                errorMessage = "Invalid URL"
-                isLoading = false
-            }
-            return
-        }
-        
-        do {
-            let (data, response) = try await session.data(from: url)
-            
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw WeatherError.invalidResponse
-            }
-            
-            guard (200...299).contains(httpResponse.statusCode) else {
-                if httpResponse.statusCode == 401 {
-                    throw WeatherError.invalidAPIKey
-                } else if httpResponse.statusCode == 404 {
-                    throw WeatherError.locationNotFound
-                } else {
-                    throw WeatherError.serverError(httpResponse.statusCode)
-                }
-            }
-            
-            let weatherResponse = try JSONDecoder().decode(OpenWeatherMapResponse.self, from: data)
-            
-            // Get coordinates from response for air quality fetch
-            var latitude: Double? = nil
-            var longitude: Double? = nil
-            if let coord = weatherResponse.coord {
-                latitude = coord.lat
-                longitude = coord.lon
-            }
-            
-            // Fetch air quality if coordinates available
-            var airQuality: Int? = nil
-            if let lat = latitude, let lon = longitude {
-                airQuality = await fetchAirQuality(latitude: lat, longitude: lon)
-            }
-            
-            let weatherData = convertToWeatherData(from: weatherResponse, location: city, airQuality: airQuality)
-            
-            await MainActor.run {
-                self.weatherData = weatherData
-                self.weatherCache = WeatherDataCache(data: weatherData, timestamp: Date())
-                self.isLoading = false
-                self.errorMessage = nil
-            }
-        } catch {
-            // Fallback to mock data on error
-            await MainActor.run {
-                let mockWeatherData = WeatherData(
-                    temperature: 20.0,
-                    humidity: 70.0,
-                    pressure: 1015.0,
-                    windSpeed: 3.0,
-                    condition: "Sunny",
-                    timestamp: Date(),
-                    location: city,
-                    airQuality: nil
-                )
-                self.weatherData = mockWeatherData
-                self.weatherCache = WeatherDataCache(data: mockWeatherData, timestamp: Date())
-                self.isLoading = false
-                self.errorMessage = "Using offline data: \(error.localizedDescription)"
-            }
+        // For city lookup, we'd need to geocode the city name first
+        // For now, show an error message
+        await MainActor.run {
+            self.isLoading = false
+            self.errorMessage = "City lookup requires location coordinates. Please use location-based weather."
         }
     }
     
@@ -304,7 +203,7 @@ class WeatherService: ObservableObject {
         forecastCacheTime = nil
         hourlyCache = nil
         hourlyCacheTime = nil
-        await fetchWeatherData(for: location)
+        await fetchWeatherData(for: location, forceRefresh: true)
         await fetchWeeklyForecast(for: location)
         await fetchHourlyForecast(for: location)
     }
@@ -324,50 +223,50 @@ class WeatherService: ObservableObject {
             isLoadingForecast = true
         }
         
-        // If no API key, skip forecast
-        guard !apiKey.isEmpty else {
-            await MainActor.run {
-                isLoadingForecast = false
-            }
-            return
-        }
-        
-        let latitude = location.coordinate.latitude
-        let longitude = location.coordinate.longitude
-        
-        var components = URLComponents(string: forecastURL)
-        components?.queryItems = [
-            URLQueryItem(name: "lat", value: "\(latitude)"),
-            URLQueryItem(name: "lon", value: "\(longitude)"),
-            URLQueryItem(name: "appid", value: apiKey),
-            URLQueryItem(name: "units", value: "metric"),
-            URLQueryItem(name: "cnt", value: "40") // Get 5 days (8 forecasts per day)
-        ]
-        
-        guard let url = components?.url else {
-            await MainActor.run {
-                isLoadingForecast = false
-            }
-            return
-        }
+        print("🌤️ WeatherService: Fetching weekly forecast from WeatherKit")
         
         do {
-            let (data, response) = try await session.data(from: url)
+            // Fetch base weather first (includes dailyForecast property)
+            let weather = try await weatherKitService.weather(for: location)
             
-            guard let httpResponse = response as? HTTPURLResponse,
-                  (200...299).contains(httpResponse.statusCode) else {
-                await MainActor.run {
-                    isLoadingForecast = false
-                }
-                return
+            // Access the daily forecast - it's a Forecast<DayWeather> collection
+            // Convert to array and take first 7 days
+            let forecasts: [DailyForecast] = weather.dailyForecast.prefix(7).map { dayWeather in
+                // Temperature in Celsius
+                let highTemp = dayWeather.highTemperature.converted(to: UnitTemperature.celsius).value
+                let lowTemp = dayWeather.lowTemperature.converted(to: UnitTemperature.celsius).value
+                
+                // Condition description
+                let condition = dayWeather.condition.description
+                
+                // Get weather symbol name for icon (SF Symbol)
+                let symbolName = dayWeather.symbolName
+                
+                // Validate values
+                let high = highTemp.isFinite && !highTemp.isNaN ? highTemp : 0.0
+                let low = lowTemp.isFinite && !lowTemp.isNaN ? lowTemp : 0.0
+                
+                // Note: DayWeather doesn't have humidity or pressure properties
+                // Use default values for daily forecasts
+                let hum: Double = 50.0 // Default humidity
+                let press: Double = 1013.25 // Default pressure
+                
+                return DailyForecast(
+                    date: dayWeather.date,
+                    highTemp: high,
+                    lowTemp: low,
+                    condition: condition,
+                    icon: symbolName, // WeatherKit uses SF Symbols (e.g., "sun.max.fill")
+                    humidity: hum,
+                    pressure: press
+                )
             }
             
-            let forecastResponse = try JSONDecoder().decode(ForecastResponse.self, from: data)
-            let dailyForecasts = processForecastData(forecastResponse)
+            print("✅ WeatherService: Successfully loaded \(forecasts.count) days of forecast")
             
             await MainActor.run {
-                self.weeklyForecast = dailyForecasts
-                self.forecastCache = dailyForecasts
+                self.weeklyForecast = forecasts
+                self.forecastCache = forecasts
                 self.forecastCacheTime = Date()
                 self.isLoadingForecast = false
             }
@@ -377,62 +276,6 @@ class WeatherService: ObservableObject {
                 isLoadingForecast = false
             }
         }
-    }
-    
-    private func processForecastData(_ response: ForecastResponse) -> [DailyForecast] {
-        let calendar = Calendar.current
-        var dailyData: [Date: [ForecastItem]] = [:]
-        
-        // Group forecasts by day
-        for item in response.list {
-            let date = Date(timeIntervalSince1970: item.dt)
-            let day = calendar.startOfDay(for: date)
-            if dailyData[day] == nil {
-                dailyData[day] = []
-            }
-            dailyData[day]?.append(item)
-        }
-        
-        // Create daily forecasts (high, low, condition)
-        var forecasts: [DailyForecast] = []
-        let sortedDays = dailyData.keys.sorted()
-        
-        for day in sortedDays.prefix(7) { // Next 7 days
-            guard let items = dailyData[day] else { continue }
-            
-            let temps = items.map { $0.main.temp }
-            let highTemp = temps.max() ?? 0
-            let lowTemp = temps.min() ?? 0
-            
-            // Use the most common condition for the day
-            let conditions = items.map { $0.weather.first?.main ?? "Clear" }
-            let mostCommon = Dictionary(grouping: conditions, by: { $0 })
-                .max(by: { $0.value.count < $1.value.count })?.key ?? "Clear"
-            
-            // Get average humidity and pressure
-            let avgHumidity = items.map { $0.main.humidity }.reduce(0, +) / Double(items.count)
-            let avgPressure = items.map { $0.main.pressure }.reduce(0, +) / Double(items.count)
-            
-            // Get icon from midday forecast (or first available)
-            let middayItem = items.first { item in
-                let hour = calendar.component(.hour, from: Date(timeIntervalSince1970: item.dt))
-                return hour >= 12 && hour < 15
-            } ?? items[items.count / 2]
-            let icon = middayItem.weather.first?.icon ?? "01d"
-            let description = middayItem.weather.first?.description.capitalized ?? mostCommon
-            
-            forecasts.append(DailyForecast(
-                date: day,
-                highTemp: highTemp,
-                lowTemp: lowTemp,
-                condition: description,
-                icon: icon,
-                humidity: avgHumidity,
-                pressure: avgPressure
-            ))
-        }
-        
-        return forecasts
     }
     
     func fetchHourlyForecast(for location: CLLocation) async {
@@ -450,51 +293,66 @@ class WeatherService: ObservableObject {
             isLoadingHourly = true
         }
         
-        // If no API key, skip hourly forecast
-        guard !apiKey.isEmpty else {
-            await MainActor.run {
-                isLoadingHourly = false
-            }
-            return
-        }
-        
-        let latitude = location.coordinate.latitude
-        let longitude = location.coordinate.longitude
-        
-        // Use the same forecast endpoint but get more items (24 hours = 8 items * 3 hours)
-        var components = URLComponents(string: forecastURL)
-        components?.queryItems = [
-            URLQueryItem(name: "lat", value: "\(latitude)"),
-            URLQueryItem(name: "lon", value: "\(longitude)"),
-            URLQueryItem(name: "appid", value: apiKey),
-            URLQueryItem(name: "units", value: "metric"),
-            URLQueryItem(name: "cnt", value: "24") // Get 24 hours (8 forecasts * 3 hours = 24 hours)
-        ]
-        
-        guard let url = components?.url else {
-            await MainActor.run {
-                isLoadingHourly = false
-            }
-            return
-        }
+        print("🌤️ WeatherService: Fetching hourly forecast from WeatherKit")
         
         do {
-            let (data, response) = try await session.data(from: url)
+            // Fetch base weather first (includes hourlyForecast property)
+            let weather = try await weatherKitService.weather(for: location)
             
-            guard let httpResponse = response as? HTTPURLResponse,
-                  (200...299).contains(httpResponse.statusCode) else {
-                await MainActor.run {
-                    isLoadingHourly = false
+            // Get next 24 hours
+            let now = Date()
+            let endTime = Calendar.current.date(byAdding: .hour, value: 24, to: now) ?? now
+            
+            // Convert WeatherKit hourly forecast to our HourlyForecast model
+            // Forecast<HourWeather> is a collection - iterate directly
+            let forecasts: [HourlyForecast] = weather.hourlyForecast
+                .filter { hourWeather in
+                    let forecastTime = hourWeather.date
+                    return forecastTime > now && forecastTime <= endTime
                 }
-                return
-            }
+                .map { hourWeather in
+                    // Temperature in Celsius
+                    let temperature = hourWeather.temperature.converted(to: UnitTemperature.celsius).value
+                    
+                    // Condition description
+                    let condition = hourWeather.condition.description
+                    
+                    // Humidity (0.0-1.0 in WeatherKit, convert to percentage)
+                    let humidity = hourWeather.humidity * 100.0
+                    
+                    // Pressure (WeatherKit provides in hPa)
+                    // Note: Pressure is always available in HourWeather
+                    let pressureValue = hourWeather.pressure.converted(to: UnitPressure.hectopascals).value
+                    
+                    // Wind speed (convert from m/s to km/h)
+                    let windSpeed = hourWeather.wind.speed.converted(to: UnitSpeed.kilometersPerHour).value
+                    
+                    // Get weather symbol name (SF Symbol)
+                    let symbolName = hourWeather.symbolName
+                    
+                    // Validate values
+                    let temp = temperature.isFinite && !temperature.isNaN ? temperature : 0.0
+                    let hum = humidity.isFinite && !humidity.isNaN ? humidity : 0.0
+                    let press = pressureValue.isFinite && !pressureValue.isNaN ? pressureValue : 1013.25
+                    let wind = windSpeed.isFinite && !windSpeed.isNaN ? windSpeed : 0.0
+                    
+                    return HourlyForecast(
+                        time: hourWeather.date,
+                        temperature: temp,
+                        condition: condition,
+                        icon: symbolName, // WeatherKit uses SF Symbols (e.g., "cloud.fill")
+                        humidity: hum,
+                        pressure: press,
+                        windSpeed: wind
+                    )
+                }
+                .sorted { $0.time < $1.time }
             
-            let forecastResponse = try JSONDecoder().decode(ForecastResponse.self, from: data)
-            let hourlyForecasts = processHourlyForecastData(forecastResponse)
+            print("✅ WeatherService: Successfully loaded \(forecasts.count) hours of forecast")
             
             await MainActor.run {
-                self.hourlyForecast = hourlyForecasts
-                self.hourlyCache = hourlyForecasts
+                self.hourlyForecast = forecasts
+                self.hourlyCache = forecasts
                 self.hourlyCacheTime = Date()
                 self.isLoadingHourly = false
             }
@@ -505,150 +363,7 @@ class WeatherService: ObservableObject {
             }
         }
     }
-    
-    private func processHourlyForecastData(_ response: ForecastResponse) -> [HourlyForecast] {
-        let calendar = Calendar.current
-        var hourlyForecasts: [HourlyForecast] = []
-        
-        // Get next 24 hours of forecasts
-        let now = Date()
-        let endTime = calendar.date(byAdding: .hour, value: 24, to: now) ?? now
-        
-        for item in response.list {
-            let forecastTime = Date(timeIntervalSince1970: item.dt)
-            
-            // Only include forecasts within the next 24 hours
-            if forecastTime > now && forecastTime <= endTime {
-                // Convert wind speed from m/s to km/h if available
-                let windSpeedKmh = (item.wind?.speed ?? 0) * 3.6
-                
-                let icon = item.weather.first?.icon ?? "01d"
-                let condition = item.weather.first?.description.capitalized ?? "Clear"
-                
-                hourlyForecasts.append(HourlyForecast(
-                    time: forecastTime,
-                    temperature: item.main.temp,
-                    condition: condition,
-                    icon: icon,
-                    humidity: item.main.humidity,
-                    pressure: item.main.pressure,
-                    windSpeed: windSpeedKmh
-                ))
-            }
-        }
-        
-        // Sort by time
-        hourlyForecasts.sort { $0.time < $1.time }
-        
-        return hourlyForecasts
-    }
-    
-    private func fetchAirQuality(latitude: Double, longitude: Double) async -> Int? {
-        // If no API key, return nil
-        guard !apiKey.isEmpty else {
-            return nil
-        }
-        
-        var components = URLComponents(string: airPollutionURL)
-        components?.queryItems = [
-            URLQueryItem(name: "lat", value: "\(latitude)"),
-            URLQueryItem(name: "lon", value: "\(longitude)"),
-            URLQueryItem(name: "appid", value: apiKey)
-        ]
-        
-        guard let url = components?.url else {
-            return nil
-        }
-        
-        do {
-            let (data, response) = try await session.data(from: url)
-            
-            guard let httpResponse = response as? HTTPURLResponse,
-                  (200...299).contains(httpResponse.statusCode) else {
-                print("⚠️ WeatherService: Air quality API error (\((response as? HTTPURLResponse)?.statusCode ?? 0))")
-                return nil
-            }
-            
-            let airResponse = try JSONDecoder().decode(AirPollutionResponse.self, from: data)
-            
-            // Get the first (most recent) air quality reading
-            if let firstData = airResponse.list.first {
-                let aqi = firstData.main.aqi
-                print("✅ WeatherService: Air quality AQI: \(aqi)")
-                return aqi
-            }
-            
-            return nil
-        } catch {
-            print("⚠️ WeatherService: Air quality fetch error - \(error.localizedDescription)")
-            return nil
-        }
-    }
-    
-    private func convertToWeatherData(from response: OpenWeatherMapResponse, location: String, airQuality: Int? = nil) -> WeatherData {
-        // Convert wind speed from m/s to km/h
-        let windSpeedKmh = response.wind.speed * 3.6
-        
-        // Validate and sanitize values to prevent NaN
-        let temp = response.main.temp.isFinite && !response.main.temp.isNaN ? response.main.temp : 0.0
-        let humidity = response.main.humidity.isFinite && !response.main.humidity.isNaN ? response.main.humidity : 0.0
-        let pressure = response.main.pressure.isFinite && !response.main.pressure.isNaN ? response.main.pressure : 1013.25
-        let wind = windSpeedKmh.isFinite && !windSpeedKmh.isNaN ? windSpeedKmh : 0.0
-        
-        // Get weather description (first weather item)
-        let condition = response.weather.first?.description.capitalized ?? "Unknown"
-        
-        return WeatherData(
-            temperature: temp,
-            humidity: humidity,
-            pressure: pressure,
-            windSpeed: wind,
-            condition: condition,
-            timestamp: Date(),
-            location: response.name.isEmpty ? location : response.name,
-            airQuality: airQuality
-        )
-    }
-    
-    private func getWeatherCondition(_ code: Int) -> String {
-        switch code {
-        case 0: return "Clear sky"
-        case 1, 2, 3: return "Partly cloudy"
-        case 45, 48: return "Foggy"
-        case 51, 53, 55: return "Drizzle"
-        case 56, 57: return "Freezing drizzle"
-        case 61, 63, 65: return "Rain"
-        case 66, 67: return "Freezing rain"
-        case 71, 73, 75: return "Snow"
-        case 77: return "Snow grains"
-        case 80, 81, 82: return "Rain showers"
-        case 85, 86: return "Snow showers"
-        case 95: return "Thunderstorm"
-        case 96, 99: return "Thunderstorm with hail"
-        default: return "Unknown"
-        }
-    }
 }
 
-enum WeatherError: LocalizedError {
-    case invalidResponse
-    case invalidAPIKey
-    case locationNotFound
-    case serverError(Int)
-    case networkError
-    
-    var errorDescription: String? {
-        switch self {
-        case .invalidResponse:
-            return "Invalid response from weather service"
-        case .invalidAPIKey:
-            return "Invalid API key. Please check your OpenWeatherMap API key."
-        case .locationNotFound:
-            return "Location not found"
-        case .serverError(let code):
-            return "Server error: \(code)"
-        case .networkError:
-            return "Network error. Please check your connection."
-        }
-    }
-}
+// WeatherKit uses standard Swift errors (URLError, etc.)
+// No custom error enum needed
