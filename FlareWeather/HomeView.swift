@@ -634,9 +634,9 @@ struct WeatherCardView: View {
                                 
                                 WeatherDetailView(icon: "humidity", value: "\(Int(humidity))%", label: "Humidity")
                                 WeatherDetailView(icon: "wind", value: "\(Int(windSpeed))", label: "km/h")
-                                WeatherDetailView(icon: "barometer", value: "\(Int(pressure))", label: "hPa")
+                                WeatherDetailView(icon: "barometer", value: "\(Int(pressure))", label: "Pressure (hPa)")
                                 
-                                // Air Quality
+                                // Air Quality - show beside pressure if available
                                 if let aqi = weather.airQuality {
                                     WeatherDetailView(icon: "air.purifier", value: airQualityLabel(for: aqi), label: "Air Quality")
                                 }

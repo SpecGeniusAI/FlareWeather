@@ -981,10 +981,21 @@ Write personally and directly to this user. Use "you" and "your" throughout. Be 
         base_message = why.rstrip()
     else:
         base_message = forecast.rstrip() if forecast else ""
+    
+    # Format message with proper punctuation
     if base_message:
+        # Ensure base_message ends with punctuation (period, exclamation, or question mark)
+        base_message = base_message.rstrip()
+        if base_message and base_message[-1] not in '.!?':
+            base_message += '.'
+        # Join with sign-off (sign_off typically starts with a capital letter, so just add space)
         full_message = f"{base_message} {sign_off}"
     else:
         full_message = sign_off
+    
+    # Clean up any double spaces or punctuation issues
+    full_message = re.sub(r'\s+', ' ', full_message)  # Replace multiple spaces with single space
+    full_message = full_message.strip()
     
     # Final safety check: filter full_message one more time to catch any app-specific messages
     # This ensures we catch messages that might have been in the original text or in the sign_off
