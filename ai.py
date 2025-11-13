@@ -806,43 +806,49 @@ User's Health Conditions: {diagnoses_str if user_diagnoses else "Weather-sensiti
 
 Analyze today's weather pattern and provide:
 
-1. **Analyze the weather**: Look at current conditions and the hourly forecast. Identify any significant changes (pressure drops/rises, temperature swings, humidity spikes, etc.) and when they'll occur.
+Risk logic:
+LOW: Stable pressure, gentle humidity and temp changes, slow-moving systems
+MEDIUM: Moderate pressure or humidity shifts, mixed volatility across the day, approaching fronts
+HIGH: Rapid pressure drops, sharp humidity or temperature spikes, strong incoming storms
 
-2. **Assign Flare Risk**: LOW, MODERATE, or HIGH based on how weather changes typically affect {diagnoses_str if user_diagnoses else "weather-sensitive conditions"}.
+Evidence-based correlation patterns:
+- Rapid pressure drops → increased migraine and fibro sensitivity
+- Sharp humidity swings → joint swelling and stiffness potential for arthritis
+- Temperature swings → fatigue, muscle tension, or stiffness
+- Storm fronts → multi-symptom sensitivity due to combined pressure + humidity + wind shifts
+- Stable weather → generally calmer symptom profiles
 
-3. **Generate a forecast** (1 sentence): Write a friendly, direct message about what to expect. Include specific times if there are notable weather changes coming. Be actionable—suggest what might help.
+Writing guidelines:
+- Empathy first
+- No fear-based language
+- No deterministic claims ("you will…")
+- Use phrases like: "may make your body feel more reactive", "your energy may vary", "you might notice"
+- Always close with grounding, supportive guidance ("pace with intention", "keep plans flexible", "listen to your energy")
 
-4. **Explain why** (3-4 sentences): 
-   - Describe what's happening with the weather right now
-   - Explain how this weather pattern typically affects {diagnoses_str if user_diagnoses else "their condition"}
-   - If the hourly forecast shows significant changes, mention when they'll occur
-   - Use conditional language: "may", "could", "might", "often", "some people find"
-   - Be specific about potential symptoms but frame them as possibilities
+Examples:
+LOW: "Weather looks gentle today — stable pressure and soft shifts mean many people feel steadier on days like this."
+MEDIUM: "Some changes in pressure and humidity may make your body a bit more reactive, so it could help to pace your activities."
+HIGH: "Rapid pressure changes and an incoming storm system can raise sensitivity for many conditions — planning extra room for rest may support you."
 
-5. **Include 1–2 trusted sources**: Use research papers provided or trusted medical sources (Mayo Clinic, NIH, Arthritis Foundation, Cleveland Clinic).
+Never do:
+- No medical advice or treatment suggestions
+- No diagnosis
+- No negative, fear-driven, or absolute statements
+- No invented research
 
-6. **Support note** (only for MODERATE/HIGH): 1-2 sentences of compassionate, practical encouragement.
-
-IMPORTANT GUIDELINES:
-- Write personally and directly to the user using "you" and "your"
-- Be empathetic and understanding—you know what it's like to plan around flares
-- Use conditional language—never tell the user how they feel, only discuss potential effects
-- Be specific when you can (times, weather changes, symptoms), but don't force it if the weather is stable
-- Never mention logging symptoms, updating the app, or any app-specific actions
+Core goal:
+Translate the day's weather into emotional clarity — the kind that helps someone move through their day with confidence, understanding, and a sense of control.
 
 Output your response as valid JSON in this exact format:
 {{
-  "risk": "HIGH",  // LOW, MODERATE, or HIGH
-  "forecast": "Flare risk is high — pressure is crashing this afternoon. If you can, build in extra rest.",
-  "why": "Rapid drops in barometric pressure can worsen symptoms for people with arthritis and migraines.",
-  "sources": [
-    "NIH: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4516866/",
-    "Mayo Clinic: https://www.mayoclinic.org/diseases-conditions/migraine-headache"
-  ],
-  "support_note": "Optional – include only for MODERATE or HIGH risk. Keep it compassionate and low-pressure."
+  "risk": "LOW | MODERATE | HIGH",
+  "forecast": "One supportive sentence summarizing today's flare risk.",
+  "why": "A brief, clear explanation of WHY today's weather pattern may affect their body.",
+  "sources": ["List of trustworthy sources used"]
 }}
 
-Make the tone calm, supportive, and practical. Never alarmist. Keep it short and empathetic. Write personally and directly to the user."""
+{personalization}
+Write personally and directly to this user. Use "you" and "your" throughout. Be empathetic and understanding."""
     
     try:
         completion = client.chat.completions.create(
