@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from typing import List, Tuple
 from sqlalchemy.orm import Session
 import uuid
+import json
 
 from models import (
     CorrelationRequest, 
@@ -16,13 +17,16 @@ from models import (
     LoginRequest,
     AppleSignInRequest,
     AuthResponse,
-    UserResponse
+    UserResponse,
+    FeedbackRequest,
+    FeedbackResponse
 )
-from logic import calculate_correlations, generate_correlation_summary
+from logic import calculate_correlations, generate_correlation_summary, get_upcoming_pressure_change
 from ai import generate_insight_with_papers, generate_flare_risk_assessment, generate_weekly_forecast_insight
+from app_store_notifications import router as apple_notifications_router
 from rag.query import query_rag
 from paper_search import search_papers, format_papers_for_prompt
-from database import get_db, init_db, User
+from database import get_db, init_db, User, InsightFeedback
 from auth import (
     verify_password,
     get_password_hash,
@@ -32,6 +36,7 @@ from auth import (
 )
 
 app = FastAPI(title="FlareWeather API")
+app.include_router(apple_notifications_router)
 
 # Initialize database on startup
 @app.on_event("startup")
@@ -366,11 +371,70 @@ async def get_current_user_info(current_user: dict = Depends(get_current_user), 
     )
 
 
+@app.post("/feedback", response_model=FeedbackResponse)
+async def submit_feedback(request: FeedbackRequest, db: Session = Depends(get_db)):
+    """Record user feedback about AI insights"""
+    feedback_id = str(uuid.uuid4())
+    try:
+        citations_json = json.dumps(request.citations or [])
+        diagnoses_json = json.dumps(request.diagnoses) if request.diagnoses else None
+        pressure_alert = request.pressure_alert or {}
+        pressure_trigger_time = None
+        if pressure_alert and isinstance(pressure_alert, dict):
+            trigger_time_str = pressure_alert.get("trigger_time")
+            if trigger_time_str:
+                try:
+                    pressure_trigger_time = datetime.fromisoformat(trigger_time_str.replace('Z', '+00:00'))
+                except ValueError:
+                    pressure_trigger_time = None
+
+        feedback_entry = InsightFeedback(
+            id=feedback_id,
+            analysis_id=request.analysis_id,
+            analysis_hash=request.analysis_hash,
+            user_id=request.user_id,
+            was_helpful=request.was_helpful,
+            risk=request.risk,
+            forecast=request.forecast,
+            why=request.why,
+            support_note=request.support_note,
+            citations=citations_json if citations_json != "[]" else None,
+            diagnoses=diagnoses_json,
+            location=request.location,
+            app_version=request.app_version,
+            pressure_alert_level=pressure_alert.get("alert_level") if isinstance(pressure_alert, dict) else None,
+            pressure_delta=pressure_alert.get("pressure_delta") if isinstance(pressure_alert, dict) else None,
+            pressure_trigger_time=pressure_trigger_time,
+            alert_severity_tag=request.alert_severity,
+            personalization_score=request.personalization_score,
+            personal_anecdote=request.personal_anecdote,
+            behavior_prompt=request.behavior_prompt,
+            created_at=datetime.utcnow()
+        )
+
+        db.add(feedback_entry)
+        db.commit()
+
+        print(f"📝 Feedback recorded (helpful={request.was_helpful}, analysis_id={request.analysis_id})")
+        return FeedbackResponse(status="success", feedback_id=feedback_id)
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Feedback error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to record feedback")
+
+
 @app.post("/analyze", response_model=InsightResponse)
 async def analyze_data(request: CorrelationRequest):
     """
     Analyze symptom and weather data to find correlations and generate AI insights.
     """
+    # Initialize variables at the start to avoid "variable not assigned" errors
+    pressure_alert = None
+    hourly_forecast_data = None
+    weekly_forecast_data = None
+    weekly_forecast_insight = None
+    weekly_insight_sources: List[str] = []
+    
     try:
         # Validate input
         if not request.weather:
@@ -485,7 +549,6 @@ async def analyze_data(request: CorrelationRequest):
         }
         
         # Prepare hourly forecast data for AI
-        hourly_forecast_data = None
         if request.hourly_forecast and len(request.hourly_forecast) > 0:
             hourly_forecast_data = []
             for hour_payload in request.hourly_forecast:
@@ -504,31 +567,58 @@ async def analyze_data(request: CorrelationRequest):
             
             if hourly_forecast_data:
                 print(f"📊 Prepared {len(hourly_forecast_data)} hourly forecast points for AI analysis")
-        
+                
+                # Detect upcoming pressure changes for alerts
+                try:
+                    pressure_alert = get_upcoming_pressure_change(
+                        forecast_entries=hourly_forecast_data,
+                        current_time=datetime.utcnow(),
+                        diagnoses=user_diagnoses
+                    )
+                    if pressure_alert:
+                        print(f"⚠️  Pressure alert detected: {pressure_alert}")
+                except Exception as e:
+                    print(f"❌ Pressure alert detection failed: {e}")
+                    pressure_alert = None
+
         # Generate flare risk assessment
         print(f"🤖 Generating flare risk assessment with {len(papers)} papers...")
         print(f"📄 Papers data: {[p.get('source', 'Unknown') for p in papers]}")
         
-        risk, forecast, why, ai_message, paper_citations = generate_flare_risk_assessment(
-            current_weather=current_weather,
-            pressure_trend=pressure_trend,
-            weather_factor=strongest_factor,
-            papers=papers,
-            user_diagnoses=user_diagnoses,
-            location=None,  # Could extract from request if available
-            hourly_forecast=hourly_forecast_data
-        )
-        
-        print(f"📊 Flare Risk: {risk}")
-        print(f"📝 Forecast: {forecast}")
-        print(f"📚 Citations: {paper_citations}")
+        try:
+            risk, forecast, why, ai_message, paper_citations, support_note, alert_severity, personalization_score, personal_anecdote, behavior_prompt = generate_flare_risk_assessment(
+                current_weather=current_weather,
+                pressure_trend=pressure_trend,
+                weather_factor=strongest_factor,
+                papers=papers,
+                user_diagnoses=user_diagnoses,
+                location=None,  # Could extract from request if available
+                hourly_forecast=hourly_forecast_data
+            )
+            
+            print(f"📊 Flare Risk: {risk}")
+            print(f"📝 Forecast: {forecast}")
+            print(f"📚 Citations: {paper_citations}")
+        except Exception as e:
+            print(f"❌ Error generating flare risk assessment: {e}")
+            import traceback
+            traceback.print_exc()
+            # Fallback to generic insight
+            risk = "MODERATE"
+            forecast = "Weather patterns may affect your symptoms. Monitor how you feel today."
+            why = "Unable to generate detailed analysis at this time."
+            ai_message = "Weather patterns may affect your symptoms. Monitor how you feel today."
+            paper_citations = []
+            support_note = None
+            alert_severity = "low"
+            personalization_score = 1
+            personal_anecdote = None
+            behavior_prompt = None
         
         # Use citations from AI function (they're already formatted)
         citations = paper_citations if paper_citations else citations
         
         # Prepare weekly forecast data for AI
-        weekly_forecast_data = None
-        weekly_forecast_insight = None
         if request.weekly_forecast and len(request.weekly_forecast) > 0:
             weekly_forecast_data = []
             for day_payload in request.weekly_forecast:
@@ -549,17 +639,19 @@ async def analyze_data(request: CorrelationRequest):
                 print(f"📊 Prepared {len(weekly_forecast_data)} daily forecast points for weekly insight")
                 # Generate weekly forecast insight
                 try:
-                    weekly_forecast_insight = generate_weekly_forecast_insight(
+                    weekly_forecast_insight_text, weekly_insight_sources = generate_weekly_forecast_insight(
                         weekly_forecast=weekly_forecast_data,
                         user_diagnoses=user_diagnoses,
                         location=None  # Could extract from request if available
                     )
+                    weekly_forecast_insight = weekly_forecast_insight_text
                     print(f"✅ Generated weekly forecast insight")
                 except Exception as e:
                     print(f"❌ Error generating weekly forecast insight: {e}")
                     import traceback
                     traceback.print_exc()
                     weekly_forecast_insight = None
+                    weekly_insight_sources = []
         
         # Prepare response
         response = InsightResponse(
@@ -570,7 +662,14 @@ async def analyze_data(request: CorrelationRequest):
             risk=risk,
             forecast=forecast,
             why=why,
-            weekly_forecast_insight=weekly_forecast_insight
+            weekly_forecast_insight=weekly_forecast_insight,
+            weekly_insight_sources=weekly_insight_sources,
+            support_note=support_note,
+            pressure_alert=pressure_alert,
+            alert_severity=alert_severity,
+            personalization_score=personalization_score,
+            personal_anecdote=personal_anecdote,
+            behavior_prompt=behavior_prompt
         )
         
         return response
