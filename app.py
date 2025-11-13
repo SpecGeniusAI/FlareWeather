@@ -22,7 +22,7 @@ from models import (
     FeedbackResponse
 )
 from logic import calculate_correlations, generate_correlation_summary, get_upcoming_pressure_change
-from ai import generate_insight_with_papers, generate_flare_risk_assessment, generate_weekly_forecast_insight
+from ai import generate_insight_with_papers, generate_flare_risk_assessment, generate_weekly_forecast_insight, _choose_forecast, _analyze_pressure_window
 from app_store_notifications import router as apple_notifications_router
 from rag.query import query_rag
 from paper_search import search_papers, format_papers_for_prompt
@@ -607,8 +607,7 @@ async def analyze_data(request: CorrelationRequest):
             import traceback
             traceback.print_exc()
             # Fallback to better pool forecasts instead of generic message
-            # Import the helper functions
-            from ai import _choose_forecast, _analyze_pressure_window
+            # Use the helper functions (already imported at top of file)
             try:
                 severity_label, signed_delta, direction = _analyze_pressure_window(hourly_forecast_data or [], current_weather)
                 risk = "MODERATE"
