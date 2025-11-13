@@ -868,12 +868,12 @@ struct ForecastDayRow: View {
             
                     // Temperature range
                     HStack(spacing: 8) {
-                        Text("\(Int(forecast.highTemp))°")
+                        Text("\(Int(forecast.highTemp.toTemperature()))°")
                             .font(.interBody)
                             .fontWeight(.semibold)
                             .foregroundColor(Color.adaptiveText)
                             .contentTransition(.numericText())
-                        Text("\(Int(forecast.lowTemp))°")
+                        Text("\(Int(forecast.lowTemp.toTemperature()))°")
                             .font(.interBody)
                             .foregroundColor(Color.adaptiveMuted)
                             .contentTransition(.numericText())
