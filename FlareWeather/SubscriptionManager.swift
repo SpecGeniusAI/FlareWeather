@@ -87,6 +87,27 @@ class SubscriptionManager: ObservableObject {
             }
             
             print("✅ Fetched \(storeProducts.count) products")
+            for product in storeProducts {
+                print("   - \(product.id): \(product.displayPrice)")
+            }
+            
+            // Log which products were found
+            if storeProducts.isEmpty {
+                print("⚠️ No products found! Check:")
+                print("   1. Products created in App Store Connect with IDs: \(monthlyProductID), \(yearlyProductID)")
+                print("   2. Products are in 'Ready to Submit' or approved status")
+                print("   3. Products are in the 'FlareWeather Subscription' subscription group")
+                print("   4. Testing with sandbox account in TestFlight")
+            } else {
+                let foundMonthly = storeProducts.contains { $0.id == monthlyProductID }
+                let foundYearly = storeProducts.contains { $0.id == yearlyProductID }
+                if !foundMonthly {
+                    print("⚠️ Monthly product (\(monthlyProductID)) not found in fetched products")
+                }
+                if !foundYearly {
+                    print("⚠️ Yearly product (\(yearlyProductID)) not found in fetched products")
+                }
+            }
         } catch {
             await MainActor.run {
                 self.errorMessage = "Failed to load subscription options. Please try again."

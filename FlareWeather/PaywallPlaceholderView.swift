@@ -212,6 +212,12 @@ struct PaywallPlaceholderView: View {
         isPurchasing = true
         subscriptionManager.errorMessage = nil
         
+        // Debug logging
+        print("🔘 Subscribe tapped for plan: \(selectedPlan)")
+        print("   Available products: \(subscriptionManager.products.count)")
+        print("   Monthly product: \(subscriptionManager.monthlyProduct?.id ?? "nil")")
+        print("   Yearly product: \(subscriptionManager.yearlyProduct?.id ?? "nil")")
+        
         let product: Product?
         if selectedPlan == .monthly {
             product = subscriptionManager.monthlyProduct
@@ -220,7 +226,42 @@ struct PaywallPlaceholderView: View {
         }
         
         guard let productToPurchase = product else {
-            subscriptionManager.errorMessage = "Selected plan not available"
+            let planName = selectedPlan == .monthly ? "fw_plus_monthly" : "fw_plus_yearly"
+            print("❌ Product not available for plan: \(planName)")
+            print("   This usually means:")
+            print("   1. Products not loaded from App Store Connect")
+            print("   2. Product IDs don't match exactly")
+            print("   3. Products not approved/available in sandbox")
+            
+            // Try fetching products again if they're not loaded
+            if subscriptionManager.products.isEmpty {
+                print("⚠️ No products loaded, fetching again...")
+                await subscriptionManager.fetchProducts()
+                // Retry after fetch
+                if selectedPlan == .monthly, let monthly = subscriptionManager.monthlyProduct {
+                    let success = await subscriptionManager.purchase(monthly)
+                    if success {
+                        withAnimation { showSuccess = true }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            onStartFreeWeek()
+                        }
+                        isPurchasing = false
+                        return
+                    }
+                } else if selectedPlan == .yearly, let yearly = subscriptionManager.yearlyProduct {
+                    let success = await subscriptionManager.purchase(yearly)
+                    if success {
+                        withAnimation { showSuccess = true }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            onStartFreeWeek()
+                        }
+                        isPurchasing = false
+                        return
+                    }
+                }
+            }
+            
+            subscriptionManager.errorMessage = "Selected plan not available. Please check your connection and try again."
             isPurchasing = false
             return
         }

@@ -1066,9 +1066,9 @@ Move at a pace that feels kind to you.
         // Legacy string format: extract summary and generate weekday bullets
         let filtered = filterAppMessages(insight) ?? insight
         // Remove source citations from summary - sources are displayed separately at the bottom
-        let filteredWithoutSources = removeSourceCitations(filtered) ?? filtered
+        let filteredWithoutSources = removeSourceCitations(filtered) ?? filtered ?? ""
         // Fix broken templates caused by missing/null values (e.g., "temps ranging from to")
-        let fixedSummary = fixBrokenWeeklySummaryTemplate(filteredWithoutSources) ?? filteredWithoutSources ?? ""
+        let fixedSummary = fixBrokenWeeklySummaryTemplate(filteredWithoutSources) ?? filteredWithoutSources
         let sanitized = sanitizeInsightText(fixedSummary) ?? fixedSummary
         
         // Check if text already has day lines (format: "Sat — ...")
