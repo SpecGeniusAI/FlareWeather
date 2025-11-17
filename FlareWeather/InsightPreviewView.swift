@@ -9,7 +9,7 @@ struct InsightPreviewView: View {
         diagnoses.isEmpty ? "weather-sensitive conditions" : diagnoses.joined(separator: ", ")
     }
     
-    private let previewSummary = "A gentle start gives way to a midweek wobble before easing toward the weekend—plan with soft buffers."
+    private let previewSummary = "A mostly steady week ahead, with a mild midweek shift that may stir sensitivity before easing again."
     
     private var previewDays: [WeeklyInsightDay] {
         [
@@ -46,7 +46,7 @@ struct InsightPreviewView: View {
                         subtitle: "Today's Health Analysis",
                         icon: "lightbulb.fill",
                         message: """
-Steady conditions settle in through the day.
+Steady weather today — expect a calm, predictable feel for your body.
 
 Why: Stable pressure can ease tension in sensitive joints.
 

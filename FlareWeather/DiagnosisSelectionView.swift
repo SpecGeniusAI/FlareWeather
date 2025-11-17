@@ -21,7 +21,7 @@ struct DiagnosisSelectionView: View {
         ScrollView {
             VStack(spacing: 24) {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Which diagnoses should we consider?")
+                    Text("Which conditions should we consider?")
                         .font(.interTitle)
                         .foregroundColor(Color.adaptiveText)
                     
@@ -32,7 +32,7 @@ struct DiagnosisSelectionView: View {
                 .padding(.horizontal, 24)
                 .padding(.top, 24)
                 
-                VStack(spacing: 12) {
+                VStack(spacing: 8) {
                     ForEach(diagnoses, id: \.self) { diagnosis in
                         VStack(alignment: .leading, spacing: 10) {
                             SelectionRow(
@@ -56,7 +56,7 @@ struct DiagnosisSelectionView: View {
                                 .transition(.opacity.combined(with: .move(edge: .top)))
                             }
                         }
-                        .cardStyle()
+                        .modifier(CompactCardStyle())
                         .padding(.horizontal, 16)
                     }
                 }
@@ -125,6 +125,47 @@ struct DiagnosisSelectionView: View {
     }
 }
 
+struct CompactCardStyle: ViewModifier {
+    @Environment(\.colorScheme) var colorScheme
+    
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12) // Reduced from 20
+            .background(
+                ZStack {
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(Color.adaptiveCardBackground)
+                        .shadow(color: .black.opacity(colorScheme == .dark ? 0.45 : 0.18), radius: 18, x: 0, y: 14)
+                    RoundedRectangle(cornerRadius: 20)
+                        .strokeBorder(
+                            LinearGradient(
+                                gradient: Gradient(colors: [Color.white.opacity(colorScheme == .dark ? 0.03 : 0.25), Color.black.opacity(0.04)]),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1.4
+                        )
+                        .blendMode(.overlay)
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(
+                            LinearGradient(
+                                gradient: Gradient(colors: [
+                                    Color.white.opacity(colorScheme == .dark ? 0.05 : 0.18),
+                                    Color.white.opacity(colorScheme == .dark ? 0.01 : 0.05)
+                                ]),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .padding(.top, 0.6)
+                        .padding(.leading, 0.6)
+                        .blendMode(.plusLighter)
+                }
+            )
+    }
+}
+
 private struct SelectionRow: View {
     let title: String
     let isSelected: Bool
@@ -151,7 +192,7 @@ private struct SelectionRow: View {
                 
                 Spacer()
             }
-            .padding(.vertical, 6)
+            .padding(.vertical, 4)
         }
         .buttonStyle(.plain)
     }

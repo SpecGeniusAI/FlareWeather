@@ -26,8 +26,23 @@ struct UserResponse: Codable {
     let created_at: String
 }
 
+struct ForgotPasswordResponsePayload: Codable {
+    let message: String
+}
+
+struct ResetPasswordResponsePayload: Codable {
+    let success: Bool
+}
+
+struct ServerErrorResponse: Codable {
+    let detail: String?
+    let error: String?
+}
+
 @MainActor
 final class AuthService: ObservableObject {
+    static let shared = AuthService()
+    
     @Published var isLoading = false
     @Published var errorMessage: String? = nil
     
@@ -47,10 +62,9 @@ final class AuthService: ObservableObject {
             return url
         }
         
-        // Default: use localhost for development
-        let defaultURL = "http://localhost:8000"
-        print("⚠️ AuthService: Using default backend URL: \(defaultURL)")
-        print("   To change: Set BACKEND_URL environment variable in Xcode scheme or add BackendURL to Info.plist")
+        // Default: use production Railway URL
+        let defaultURL = "https://flareweather-production.up.railway.app"
+        print("✅ AuthService: Using production backend URL: \(defaultURL)")
         return defaultURL
     }
     
@@ -74,6 +88,7 @@ final class AuthService: ObservableObject {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = jsonData
+        request.timeoutInterval = 30.0  // 30 second timeout
         
         print("📤 Signup request to: \(url)")
         
@@ -117,6 +132,7 @@ final class AuthService: ObservableObject {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = jsonData
+        request.timeoutInterval = 30.0  // 30 second timeout
         
         print("📤 Login request to: \(url)")
         print("📤 Login request body: \(String(data: jsonData, encoding: .utf8) ?? "nil")")
@@ -156,6 +172,7 @@ final class AuthService: ObservableObject {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 30.0  // 30 second timeout
         
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
@@ -202,6 +219,7 @@ final class AuthService: ObservableObject {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = jsonData
+        request.timeoutInterval = 30.0  // 30 second timeout
         
         print("📤 Apple Sign In request to: \(url)")
         
@@ -223,6 +241,104 @@ final class AuthService: ObservableObject {
         let authResponse = try JSONDecoder().decode(AuthResponse.self, from: data)
         print("✅ Apple Sign In successful: \(authResponse.email)")
         return authResponse
+    }
+    
+    func deleteAccount(token: String) async throws {
+        guard let url = URL(string: "\(baseURL)/auth/delete") else {
+            throw URLError(.badURL)
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 30.0
+        
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        
+        guard (200..<300).contains(http.statusCode) else {
+            throw AuthError.serverError("Failed to delete account. Please try again later.")
+        }
+    }
+    
+    func forgotPassword(email: String) async throws {
+        guard let url = URL(string: "\(baseURL)/auth/forgot-password") else {
+            throw URLError(.badURL)
+        }
+        
+        isLoading = true
+        defer { isLoading = false }
+        
+        let payload = ["email": email]
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: payload) else {
+            throw AuthError.serverError("Failed to encode reset request.")
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = jsonData
+        request.timeoutInterval = 20.0
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        
+        guard (200..<300).contains(http.statusCode) else {
+            if let errorDetail = try? JSONDecoder().decode(ServerErrorResponse.self, from: data),
+               let detail = errorDetail.detail ?? errorDetail.error {
+                throw AuthError.serverError(detail)
+            }
+            throw AuthError.serverError("Unable to request password reset.")
+        }
+        
+        // Decode to ensure backend returned expected structure (optional)
+        _ = try? JSONDecoder().decode(ForgotPasswordResponsePayload.self, from: data)
+    }
+    
+    func resetPassword(email: String, code: String, newPassword: String) async throws {
+        guard let url = URL(string: "\(baseURL)/auth/reset-password") else {
+            throw URLError(.badURL)
+        }
+        
+        isLoading = true
+        defer { isLoading = false }
+        
+        let payload: [String: String] = [
+            "email": email,
+            "code": code,
+            "new_password": newPassword
+        ]
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: payload) else {
+            throw AuthError.serverError("Failed to encode reset data.")
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = jsonData
+        request.timeoutInterval = 20.0
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        
+        guard (200..<300).contains(http.statusCode) else {
+            if let errorDetail = try? JSONDecoder().decode(ServerErrorResponse.self, from: data),
+               let detail = errorDetail.detail ?? errorDetail.error {
+                throw AuthError.serverError(detail)
+            }
+            throw AuthError.serverError("That code is incorrect or has expired.")
+        }
+        
+        let resetResponse = try JSONDecoder().decode(ResetPasswordResponsePayload.self, from: data)
+        if resetResponse.success == false {
+            throw AuthError.serverError("That code is incorrect or has expired.")
+        }
     }
 }
 

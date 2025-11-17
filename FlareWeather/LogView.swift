@@ -12,37 +12,103 @@ struct LogView: View {
     
     var body: some View {
         NavigationView {
-            Form {
-                Section("Symptom Details") {
-                    Picker("Symptom Type", selection: $selectedSymptom) {
-                        ForEach(symptomTypes, id: \.self) { symptom in
-                            Text(symptom).tag(symptom)
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Symptom Details Card
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.title3)
+                                .foregroundColor(Color.adaptiveText)
+                            
+                            Text("Symptom Details")
+                                .font(.interHeadline)
+                                .foregroundColor(Color.adaptiveText)
+                            
+                            Spacer()
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Symptom Type")
+                                .font(.interBody)
+                                .foregroundColor(Color.adaptiveText)
+                            
+                            Picker("Symptom Type", selection: $selectedSymptom) {
+                                ForEach(symptomTypes, id: \.self) { symptom in
+                                    Text(symptom).tag(symptom)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .accentColor(Color.adaptiveText)
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Severity: \(severity)/10")
+                                .font(.interBody)
+                                .foregroundColor(Color.adaptiveText)
+                            
+                            Slider(value: Binding(
+                                get: { Double(severity) },
+                                set: { severity = Int($0) }
+                            ), in: 1...10, step: 1)
+                            .accentColor(Color.adaptiveCardBackground)
+                            
+                            HStack {
+                                Text("Mild")
+                                    .font(.interSmall)
+                                    .foregroundColor(Color.muted)
+                                Spacer()
+                                Text("Moderate")
+                                    .font(.interSmall)
+                                    .foregroundColor(Color.muted)
+                                Spacer()
+                                Text("Severe")
+                                    .font(.interSmall)
+                                    .foregroundColor(Color.muted)
+                            }
                         }
                     }
+                    .cardStyle()
+                    .padding(.horizontal)
                     
-                    VStack(alignment: .leading) {
-                        Text("Severity: \(severity)")
-                        Slider(value: Binding(
-                            get: { Double(severity) },
-                            set: { severity = Int($0) }
-                        ), in: 1...10, step: 1)
+                    // Notes Card
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack {
+                            Image(systemName: "note.text")
+                                .font(.title3)
+                                .foregroundColor(Color.adaptiveText)
+                            
+                            Text("Notes")
+                                .font(.interHeadline)
+                                .foregroundColor(Color.adaptiveText)
+                            
+                            Spacer()
+                        }
+                        
+                        TextField("Additional notes...", text: $notes, axis: .vertical)
+                            .font(.interBody)
+                            .foregroundColor(Color.adaptiveText)
+                            .lineLimit(3...6)
+                            .padding(12)
+                            .background(Color.adaptiveBackground)
+                            .cornerRadius(12)
                     }
-                }
-                
-                Section("Notes") {
-                    TextField("Additional notes...", text: $notes, axis: .vertical)
-                        .lineLimit(3...6)
-                }
-                
-                Section {
+                    .cardStyle()
+                    .padding(.horizontal)
+                    
+                    // Submit Button
                     Button("Log Symptom") {
                         logSymptom()
                     }
-                    .frame(maxWidth: .infinity)
+                    .buttonStyle(PrimaryButtonStyle())
+                    .padding(.horizontal)
                     .disabled(selectedSymptom.isEmpty)
                 }
+                .padding(.vertical)
             }
+            .background(Color.adaptiveBackground.ignoresSafeArea())
             .navigationTitle("Log Symptom")
+            .toolbarBackground(Color.adaptiveCardBackground.opacity(0.95), for: .navigationBar)
             .alert("Symptom Logged", isPresented: $showingSuccess) {
                 Button("OK") {
                     resetForm()

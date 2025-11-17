@@ -108,7 +108,7 @@ struct PrimaryButtonStyle: ButtonStyle {
             .padding(.horizontal, 24)
             .padding(.vertical, 12)
             .background(Color.adaptiveCardBackground)
-            .foregroundColor(.black) // Always black on pink buttons for readability
+            .foregroundColor(colorScheme == .dark ? .white : .black) // White in dark mode, black in light mode
             .font(.interBody.weight(.medium))
             .cornerRadius(12)
             .scaleEffect(configuration.isPressed ? 0.96 : 1.0)

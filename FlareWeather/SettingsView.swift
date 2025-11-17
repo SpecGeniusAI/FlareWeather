@@ -244,6 +244,10 @@ struct SettingsView: View {
                     .cardStyle()
                     .padding(.horizontal)
                 
+                    // Your Plan (Subscription)
+                    SubscriptionPlanSection()
+                        .environmentObject(SubscriptionManager.shared)
+                
                     // Appearance Settings
                     VStack(alignment: .leading, spacing: 16) {
                     HStack {
@@ -1326,6 +1330,164 @@ struct ProfileEditView: View {
         } else {
             weatherSensitivitiesJSON = ""
         }
+    }
+}
+
+// MARK: - Subscription Plan Section
+struct SubscriptionPlanSection: View {
+    @EnvironmentObject var subscriptionManager: SubscriptionManager
+    @State private var showingPaywall = false
+    @State private var isUpgrading = false
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Image(systemName: "star.fill")
+                    .font(.title3)
+                    .foregroundColor(Color.adaptiveText)
+                
+                Text("Your Plan")
+                    .font(.interHeadline)
+                    .foregroundColor(Color.adaptiveText)
+                
+                Spacer()
+            }
+            
+            if subscriptionManager.isSubscribed {
+                // Subscribed state
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("FlareWeather Plus")
+                                .font(.interHeadline)
+                                .foregroundColor(Color.adaptiveText)
+                            
+                            Text(subscriptionManager.currentPlan == .yearly ? "Yearly" : "Monthly")
+                                .font(.interBody)
+                                .foregroundColor(Color.adaptiveMuted)
+                        }
+                        
+                        Spacer()
+                        
+                        Text("Active")
+                            .font(.interCaption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.green)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Color.green.opacity(0.1))
+                            .cornerRadius(6)
+                    }
+                    
+                    Divider()
+                        .background(Color.adaptiveMuted.opacity(0.3))
+                    
+                    // Upgrade to Yearly button (if monthly)
+                    if subscriptionManager.currentPlan == .monthly {
+                        Button(action: {
+                            Task {
+                                isUpgrading = true
+                                let success = await subscriptionManager.upgradeToYearly()
+                                isUpgrading = false
+                                if !success, let error = subscriptionManager.errorMessage {
+                                    print("❌ Upgrade error: \(error)")
+                                }
+                            }
+                        }) {
+                            HStack {
+                                if isUpgrading {
+                                    ProgressView()
+                                        .tint(Color.adaptiveText)
+                                } else {
+                                    Text("Upgrade to Yearly ($19.99/year)")
+                                        .font(.interBody)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(PrimaryButtonStyle())
+                        .disabled(isUpgrading)
+                    } else {
+                        // Manage Subscription button (if yearly)
+                        Button(action: {
+                            openSubscriptionManagement()
+                        }) {
+                            Text("Manage Subscription")
+                                .font(.interBody)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(SecondaryButtonStyle())
+                    }
+                    
+                    // Restore Purchases
+                    Button(action: {
+                        Task {
+                            await subscriptionManager.restore()
+                        }
+                    }) {
+                        Text("Restore Purchases")
+                            .font(.interBody)
+                            .foregroundColor(Color.adaptiveMuted)
+                    }
+                }
+            } else {
+                // Not subscribed state
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("You're currently on the Free Plan")
+                        .font(.interBody)
+                        .foregroundColor(Color.adaptiveText)
+                    
+                    Button(action: {
+                        showingPaywall = true
+                    }) {
+                        Text("Upgrade to FlareWeather Plus")
+                            .font(.interBody)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                    
+                    // Restore Purchases
+                    Button(action: {
+                        Task {
+                            await subscriptionManager.restore()
+                        }
+                    }) {
+                        Text("Restore Purchases")
+                            .font(.interBody)
+                            .foregroundColor(Color.adaptiveMuted)
+                    }
+                }
+            }
+            
+            // Error message
+            if let errorMessage = subscriptionManager.errorMessage {
+                Text(errorMessage)
+                    .font(.interCaption)
+                    .foregroundColor(.red)
+            }
+        }
+        .cardStyle()
+        .padding(.horizontal)
+        .sheet(isPresented: $showingPaywall) {
+            NavigationView {
+                PaywallPlaceholderView(onStartFreeWeek: {
+                    showingPaywall = false
+                })
+                .environmentObject(subscriptionManager)
+            }
+        }
+        .task {
+            // Refresh subscription status when view appears
+            await subscriptionManager.checkEntitlements()
+        }
+    }
+    
+    /// Open App Store subscription management page
+    private func openSubscriptionManagement() {
+        guard let url = URL(string: "https://apps.apple.com/account/subscriptions") else {
+            return
+        }
+        UIApplication.shared.open(url)
     }
 }
 

@@ -14,6 +14,7 @@ struct OnboardingFlowView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.managedObjectContext) private var viewContext
     @EnvironmentObject var authManager: AuthManager
+    @EnvironmentObject var subscriptionManager: SubscriptionManager
     
     @State private var path: [Step] = []
     @State private var selectedDiagnoses: Set<String> = []
@@ -67,6 +68,7 @@ struct OnboardingFlowView: View {
                             navigate(to: .account)
                         }
                     )
+                    .environmentObject(subscriptionManager)
                 case .account:
                     AccountCreationView { name in
                         saveUserProfile(name: name)
@@ -127,6 +129,7 @@ struct OnboardingFlowView: View {
 #Preview {
     OnboardingFlowView()
         .environmentObject(AuthManager())
+        .environmentObject(SubscriptionManager.shared)
         .environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
 }
 

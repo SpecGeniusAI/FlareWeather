@@ -380,6 +380,7 @@ private struct LogoWordmarkView: View {
 }
 
 struct DailyInsightCardView: View {
+    @Environment(\.colorScheme) var colorScheme
     let title: String
     let subtitle: String
     let icon: String
@@ -497,7 +498,7 @@ struct DailyInsightCardView: View {
                         HStack(alignment: .top, spacing: 10) {
                             Image(systemName: "info.circle.fill")
                                 .font(.interBody)
-                                .foregroundColor(Color(hex: "#1A6B5A"))
+                                .foregroundColor(colorScheme == .dark ? .white : Color(hex: "#888779"))
                             Text("Why: \(why)")
                                 .font(.interBody)
                                 .foregroundColor(Color.adaptiveText)
@@ -511,7 +512,7 @@ struct DailyInsightCardView: View {
                         HStack(alignment: .top, spacing: 10) {
                             Image(systemName: "hands.sparkles.fill")
                                 .font(.interBody)
-                                .foregroundColor(Color(hex: "#1A6B5A"))
+                                .foregroundColor(colorScheme == .dark ? .white : Color(hex: "#888779"))
                             Text("Comfort tip: \(comfort)")
                                 .font(.interBody)
                                 .foregroundColor(Color.adaptiveText)
