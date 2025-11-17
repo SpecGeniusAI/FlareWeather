@@ -1,7 +1,7 @@
 """
 Database models and connection for FlareWeather API
 """
-from sqlalchemy import create_engine, Column, String, DateTime, Text, Boolean, Float, Integer
+from sqlalchemy import create_engine, Column, String, DateTime, Text, Boolean, Float, Integer, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
@@ -11,24 +11,45 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Database URL - PostgreSQL for production (Railway), SQLite for local development
-# Railway automatically provides DATABASE_URL when you add a PostgreSQL service
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./flareweather.db")
+DEFAULT_SQLITE_URL = "sqlite:///./flareweather.db"
 
-# Handle both PostgreSQL and SQLite connection strings
-# Railway provides DATABASE_URL in format: postgresql://user:pass@host:port/dbname
-# Local SQLite: sqlite:///./flareweather.db
-if DATABASE_URL.startswith("postgresql://") or DATABASE_URL.startswith("postgres://"):
-    # PostgreSQL connection
-    engine = create_engine(DATABASE_URL, pool_pre_ping=True)
-    print("📊 Using PostgreSQL database (production)")
-else:
-    # SQLite connection (local development)
-    engine = create_engine(
-        DATABASE_URL,
-        connect_args={"check_same_thread": False}
-    )
-    print("📊 Using SQLite database (local development)")
+
+def _sanitize_database_url(raw_url: str) -> str:
+    """Return a valid DATABASE_URL or fallback to SQLite if placeholder values are present."""
+    if not raw_url:
+        return DEFAULT_SQLITE_URL
+    normalized = raw_url.strip()
+    placeholder_tokens = ["<user>", "<password>", "<host>", "<port>", "<database>", "<dbname>"]
+    if any(token in normalized.lower() for token in placeholder_tokens):
+        print("⚠️ DATABASE_URL contains placeholder values. Falling back to local SQLite.")
+        return DEFAULT_SQLITE_URL
+    return normalized
+
+
+raw_database_url = os.getenv("DATABASE_URL")
+DATABASE_URL = _sanitize_database_url(raw_database_url)
+
+
+def _create_engine(url: str):
+    """Create an engine with graceful fallback to SQLite if the URL is invalid."""
+    try:
+        if url.startswith(("postgresql://", "postgres://")):
+            print("📊 Using PostgreSQL database (production)")
+            return create_engine(url, pool_pre_ping=True)
+        print("📊 Using SQLite database (local development)")
+        return create_engine(
+            url,
+            connect_args={"check_same_thread": False}
+        )
+    except ValueError as value_error:
+        print(f"⚠️ Invalid DATABASE_URL '{url}' ({value_error}). Falling back to SQLite.")
+        return create_engine(
+            DEFAULT_SQLITE_URL,
+            connect_args={"check_same_thread": False}
+        )
+
+
+engine = _create_engine(DATABASE_URL)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -103,6 +124,24 @@ class SubscriptionEntitlement(Base):
     revoked_at = Column(DateTime, nullable=True)
     signed_transaction_payload = Column(Text, nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class PasswordReset(Base):
+    """Password reset codes stored for 6-digit flow."""
+    __tablename__ = "password_resets"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, nullable=True, index=True)
+    email = Column(String, nullable=False)
+    code_hash = Column(String, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("ix_password_resets_email", "email"),
+        Index("ix_password_resets_code_hash", "code_hash"),
+    )
 
 
 def get_db():

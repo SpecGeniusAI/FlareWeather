@@ -9,6 +9,7 @@ class LocationSearchManager: NSObject, ObservableObject {
     @Published var searchText = ""
     @Published var searchResults: [MKLocalSearchCompletion] = []
     @Published var isSearching = false
+    @Published var searchError: String? = nil
     
     private let searchCompleter = MKLocalSearchCompleter()
     private var cancellables = Set<AnyCancellable>()
@@ -17,9 +18,12 @@ class LocationSearchManager: NSObject, ObservableObject {
         super.init()
         searchCompleter.delegate = self
         searchCompleter.resultTypes = [.address, .pointOfInterest]
+        
+        // Use a broader default region that covers more of the world
+        // This helps prevent region-related errors
         searchCompleter.region = MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: 48.4284, longitude: -123.3656), // Default to Victoria, BC area
-            span: MKCoordinateSpan(latitudeDelta: 50, longitudeDelta: 50)
+            center: CLLocationCoordinate2D(latitude: 40.0, longitude: -100.0), // Center of North America
+            span: MKCoordinateSpan(latitudeDelta: 180, longitudeDelta: 360) // Cover the whole world
         )
         
         // Update search results as user types
@@ -32,13 +36,30 @@ class LocationSearchManager: NSObject, ObservableObject {
             .store(in: &cancellables)
     }
     
+    /// Update the search completer region based on user's current location
+    func updateRegion(with location: CLLocation?) {
+        if let location = location {
+            searchCompleter.region = MKCoordinateRegion(
+                center: location.coordinate,
+                span: MKCoordinateSpan(latitudeDelta: 50, longitudeDelta: 50)
+            )
+        }
+    }
+    
     private func updateSearchQuery(_ query: String) {
+        // Clear previous errors
+        searchError = nil
+        
         if query.isEmpty {
             searchResults = []
             isSearching = false
         } else {
-            searchCompleter.queryFragment = query
-            isSearching = true
+            // Reset and retry search
+            searchCompleter.queryFragment = ""
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                self?.searchCompleter.queryFragment = query
+                self?.isSearching = true
+            }
         }
     }
     
@@ -71,11 +92,37 @@ extension LocationSearchManager: MKLocalSearchCompleterDelegate {
     func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
         searchResults = completer.results
         isSearching = false
+        searchError = nil // Clear error on success
     }
     
     func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
         print("❌ Search completer error: \(error.localizedDescription)")
         isSearching = false
+        
+        // Handle specific error codes
+        if let mkError = error as NSError? {
+            switch mkError.code {
+            case 2: // MKErrorUnknown
+                // Try resetting the region to a broader scope
+                searchCompleter.region = MKCoordinateRegion(
+                    center: CLLocationCoordinate2D(latitude: 40.0, longitude: -100.0),
+                    span: MKCoordinateSpan(latitudeDelta: 180, longitudeDelta: 360)
+                )
+                // Retry the query if we have one
+                if !searchText.isEmpty {
+                    searchCompleter.queryFragment = searchText
+                }
+                searchError = "Search temporarily unavailable. Please try again."
+            case 3: // MKErrorServerFailure
+                searchError = "Search service unavailable. Check your connection."
+            case 4: // MKErrorLoadingThrottled
+                searchError = "Too many searches. Please wait a moment."
+            default:
+                searchError = "Search error. Please try again."
+            }
+        } else {
+            searchError = "Search error. Please try again."
+        }
     }
 }
 
@@ -90,12 +137,24 @@ struct SettingsView: View {
     @StateObject private var notificationManager = NotificationManager()
     @StateObject private var themeManager = ThemeManager()
     @EnvironmentObject var authManager: AuthManager
+    @AppStorage("weatherSensitivitiesJSON") private var weatherSensitivitiesJSON: String = ""
     @State private var showingOnboarding = false
     @State private var showingLocationSettings = false
     @State private var showingProfileEdit = false
+    @State private var showDeleteAlert = false
+    @State private var deleteErrorMessage: String?
+    @State private var isDeletingAccount = false
     
     var currentUser: UserProfile? {
         userProfiles.first
+    }
+    
+    private var storedSensitivities: [String] {
+        if let data = weatherSensitivitiesJSON.data(using: .utf8),
+           let decoded = try? JSONDecoder().decode([String].self, from: data) {
+            return decoded
+        }
+        return UserDefaults.standard.stringArray(forKey: "weatherSensitivities") ?? []
     }
     
     var body: some View {
@@ -120,24 +179,14 @@ struct SettingsView: View {
                     if let user = currentUser {
                         VStack(alignment: .leading, spacing: 16) {
                             HStack(alignment: .top, spacing: 12) {
-                                Image(systemName: "person.circle.fill")
-                                    .font(.title2)
+                            Image(systemName: "person.circle.fill")
+                                .font(.title2)
                                     .foregroundColor(Color.adaptiveText)
-                                
+                            
                                 VStack(alignment: .leading, spacing: 8) {
-                                    Text(user.name ?? "Unknown User")
+                                Text(user.name ?? "Unknown User")
                                         .font(.interHeadline)
                                         .foregroundColor(Color.adaptiveText)
-                                    
-                                    HStack {
-                                        Text("Age")
-                                            .font(.interBody)
-                                            .foregroundColor(Color.adaptiveMuted)
-                                        Spacer()
-                                        Text("\(user.age)")
-                                            .font(.interBody)
-                                            .foregroundColor(Color.adaptiveText)
-                                    }
                                     
                                     if let diagnosesArray = user.value(forKey: "diagnoses") as? NSArray,
                                        let diagnoses = diagnosesArray as? [String], !diagnoses.isEmpty {
@@ -155,9 +204,29 @@ struct SettingsView: View {
                                         }
                                         .padding(.top, 4)
                                     }
-                                }
-                                
-                                Spacer()
+                                    
+                                    let sensitivities = storedSensitivities
+                                    if !sensitivities.isEmpty {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text("Weather Sensitivities")
+                                                .font(.interBody.weight(.semibold))
+                                                .foregroundColor(Color.adaptiveText)
+                                            ForEach(sensitivities, id: \.self) { sensitivity in
+                                                HStack {
+                                                    Image(systemName: "waveform.path.ecg")
+                                                        .font(.interCaption)
+                                                        .foregroundColor(Color.adaptiveMuted)
+                                                    Text(sensitivity)
+                                                        .font(.interCaption)
+                                                        .foregroundColor(Color.adaptiveMuted)
+                                                }
+                                            }
+                                        }
+                                        .padding(.top, 8)
+                                    }
+                            }
+                            
+                            Spacer()
                             }
                             
                             Button("Edit Profile") {
@@ -170,14 +239,14 @@ struct SettingsView: View {
                             showingOnboarding = true
                         }
                             .buttonStyle(PrimaryButtonStyle())
-                        }
                     }
+                }
                     .cardStyle()
                     .padding(.horizontal)
                 
                     // Appearance Settings
                     VStack(alignment: .leading, spacing: 16) {
-                        HStack {
+                    HStack {
                             Image(systemName: "paintbrush.fill")
                                 .font(.title3)
                                 .foregroundColor(Color.adaptiveText)
@@ -186,7 +255,7 @@ struct SettingsView: View {
                                 .font(.interHeadline)
                                 .foregroundColor(Color.adaptiveText)
                             
-                            Spacer()
+                        Spacer()
                         }
                         
                         VStack(alignment: .leading, spacing: 16) {
@@ -227,8 +296,8 @@ struct SettingsView: View {
                     
                     // Notifications
                     VStack(alignment: .leading, spacing: 16) {
-                        HStack {
-                            Image(systemName: "bell.fill")
+                    HStack {
+                        Image(systemName: "bell.fill")
                                 .font(.title3)
                                 .foregroundColor(Color.adaptiveText)
                             
@@ -236,7 +305,7 @@ struct SettingsView: View {
                                 .font(.interHeadline)
                                 .foregroundColor(Color.adaptiveText)
                             
-                            Spacer()
+                        Spacer()
                             Text(notificationManager.statusDescription)
                                 .font(.interCaption)
                                 .foregroundColor(Color.adaptiveMuted)
@@ -334,7 +403,7 @@ struct SettingsView: View {
                             }
                             
                             if locationManager.authorizationStatus == .denied {
-                                Text("Location access denied. Enable it in Settings.")
+                        Text("Location access denied. Enable it in Settings.")
                                     .font(.interCaption)
                                     .foregroundColor(.red)
                             }
@@ -371,8 +440,8 @@ struct SettingsView: View {
                     
                     // About Card
                     VStack(alignment: .leading, spacing: 16) {
-                        HStack {
-                            Image(systemName: "info.circle.fill")
+                    HStack {
+                        Image(systemName: "info.circle.fill")
                                 .font(.title3)
                                 .foregroundColor(Color.adaptiveText)
                             
@@ -384,10 +453,10 @@ struct SettingsView: View {
                         }
                         
                         HStack {
-                            Text("Version")
+                        Text("Version")
                                 .font(.interBody)
                                 .foregroundColor(Color.adaptiveText)
-                            Spacer()
+                        Spacer()
                             Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown")
                                 .font(.interBody)
                                 .foregroundColor(Color.adaptiveMuted)
@@ -420,7 +489,29 @@ struct SettingsView: View {
                     .cardStyle()
                     .padding(.horizontal)
                     
-                    // Logout Button
+                    if let deleteErrorMessage = deleteErrorMessage {
+                        Text(deleteErrorMessage)
+                            .font(.interCaption)
+                            .foregroundColor(.red)
+                            .padding(.horizontal)
+                    }
+                    
+                    Button {
+                        showDeleteAlert = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "trash.fill")
+                            Text(isDeletingAccount ? "Deleting..." : "Delete Account")
+                        }
+                        .font(.interBody.weight(.semibold))
+                        .foregroundColor(.red)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal)
+                    .disabled(isDeletingAccount)
+                    
                     Button(action: {
                         authManager.logout()
                     }) {
@@ -456,7 +547,39 @@ struct SettingsView: View {
                     ProfileEditView(user: user)
                 }
             }
+            .alert("Delete Account?", isPresented: $showDeleteAlert) {
+                Button("Cancel", role: .cancel) {}
+                Button("Delete", role: .destructive) {
+                    Task {
+                        await deleteAccount()
+                    }
+                }
+            } message: {
+                Text("This will permanently delete your account and remove your saved preferences. This action cannot be undone.")
+            }
         }
+    }
+    
+    private func deleteAccount() async {
+        guard !isDeletingAccount else { return }
+        deleteErrorMessage = nil
+        isDeletingAccount = true
+        do {
+            try await authManager.deleteAccount()
+            removeLocalProfile()
+        } catch {
+            deleteErrorMessage = error.localizedDescription
+        }
+        isDeletingAccount = false
+    }
+    
+    private func removeLocalProfile() {
+        if let profile = currentUser {
+            viewContext.delete(profile)
+            try? viewContext.save()
+        }
+        weatherSensitivitiesJSON = ""
+        UserDefaults.standard.removeObject(forKey: "weatherSensitivities")
     }
 }
 
@@ -568,6 +691,12 @@ struct LocationSettingsView: View {
                                                         geocodeError = nil
                                                     }
                                                 }
+                                                .onAppear {
+                                                    // Update search region based on user's location if available
+                                                    if let location = locationManager.location {
+                                                        searchManager.updateRegion(with: location)
+                                                    }
+                                                }
                                         }
                                         .background(Color.adaptiveBackground)
                                         .cornerRadius(12)
@@ -575,6 +704,27 @@ struct LocationSettingsView: View {
                                             RoundedRectangle(cornerRadius: 12)
                                                 .stroke(isSearchFieldFocused ? Color.adaptiveCardBackground : Color.clear, lineWidth: 2)
                                         )
+                                        
+                                        // Display search error if present
+                                        if let searchError = searchManager.searchError {
+                                            Text(searchError)
+                                                .font(.interCaption)
+                                                .foregroundColor(.orange)
+                                                .padding(.top, 4)
+                                        }
+                                        
+                                        // Display loading indicator while searching
+                                        if searchManager.isSearching {
+                                            HStack(spacing: 8) {
+                                                ProgressView()
+                                                    .scaleEffect(0.8)
+                                                    .tint(Color.adaptiveMuted)
+                                                Text("Searching...")
+                                                    .font(.interCaption)
+                                                    .foregroundColor(Color.adaptiveMuted)
+                                            }
+                                            .padding(.top, 4)
+                                        }
                                         
                                         // Dropdown with search results
                                         if isSearchFieldFocused && !searchManager.searchResults.isEmpty {
@@ -700,6 +850,16 @@ struct LocationSettingsView: View {
                     locationManager.requestLocation()
                 } else if !useDeviceLocation && !manualLocation.isEmpty {
                     geocodeLocation()
+                }
+                // Update search region based on user's location if available
+                if let location = locationManager.location {
+                    searchManager.updateRegion(with: location)
+                }
+            }
+            .onChange(of: locationManager.location) { _, newLocation in
+                // Update search region when location becomes available
+                if let location = newLocation {
+                    searchManager.updateRegion(with: location)
                 }
             }
         }
@@ -878,11 +1038,12 @@ struct LocationSettingsView: View {
 struct ProfileEditView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.managedObjectContext) private var viewContext
+    @AppStorage("weatherSensitivitiesJSON") private var weatherSensitivitiesJSON: String = ""
     var user: UserProfile
     
     @State private var name: String
-    @State private var age: Int
     @State private var selectedDiagnoses: Set<String> = []
+    @State private var selectedSensitivities: Set<String> = []
     @State private var otherDiagnosis = ""
     
     let commonDiagnoses = [
@@ -900,14 +1061,30 @@ struct ProfileEditView: View {
         "Other"
     ]
     
+    let sensitivityOptions = [
+        "Pressure shifts",
+        "Humidity swings",
+        "Storm fronts",
+        "Temperature changes"
+    ]
+    
     init(user: UserProfile) {
         self.user = user
         _name = State(initialValue: user.name ?? "")
-        _age = State(initialValue: Int(user.age))
         // Load existing diagnoses
         if let diagnosesArray = user.value(forKey: "diagnoses") as? NSArray,
            let diagnoses = diagnosesArray as? [String] {
             _selectedDiagnoses = State(initialValue: Set(diagnoses))
+        }
+        
+        if let json = UserDefaults.standard.string(forKey: "weatherSensitivitiesJSON"),
+           let data = json.data(using: .utf8),
+           let decoded = try? JSONDecoder().decode([String].self, from: data) {
+            _selectedSensitivities = State(initialValue: Set(decoded))
+        } else if let legacy = UserDefaults.standard.stringArray(forKey: "weatherSensitivities") {
+            _selectedSensitivities = State(initialValue: Set(legacy))
+        } else {
+            _selectedSensitivities = State(initialValue: [])
         }
     }
     
@@ -937,23 +1114,6 @@ struct ProfileEditView: View {
                                 .padding(12)
                                 .background(Color.adaptiveBackground)
                                 .cornerRadius(12)
-                            
-                            VStack(alignment: .leading, spacing: 10) {
-                                HStack {
-                                    Text("Age")
-                                        .font(.interBody)
-                                        .foregroundColor(Color.adaptiveText)
-                                    Spacer()
-                                    Text("\(age)")
-                                        .font(.interBody)
-                                        .foregroundColor(Color.adaptiveText)
-                                }
-                                Slider(value: Binding(
-                                    get: { Double(age) },
-                                    set: { age = Int($0) }
-                                ), in: 18...100, step: 1)
-                                .accentColor(Color.adaptiveCardBackground)
-                            }
                         }
                     }
                     .cardStyle()
@@ -1072,6 +1232,50 @@ struct ProfileEditView: View {
                     .cardStyle()
                     .padding(.horizontal)
                     
+                    // Weather Sensitivities Card
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack {
+                            Image(systemName: "waveform.path.ecg")
+                                .font(.title3)
+                                .foregroundColor(Color.adaptiveText)
+                            
+                            Text("Weather Sensitivities")
+                                .font(.interHeadline)
+                                .foregroundColor(Color.adaptiveText)
+                            
+                            Spacer()
+                        }
+                        
+                        Text("Select the weather triggers that usually get your attention. We’ll use them to highlight key moments in forecasts.")
+                            .font(.interCaption)
+                            .foregroundColor(Color.adaptiveMuted)
+                            .lineSpacing(4)
+                        
+                        VStack(spacing: 12) {
+                            ForEach(sensitivityOptions, id: \.self) { option in
+                                Button(action: {
+                                    if selectedSensitivities.contains(option) {
+                                        selectedSensitivities.remove(option)
+                                    } else {
+                                        selectedSensitivities.insert(option)
+                                    }
+                                }) {
+                                    HStack {
+                                        Image(systemName: selectedSensitivities.contains(option) ? "checkmark.circle.fill" : "circle")
+                                            .foregroundColor(selectedSensitivities.contains(option) ? Color.adaptiveCardBackground : Color.adaptiveMuted)
+                                        Text(option)
+                                            .foregroundColor(Color.adaptiveText)
+                                        Spacer()
+                                    }
+                                    .padding(.vertical, 6)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .cardStyle()
+                    .padding(.horizontal)
+                    
                     // Save Button
                     HStack {
                         Button("Cancel") {
@@ -1098,7 +1302,6 @@ struct ProfileEditView: View {
     
     private func saveProfile() {
         user.setValue(name, forKey: "name")
-        user.setValue(Int32(age), forKey: "age")
         // Store diagnoses as array
         let diagnosesArray = Array(selectedDiagnoses).filter { $0 != "Other" && !$0.isEmpty }
         user.setValue(diagnosesArray, forKey: "diagnoses")
@@ -1107,9 +1310,21 @@ struct ProfileEditView: View {
         do {
             try viewContext.save()
             print("✅ Updated user profile. Diagnoses: \(diagnosesArray)")
+            saveSensitivities()
             dismiss()
         } catch {
             print("❌ Error saving profile: \(error)")
+        }
+    }
+    
+    private func saveSensitivities() {
+        let array = Array(selectedSensitivities).sorted()
+        UserDefaults.standard.set(array, forKey: "weatherSensitivities")
+        if let data = try? JSONEncoder().encode(array),
+           let json = String(data: data, encoding: .utf8) {
+            weatherSensitivitiesJSON = json
+        } else {
+            weatherSensitivitiesJSON = ""
         }
     }
 }

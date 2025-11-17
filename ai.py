@@ -15,13 +15,98 @@ load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=api_key) if api_key else None
 
+
+def _describe_temperature(value: float) -> str:
+    if value <= 2:
+        return "chilly air"
+    if value <= 10:
+        return "cool air"
+    if value <= 18:
+        return "mild air"
+    if value <= 26:
+        return "warm air"
+    return "heat leaning heavy"
+
+
+def _describe_humidity(value: float) -> str:
+    if value >= 80:
+        return "heavy humidity"
+    if value >= 65:
+        return "humid air"
+    if value <= 35:
+        return "dry air"
+    return ""
+
+
+def _describe_wind(value: float) -> str:
+    if value >= 30:
+        return "gusty winds"
+    if value >= 18:
+        return "steady breeze"
+    return ""
+
+
+def _describe_pressure_trend(trend: Optional[str]) -> str:
+    if not trend:
+        return ""
+    if "dropping" in trend:
+        return "pressure is easing"
+    if "rising" in trend:
+        return "pressure is building"
+    return f"pressure feels {trend}"
+
+
+def _combine_descriptors(*descriptors: str) -> str:
+    parts = [d for d in descriptors if d]
+    if not parts:
+        return "steady weather"
+    if len(parts) == 1:
+        return parts[0]
+    return ", ".join(parts[:-1]) + f", {parts[-1]}"
+
+
+def _next_weekday_labels(start: datetime, count: int = 7) -> List[str]:
+    labels: List[str] = []
+    for i in range(1, count + 1):
+        day = start + timedelta(days=i)
+        labels.append(day.strftime("%a"))
+    return labels
+
+
+def _format_daily_message(
+    summary: Optional[str],
+    why_line: Optional[str],
+    comfort_tip: Optional[str],
+    sign_off: Optional[str]
+) -> str:
+    summary_text = summary.strip() if summary else "Weather feels gentle and steady today."
+    why_text = why_line.strip() if why_line else "Soft shifts may keep bodies feeling steadier."
+    comfort_text = comfort_tip.strip() if comfort_tip else ""
+    sign_off_text = sign_off.strip() if sign_off else "Move at a pace that feels kind to you."
+    
+    lines: List[str] = ["☀️ Daily Insight", "", summary_text, "", f"Why: {why_text}"]
+    
+    if comfort_text:
+        lines.extend(["", f"Comfort tip: {comfort_text}"])
+    
+    lines.extend(["", sign_off_text])
+    return "\n".join(lines).strip()
+
+
+ALLOWED_COMFORT_TIPS = [
+    "Keep your day flexible.",
+    "Move at a pace that feels kind to you.",
+    "Small pauses can help you stay grounded."
+]
+
+
 FORECAST_VARIANTS = {
     "LOW": [
         "No major shifts expected—take a deep breath and enjoy the calm.",
         "Conditions appear stable—today might offer you a little space.",
         "Weather looks gentle—move at your pace and consider light routines.",
         "The skies are steady for now—energy permitting, this may be a good window.",
-        "Today’s forecast holds quiet trends—you might find a soft rhythm to settle into."
+        "Today's forecast holds quiet trends—you might find a soft rhythm to settle into."
     ],
     "MODERATE": [
         "Weather nudges are on the way—ease into the day and keep buffers open.",
@@ -98,7 +183,7 @@ GENERIC_SUPPORT_VARIANTS = [
     "Pacing, hydration, and kind self-talk can make any weather wobble easier.",
     "Line up comfort items and low-effort meals so you can respond softly.",
     "Gentle movement, rest breaks, and warm layers can cushion the day.",
-    "Keep plans flexible and energy-friendly—you’re allowed to adjust as needed.",
+    "Keep plans flexible and energy-friendly—you're allowed to adjust as needed.",
     "Small comforts—tea, calm music, or grounding breaths—can go a long way."
 ]
 
@@ -439,7 +524,7 @@ def _choose_sign_off(diagnoses: Optional[List[str]], location: Optional[str]) ->
         "You deserve ease—take the day at the rhythm that feels kindest.",
         "Listen to your body and let supportive rest be part of the plan.",
         "Small comforts count—let them be your anchor today.",
-        "You’re allowed to go softly; the forecast can still be navigated with care."
+        "You're allowed to go softly; the forecast can still be navigated with care."
     ]
 
     diagnosis_sign_offs = {
@@ -460,7 +545,7 @@ def _choose_sign_off(diagnoses: Optional[List[str]], location: Optional[str]) ->
         ],
         "pots": [
             "Hold onto steady breaths, salted sips, and your reliable pacing.",
-            "Root for calm circulation—legs up, heart steady, you’re doing enough.",
+            "Root for calm circulation—legs up, heart steady, you're doing enough.",
             "May gentle transitions and hydration keep your day feeling grounded."
         ],
         "chronic fatigue syndrome": [
@@ -592,421 +677,231 @@ def generate_flare_risk_assessment(
     location: Optional[str] = None,
     hourly_forecast: Optional[List[Dict[str, float]]] = None
 ) -> Tuple[str, str, str, str, List[str], Optional[str], str, int, Optional[str], Optional[str]]:
-    """
-    Generate flare risk assessment with research papers from EuropePMC.
-    
-    Args:
-        current_weather: Dictionary with pressure, humidity, temperature, wind, condition
-        pressure_trend: Optional string describing pressure trend (e.g., "dropping quickly", "stable")
-        weather_factor: Strongest weather factor affecting the user
-        papers: List of paper dictionaries from paper_search
-        user_diagnoses: List of user's health conditions
-        location: Optional location string
-        hourly_forecast: Optional list of hourly forecast data
-        
-    Returns:
-        Tuple of (risk, forecast, why, full_message, citations_list, support_note, alert_severity, personalization_score, personal_anecdote, behavior_prompt)
-        risk: "LOW", "MODERATE", or "HIGH"
-        forecast: 1-sentence forecast message
-        why: Plain-language explanation
-        full_message: Full AI message for backward compatibility
-        citations: List of source references
-        support_note: Optional emotional encouragement
-        alert_severity: "low", "moderate", or "sharp"
-        personalization_score: 1-5
-        personal_anecdote: Optional anecdote
-        behavior_prompt: Optional prompt for user action
-    """
+    """Generate a daily flare insight that obeys strict formatting rules."""
     if not client:
-        error_msg = "AI insights are not available. Please configure your OpenAI API key in the .env file."
-        return ("MODERATE", error_msg, "Unable to generate assessment.", error_msg, [], None, "moderate", 2, None, None)
-    
+        fallback_message = _format_daily_message(
+            "Weather feels steady today.",
+            "Soft shifts keep things gentler on sensitive bodies.",
+            ALLOWED_COMFORT_TIPS[1],
+            "Move kindly through the day."
+        )
+        return (
+            "MODERATE",
+            "Weather looks gentle today.",
+            "Soft shifts keep things gentler on sensitive bodies.",
+            fallback_message,
+            [],
+            None,
+            "moderate",
+            2,
+            None,
+            None
+        )
+
     papers = papers or []
-    
-    # Build weather context
     pressure = current_weather.get("pressure", 1013)
     humidity = current_weather.get("humidity", 50)
     temperature = current_weather.get("temperature", 20)
     wind = current_weather.get("wind", 0)
-    condition = current_weather.get("condition", "Unknown")
-    
-    # Don't assume specific triggers - only use what the user has explicitly provided
-    # We'll mention common triggers for their conditions in the prompt, but won't claim the user has those sensitivities
-    # This prevents the AI from referencing triggers the user hasn't confirmed
-    triggers_str = "Common weather factors"  # Generic - let the AI discuss weather factors without assuming specific sensitivities
-    
-    # Build prompt based on whether we have papers
-    if papers and len(papers) > 0:
-        papers_text = format_papers_for_prompt(papers)
-        
-        diagnoses_str = ", ".join(user_diagnoses) if user_diagnoses else "weather-sensitive conditions"
-        location_str = f" in {location}" if location else ""
-        
-        # Build personalized context
-        personalization = ""
-        if user_diagnoses and len(user_diagnoses) > 0:
-            if len(user_diagnoses) == 1:
-                personalization = f"You are writing for someone with {diagnoses_str}. Address them directly and personally, as if you understand their specific experience with this condition."
-            else:
-                personalization = f"You are writing for someone with multiple conditions: {diagnoses_str}. Address them directly and personally, acknowledging how weather affects their combination of conditions."
-        else:
-            personalization = "Address the user directly and personally, as someone who experiences weather sensitivity."
-        
-        # Build hourly forecast section if available
-        hourly_forecast_text = ""
-        if hourly_forecast and len(hourly_forecast) > 0:
-            hourly_forecast_text = "\n\nHourly Forecast (next 24 hours):\n"
-            for i, hour_data in enumerate(hourly_forecast[:24]):  # Limit to 24 hours
-                hour_time = hour_data.get("timestamp", "")
-                hour_pressure = hour_data.get("pressure", 0)
-                hour_humidity = hour_data.get("humidity", 0)
-                hour_temp = hour_data.get("temperature", 0)
-                hour_wind = hour_data.get("wind", 0)
-                
-                # Try to format time nicely
-                try:
-                    if isinstance(hour_time, str):
-                        dt = datetime.fromisoformat(hour_time.replace('Z', '+00:00'))
-                        time_str = dt.strftime("%I:%M %p")
-                    else:
-                        time_str = f"Hour {i+1}"
-                except:
-                    time_str = f"Hour {i+1}"
-                
-                hourly_forecast_text += f"- {time_str}: {hour_temp:.0f}°C, {hour_pressure:.0f} hPa, {hour_humidity:.0f}% humidity, {hour_wind:.0f} km/h wind\n"
-        
-        prompt = f"""You are the FlareWeather Forecasting Assistant.
-
-WHY YOU EXIST:
-Millions of people live with chronic pain, fatigue, and weather-sensitive conditions such as fibromyalgia, migraines, arthritis, chronic fatigue, and POTS. Weather doesn't cause these conditions, but sudden environmental shifts can make symptoms harder to manage. People want clarity, not fear; insight, not uncertainty. Your purpose is to translate complex weather patterns into calm, supportive guidance that helps someone plan their day with confidence.
-
-Your mission:
-Provide clear, supportive, symptom-aware weather insights based purely on observable patterns — helping people understand *why* the weather might influence their day without offering medical advice.
-
-Tone:
-- Calm, steady, validating
-- Supportive, never alarming
-- Avoid jargon or medical claims
-- Focus on empowering the user, not warning them
-
-Current Weather Data{location_str}:
-- Pressure: {pressure:.0f} hPa {f"({pressure_trend})" if pressure_trend else ""}
-- Humidity: {humidity:.0f}%
-- Temperature: {temperature:.0f}°C
-- Wind: {wind:.0f} km/h
-- Condition: {condition}
-{hourly_forecast_text}
-User's Health Conditions: {diagnoses_str if user_diagnoses else "Weather-sensitive chronic condition"}
-
-Research Papers:
-{papers_text}
-
-Analyze today's weather pattern and provide:
-
-Risk logic:
-LOW: Stable pressure, gentle humidity and temp changes, slow-moving systems
-MEDIUM: Moderate pressure or humidity shifts, mixed volatility across the day, approaching fronts
-HIGH: Rapid pressure drops, sharp humidity or temperature spikes, strong incoming storms
-
-Evidence-based correlation patterns:
-- Rapid pressure drops → increased migraine and fibro sensitivity
-- Sharp humidity swings → joint swelling and stiffness potential for arthritis
-- Temperature swings → fatigue, muscle tension, or stiffness
-- Storm fronts → multi-symptom sensitivity due to combined pressure + humidity + wind shifts
-- Stable weather → generally calmer symptom profiles
-
-Writing guidelines:
-- Empathy first
-- No fear-based language
-- No deterministic claims ("you will…")
-- Use phrases like: "may make your body feel more reactive", "your energy may vary", "you might notice"
-- Always close with grounding, supportive guidance ("pace with intention", "keep plans flexible", "listen to your energy")
-
-Examples:
-LOW: "Weather looks gentle today — stable pressure and soft shifts mean many people feel steadier on days like this."
-MEDIUM: "Some changes in pressure and humidity may make your body a bit more reactive, so it could help to pace your activities."
-HIGH: "Rapid pressure changes and an incoming storm system can raise sensitivity for many conditions — planning extra room for rest may support you."
-
-Never do:
-- No medical advice or treatment suggestions
-- No diagnosis
-- No negative, fear-driven, or absolute statements
-- No invented research
-
-Core goal:
-Translate the day's weather into emotional clarity — the kind that helps someone move through their day with confidence, understanding, and a sense of control.
-
-Output your response as valid JSON in this exact format:
-{{
-  "risk": "LOW | MODERATE | HIGH",
-  "forecast": "One supportive sentence summarizing today's flare risk.",
-  "why": "A brief, clear explanation of WHY today's weather pattern may affect their body.",
-  "sources": ["List of trustworthy sources used"]
-}}
-
-{personalization}
-Write personally and directly to this user. Use "you" and "your" throughout. Be empathetic and understanding."""
-        
-    else:
-        # No papers - use generic sources
-        diagnoses_str = ", ".join(user_diagnoses) if user_diagnoses else "weather-sensitive conditions"
-        location_str = f" in {location}" if location else ""
-        
-        # Build personalized context
-        personalization = ""
-        if user_diagnoses and len(user_diagnoses) > 0:
-            if len(user_diagnoses) == 1:
-                personalization = f"You are writing for someone with {diagnoses_str}. Address them directly and personally, as if you understand their specific experience with this condition."
-            else:
-                personalization = f"You are writing for someone with multiple conditions: {diagnoses_str}. Address them directly and personally, acknowledging how weather affects their combination of conditions."
-        else:
-            personalization = "Address the user directly and personally, as someone who experiences weather sensitivity."
-        
-        # Build hourly forecast section if available
-        hourly_forecast_text = ""
-        if hourly_forecast and len(hourly_forecast) > 0:
-            hourly_forecast_text = "\n\nHourly Forecast (next 24 hours):\n"
-            for i, hour_data in enumerate(hourly_forecast[:24]):  # Limit to 24 hours
-                hour_time = hour_data.get("timestamp", "")
-                hour_pressure = hour_data.get("pressure", 0)
-                hour_humidity = hour_data.get("humidity", 0)
-                hour_temp = hour_data.get("temperature", 0)
-                hour_wind = hour_data.get("wind", 0)
-                
-                # Try to format time nicely
-                try:
-                    if isinstance(hour_time, str):
-                        dt = datetime.fromisoformat(hour_time.replace('Z', '+00:00'))
-                        time_str = dt.strftime("%I:%M %p")
-                    else:
-                        time_str = f"Hour {i+1}"
-                except:
-                    time_str = f"Hour {i+1}"
-                
-                hourly_forecast_text += f"- {time_str}: {hour_temp:.0f}°C, {hour_pressure:.0f} hPa, {hour_humidity:.0f}% humidity, {hour_wind:.0f} km/h wind\n"
-        
-        prompt = f"""You are the FlareWeather Forecasting Assistant.
-
-WHY YOU EXIST:
-Millions of people live with chronic pain, fatigue, and weather-sensitive conditions such as fibromyalgia, migraines, arthritis, chronic fatigue, and POTS. Weather doesn't cause these conditions, but sudden environmental shifts can make symptoms harder to manage. People want clarity, not fear; insight, not uncertainty. Your purpose is to translate complex weather patterns into calm, supportive guidance that helps someone plan their day with confidence.
-
-Your mission:
-Provide clear, supportive, symptom-aware weather insights based purely on observable patterns — helping people understand *why* the weather might influence their day without offering medical advice.
-
-Tone:
-- Calm, steady, validating
-- Supportive, never alarming
-- Avoid jargon or medical claims
-- Focus on empowering the user, not warning them
-
-Current Weather Data{location_str}:
-- Pressure: {pressure:.0f} hPa {f"({pressure_trend})" if pressure_trend else ""}
-- Humidity: {humidity:.0f}%
-- Temperature: {temperature:.0f}°C
-- Wind: {wind:.0f} km/h
-- Condition: {condition}
-{hourly_forecast_text}
-User's Health Conditions: {diagnoses_str if user_diagnoses else "Weather-sensitive chronic condition"}
-
-Analyze today's weather pattern and provide:
-
-Risk logic:
-LOW: Stable pressure, gentle humidity and temp changes, slow-moving systems
-MEDIUM: Moderate pressure or humidity shifts, mixed volatility across the day, approaching fronts
-HIGH: Rapid pressure drops, sharp humidity or temperature spikes, strong incoming storms
-
-Evidence-based correlation patterns:
-- Rapid pressure drops → increased migraine and fibro sensitivity
-- Sharp humidity swings → joint swelling and stiffness potential for arthritis
-- Temperature swings → fatigue, muscle tension, or stiffness
-- Storm fronts → multi-symptom sensitivity due to combined pressure + humidity + wind shifts
-- Stable weather → generally calmer symptom profiles
-
-Writing guidelines:
-- Empathy first
-- No fear-based language
-- No deterministic claims ("you will…")
-- Use phrases like: "may make your body feel more reactive", "your energy may vary", "you might notice"
-- Always close with grounding, supportive guidance ("pace with intention", "keep plans flexible", "listen to your energy")
-
-Examples:
-LOW: "Weather looks gentle today — stable pressure and soft shifts mean many people feel steadier on days like this."
-MEDIUM: "Some changes in pressure and humidity may make your body a bit more reactive, so it could help to pace your activities."
-HIGH: "Rapid pressure changes and an incoming storm system can raise sensitivity for many conditions — planning extra room for rest may support you."
-
-Never do:
-- No medical advice or treatment suggestions
-- No diagnosis
-- No negative, fear-driven, or absolute statements
-- No invented research
-
-Core goal:
-Translate the day's weather into emotional clarity — the kind that helps someone move through their day with confidence, understanding, and a sense of control.
-
-Output your response as valid JSON in this exact format:
-{{
-  "risk": "LOW | MODERATE | HIGH",
-  "forecast": "One supportive sentence summarizing today's flare risk.",
-  "why": "A brief, clear explanation of WHY today's weather pattern may affect their body.",
-  "sources": ["List of trustworthy sources used"]
-}}
-
-{personalization}
-Write personally and directly to this user. Use "you" and "your" throughout. Be empathetic and understanding."""
-    
-    try:
-        completion = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "You are the FlareWeather Forecasting Assistant. Your purpose is to translate complex weather patterns into calm, supportive guidance that helps people with weather-sensitive conditions plan their day with confidence. Use calm, steady, validating language. Avoid fear-based language, medical claims, or deterministic statements. Focus on empowering the user, not warning them. Your mission is to provide emotional clarity — the kind that helps someone move through their day with confidence, understanding, and a sense of control."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.7,
-            response_format={"type": "json_object"}
-        )
-        
-        response_text = completion.choices[0].message.content.strip()
-        
-        # Parse JSON response
-        try:
-            response_json = json.loads(response_text)
-            risk = response_json.get("risk", "MODERATE").upper()
-            forecast_from_model = response_json.get("forecast")
-            why = response_json.get("why", "Weather data analysis in progress.")
-            sources = response_json.get("sources", [])
-            
-            # Debug logging
-            print(f"📊 AI Response - Risk: {risk}, Forecast: {forecast_from_model[:100] if forecast_from_model else 'None'}...")
-            
-            # Filter why immediately after parsing to catch app-specific messages
-            why_before_filter = why
-            why = _filter_app_messages(why)
-            if why != why_before_filter:
-                print(f"🔍 Filtered 'why' field. Before: {why_before_filter[:150]}... After: {why[:150] if why else 'None'}...")
-            
-            # Check if AI returned support_note, behavior_prompt, or personal_anecdote
-            # Even though we generate these ourselves, the AI might return them anyway
-            # If it does, we need to filter them to ensure no app-specific messages
-            ai_support_note = response_json.get("support_note")
-            ai_behavior_prompt = response_json.get("behavior_prompt")
-            ai_personal_anecdote = response_json.get("personal_anecdote")
-            
-            # Filter any AI-generated fields that might contain app-specific messages
-            if ai_support_note:
-                ai_support_note_before = ai_support_note
-                ai_support_note = _filter_app_messages(ai_support_note)
-                if ai_support_note != ai_support_note_before:
-                    print(f"🔍 Filtered AI support_note. Before: {ai_support_note_before[:150]}... After: {ai_support_note[:150] if ai_support_note else 'None'}...")
-                # Don't use AI's support_note - we generate our own
-            if ai_behavior_prompt:
-                ai_behavior_prompt_before = ai_behavior_prompt
-                ai_behavior_prompt = _filter_app_messages(ai_behavior_prompt)
-                if ai_behavior_prompt != ai_behavior_prompt_before:
-                    print(f"🔍 Filtered AI behavior_prompt. Before: {ai_behavior_prompt_before[:150]}... After: {ai_behavior_prompt[:150] if ai_behavior_prompt else 'None'}...")
-                # Don't use AI's behavior_prompt - we generate our own
-            if ai_personal_anecdote:
-                ai_personal_anecdote_before = ai_personal_anecdote
-                ai_personal_anecdote = _filter_app_messages(ai_personal_anecdote)
-                if ai_personal_anecdote != ai_personal_anecdote_before:
-                    print(f"🔍 Filtered AI personal_anecdote. Before: {ai_personal_anecdote_before[:150]}... After: {ai_personal_anecdote[:150] if ai_personal_anecdote else 'None'}...")
-                # Don't use AI's personal_anecdote - we generate our own
-        except json.JSONDecodeError as e:
-            print(f"⚠️  Failed to parse JSON response: {e}")
-            print(f"📝 Raw response: {response_text[:500]}")
-            response_upper = response_text.upper()
-            if "HIGH" in response_upper and ("RISK" in response_upper or "FLARE" in response_upper):
-                risk = "HIGH"
-            elif "MODERATE" in response_upper and ("RISK" in response_upper or "FLARE" in response_upper):
-                risk = "MODERATE"
-            elif "LOW" in response_upper and ("RISK" in response_upper or "FLARE" in response_upper):
-                risk = "LOW"
-            else:
-                risk = "MODERATE"
-            forecast_from_model = None
-            why = response_text
-            sources = []
-    except Exception as e:
-        print(f"❌ Error generating flare risk assessment: {e}")
-        import traceback
-        traceback.print_exc()
-        if pressure_trend and "drop" in (pressure_trend or "").lower():
-            risk = "HIGH"
-            why = "Barometric pressure drops may trigger symptoms for some people with weather-sensitive conditions."
-        elif pressure < 1000:
-            risk = "MODERATE"
-            why = "Lower barometric pressure can potentially influence symptoms for some conditions."
-        else:
-            risk = "LOW"
-            why = "Stable weather patterns are typically associated with fewer flare-ups for some people."
-        sources = []
-        forecast_from_model = None
 
     severity_label, signed_delta, direction = _analyze_pressure_window(hourly_forecast, current_weather)
     alert_severity = severity_label
 
-    # Always prefer AI forecast - trust the AI to do a good job
-    if forecast_from_model:
-        forecast = forecast_from_model
-        print(f"✅ Using AI-generated forecast: {forecast[:100]}...")
-    else:
-        # Fall back to our pool if AI didn't provide a forecast
-        forecast = _choose_forecast(risk, severity_label)
-        print(f"⚠️  No AI forecast, using pool: {forecast[:100]}...")
+    weather_descriptor = _combine_descriptors(
+        _describe_pressure_trend(pressure_trend),
+        _describe_temperature(temperature),
+        _describe_humidity(humidity),
+        _describe_wind(wind)
+    )
 
-    support_note = _choose_support_note(user_diagnoses, severity_label, signed_delta, direction, risk)
+    if direction == "drops":
+        hourly_note = "Upcoming hours lean more changeable."
+    elif direction == "rises":
+        hourly_note = "Upcoming hours may feel more settled."
+    else:
+        hourly_note = "Upcoming hours stay fairly steady."
+
+    diagnoses_str = ", ".join(user_diagnoses) if user_diagnoses else "general weather sensitivity"
+    location_str = f"around {location}" if location else "in your area"
+    comfort_clause = ", ".join([f'"{tip}"' for tip in ALLOWED_COMFORT_TIPS])
+    papers_text = format_papers_for_prompt(papers) if papers else "Reference trusted health organizations only if needed."
+
+    prompt = f"""You are the FlareWeather Forecasting Assistant.
+
+CONTEXT:
+- Location: {location_str}
+- Weather mood: {weather_descriptor}.
+- Hourly cue: {hourly_note}
+- Diagnoses in mind: {diagnoses_str}
+- Comfort tips you may use exactly: {comfort_clause}
+- Optional research notes: {papers_text}
+
+MANDATORY STYLE:
+- Plain, everyday language only.
+- Never use numbers, units, or percentages.
+- Never reference technical meteorology (no hPa, dewpoint, fronts, etc.).
+- Never give medical advice or instructions.
+- Never promise outcomes; use gentle "may" framing.
+- Allowed feeling words: reactive, easier, gentle, steady, calmer.
+- Keep sentences short and calm.
+- Even if context shows numbers, do NOT include them in your output.
+
+OUTPUT VALID JSON EXACTLY:
+{{
+  "risk": "LOW | MODERATE | HIGH",
+  "forecast": "Short headline with no numbers.",
+  "why": "Brief sentence on why bodies may notice today.",
+  "sources": ["Optional short source names"],
+  "support_note": "Optional gentle note.",
+  "personal_anecdote": "Optional relatable line.",
+  "behavior_prompt": "Optional gentle reminder.",
+  "daily_insight": {{
+    "summary_sentence": "One-sentence summary of today's pattern.",
+    "why_line": "One-sentence hint about how sensitive bodies may feel.",
+    "comfort_tip": "Either one of the allowed comfort tips or empty string.",
+    "sign_off": "One calm sign-off sentence."
+  }}
+}}
+
+DO NOT:
+- Use numbers, degrees, or percentages.
+- Mention pain, attacks, flare-ups, or danger.
+- Add extra sections beyond the JSON.
+- Break the required tone."""
+
+    risk = "MODERATE"
+    forecast_from_model: Optional[str] = None
+    why_from_model: Optional[str] = None
+    sources: List[str] = []
+    daily_summary: Optional[str] = None
+    daily_why_line: Optional[str] = None
+    daily_comfort_tip: str = ""
+    daily_sign_off: Optional[str] = None
+
+    try:
+        completion = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You translate weather moods into calm, compassionate guidance for weather-sensitive people."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.6,
+            response_format={"type": "json_object"}
+        )
+        response_text = completion.choices[0].message.content.strip()
+        response_json = json.loads(response_text)
+
+        risk = response_json.get("risk", "MODERATE").upper()
+        forecast_from_model = response_json.get("forecast")
+        why_from_model = response_json.get("why")
+        sources = response_json.get("sources", []) or []
+
+        daily_json = response_json.get("daily_insight", {}) or {}
+        daily_summary = daily_json.get("summary_sentence")
+        daily_why_line = daily_json.get("why_line")
+        daily_comfort_tip = daily_json.get("comfort_tip") or ""
+        daily_sign_off = daily_json.get("sign_off")
+
+        if daily_comfort_tip:
+            normalized_tip = daily_comfort_tip.strip().lower()
+            allowed_normalized = [tip.lower() for tip in ALLOWED_COMFORT_TIPS]
+            if normalized_tip not in allowed_normalized:
+                daily_comfort_tip = ""
+    except Exception as exc:  # noqa: BLE001
+        print(f"❌ Error generating daily insight JSON: {exc}")
+        import traceback
+        traceback.print_exc()
+        if pressure_trend and "drop" in (pressure_trend or "").lower():
+            risk = "HIGH"
+            why_from_model = "Quick shifts may leave sensitive bodies feeling more reactive."
+        elif pressure < 1005:
+            risk = "MODERATE"
+            why_from_model = "Soft swings may feel a little less steady."
+        else:
+            risk = "LOW"
+            why_from_model = "Steadier cues often feel gentler on sensitive bodies."
+        forecast_from_model = None
+        daily_summary = None
+        daily_why_line = None
+        daily_comfort_tip = ""
+        daily_sign_off = None
+        sources = []
+
+    if not daily_summary:
+        if risk == "HIGH":
+            daily_summary = "Fast swings keep the day feeling more reactive."
+        elif risk == "LOW":
+            daily_summary = "Weather settles into a gentler groove."
+        else:
+            daily_summary = "Weather wobbles softly through the day."
+
+    if not daily_why_line:
+        if severity_label == "sharp":
+            daily_why_line = "Rapid cues may leave sensitive bodies feeling more reactive."
+        elif severity_label == "moderate":
+            daily_why_line = "Mixed cues may feel a touch less steady."
+        else:
+            daily_why_line = "Steady cues often feel easier on the body."
+
+    if not daily_comfort_tip and risk != "LOW":
+        daily_comfort_tip = ALLOWED_COMFORT_TIPS[0]
+    elif not daily_comfort_tip:
+        daily_comfort_tip = ""
+
+    daily_sign_off = daily_sign_off or _choose_sign_off(user_diagnoses, location)
+
+    filtered_summary = _filter_app_messages(daily_summary) or daily_summary
+    filtered_why_line = _filter_app_messages(daily_why_line) or daily_why_line
+    filtered_comfort = _filter_app_messages(daily_comfort_tip) or daily_comfort_tip
+    filtered_sign_off = _filter_app_messages(daily_sign_off) or daily_sign_off
+
+    formatted_daily_message = _format_daily_message(
+        filtered_summary,
+        filtered_why_line,
+        filtered_comfort,
+        filtered_sign_off
+    )
+
+    if forecast_from_model:
+        forecast = _filter_app_messages(forecast_from_model)
+    else:
+        forecast = _filter_app_messages(_choose_forecast(risk, severity_label))
+
+    why_text = _filter_app_messages(daily_why_line) or _filter_app_messages(why_from_model) or ""
+
+    support_note = _filter_app_messages(
+        _choose_support_note(user_diagnoses, severity_label, signed_delta, direction, risk)
+    )
+
     personal_anecdote = None
     normalized_diags = [d.lower() for d in (user_diagnoses or [])]
     if risk == "HIGH" and signed_delta <= -5:
         for diag in normalized_diags:
             if diag in PERSONAL_ANECDOTES:
-                personal_anecdote = random.choice(PERSONAL_ANECDOTES[diag])
+                personal_anecdote = _filter_app_messages(random.choice(PERSONAL_ANECDOTES[diag]))
                 break
 
     behavior_prompt = None
-    if risk in {"MODERATE", "HIGH"} and random.random() < 0.7:
-        behavior_prompt = random.choice(BEHAVIOR_PROMPTS)
+    if risk in {"MODERATE", "HIGH"} and random.random() < 0.5:
+        behavior_prompt = _filter_app_messages(random.choice(BEHAVIOR_PROMPTS))
 
     personalization_score = _personalization_score(user_diagnoses, support_note, severity_label)
 
     if sources:
         sources = [s for s in sources if s]
-
-    # Filter out app-specific messages from AI response
-    why = _filter_app_messages(why)
-    support_note = _filter_app_messages(support_note)
-    forecast = _filter_app_messages(forecast)
-    
-    sign_off = _choose_sign_off(user_diagnoses, location)
-    if why:
-        base_message = why.rstrip()
-    else:
-        base_message = forecast.rstrip() if forecast else ""
-    
-    # Format message with proper punctuation
-    if base_message:
-        # Ensure base_message ends with punctuation (period, exclamation, or question mark)
-        base_message = base_message.rstrip()
-        if base_message and base_message[-1] not in '.!?':
-            base_message += '.'
-        # Join with sign-off (sign_off typically starts with a capital letter, so just add space)
-        full_message = f"{base_message} {sign_off}"
-    else:
-        full_message = sign_off
-    
-    # Clean up any double spaces or punctuation issues
-    full_message = re.sub(r'\s+', ' ', full_message)  # Replace multiple spaces with single space
-    full_message = full_message.strip()
-    
-    # Final safety check: filter full_message one more time to catch any app-specific messages
-    # This ensures we catch messages that might have been in the original text or in the sign_off
-    full_message = _filter_app_messages(full_message) or sign_off
+    elif papers:
+        sources = [
+            paper.get("source") or paper.get("title")
+            for paper in papers
+            if paper.get("source") or paper.get("title")
+        ]
 
     return (
         risk,
-        forecast,
-        why,
-        full_message,
-        sources,
+        forecast or "",
+        why_text or "",
+        formatted_daily_message,
+        sources or [],
         support_note,
         alert_severity,
         personalization_score,
@@ -1060,131 +955,157 @@ def generate_weekly_forecast_insight(
     user_diagnoses: Optional[List[str]] = None,
     location: Optional[str] = None
 ) -> Tuple[str, List[str]]:
-    """
-    Generate a weekly forecast insight previewing expected symptoms over the next 7 days.
-    
-    Args:
-        weekly_forecast: List of dictionaries with daily forecast data (timestamp, temperature, humidity, pressure, wind)
-        user_diagnoses: List of user's health conditions
-        location: Optional location string
-        
-    Returns:
-        Tuple containing the weekly forecast insight (~150 words) and a list of sources
-    """
+    """Generate a weekly outlook that follows the locked structure."""
     if not client:
-        return (
-            "Weekly forecast insights are not available. Please configure your OpenAI API key.",
-            []
-        )
-    
-    if not weekly_forecast or len(weekly_forecast) == 0:
-        return ("Weekly forecast data is not available at this time.", [])
-    
-    # Build forecast summary
-    from datetime import datetime
-    forecast_text = "\n\n7-Day Forecast:\n"
-    for i, day_data in enumerate(weekly_forecast[:7]):  # Next 7 days
-        day_time = day_data.get("timestamp", "")
-        day_temp = day_data.get("temperature", 0)
-        day_humidity = day_data.get("humidity", 0)
-        day_pressure = day_data.get("pressure", 0)
-        day_wind = day_data.get("wind", 0)
-        
-        # Format date
-        try:
-            if isinstance(day_time, str):
-                dt = datetime.fromisoformat(day_time.replace('Z', '+00:00'))
-                date_str = dt.strftime("%A, %B %d")
-            else:
-                date_str = f"Day {i+1}"
-        except:
-            date_str = f"Day {i+1}"
-        
-        forecast_text += f"- {date_str}: {day_temp:.0f}°C, {day_pressure:.0f} hPa, {day_humidity:.0f}% humidity, {day_wind:.0f} km/h wind\n"
-    
-    diagnoses_str = ", ".join(user_diagnoses) if user_diagnoses else "weather-sensitive conditions"
-    location_str = f" in {location}" if location else ""
-    
-    # Build personalized context
-    personalization = ""
-    if user_diagnoses and len(user_diagnoses) > 0:
-        if len(user_diagnoses) == 1:
-            personalization = f"You are writing for someone with {diagnoses_str}. Address them directly and personally."
-        else:
-            personalization = f"You are writing for someone with multiple conditions: {diagnoses_str}. Address them directly and personally."
+        payload = json.dumps({
+            "weekly_summary": "Weekly outlook is offline. Please check back soon.",
+            "daily_breakdown": []
+        })
+        return (payload, [])
+
+    if not weekly_forecast:
+        payload = json.dumps({
+            "weekly_summary": "Weekly forecast data is not available at this time.",
+            "daily_breakdown": []
+        })
+        return (payload, [])
+
+    forecast_entries = weekly_forecast[:7]
+    if not forecast_entries:
+        payload = json.dumps({
+            "weekly_summary": "Weekly forecast data is not available at this time.",
+            "daily_breakdown": []
+        })
+        return (payload, [])
+
+    if len(forecast_entries) > 1:
+        ordered_entries = forecast_entries[1:] + forecast_entries[:1]
     else:
-        personalization = "Address the user directly and personally as someone who experiences weather sensitivity."
-    
-    prompt = f"""You are FlareWeather, an emotionally intelligent and scientifically grounded assistant built for people with weather-sensitive chronic conditions.
+        ordered_entries = forecast_entries
 
-{personalization}
+    weekday_labels = _next_weekday_labels(datetime.utcnow(), count=7)
 
-{forecast_text}
+    while len(ordered_entries) < len(weekday_labels):
+        ordered_entries.append(ordered_entries[-1])
 
-Based on this 7-day weather forecast{location_str}, provide a brief preview (~150 words) of what the user might expect for their symptoms over the coming week. 
+    context_lines = ["Weekly Weather Notes:"]
+    prev_pressure: Optional[float] = None
 
-Focus on:
-- Which days may have higher or lower symptom risk based on weather patterns
-- Specific weather changes to watch for (pressure drops, temperature swings, humidity spikes)
-- Days that might be better for planning activities
-- General trends over the week
-- If there's a stretch where weather triggers subside noticeably, call it out as a "Low Impact Window" with the relevant day/time range
+    for label, day_data in zip(weekday_labels, ordered_entries):
+        temp = day_data.get("temperature", 0)
+        humidity = day_data.get("humidity", 0)
+        wind = day_data.get("wind", 0)
+        pressure = day_data.get("pressure", prev_pressure if prev_pressure is not None else 1013)
 
-IMPORTANT:
-- DO NOT start with greetings like "Dear User", "Hello", or similar. Start directly with the forecast insight.
-- NEVER tell the user how they feel or what symptoms they're experiencing. Use language like "may experience", "could trigger", "might find", "some people with [condition] notice", etc.
-- NEVER make definitive statements about the user's current state.
-- Only discuss potential effects and patterns based on the forecast.
-- Keep it encouraging, practical, and focused on planning ahead (especially highlighting any Low Impact Window).
-- Reference specific days (e.g., "Monday" or "mid-week") when discussing weather changes.
-- Be specific about which weather factors (pressure, temperature, humidity) might affect symptoms on which days.
-- Do NOT mention asking for more insights or chat features.
-- Mention 1-2 trusted references (titles or organisations with URLs) that support your guidance. Introduce each reference inline with a phrase like "Source:" so it can be extracted later.
-- Absolutely do NOT respond in JSON or markdown code fences. Use natural language paragraphs only.
-- Present your response as 2-3 short paragraphs separated by a blank line. Avoid bullet lists.
+        descriptors = [_describe_temperature(temp)]
+        humidity_desc = _describe_humidity(humidity)
+        if humidity_desc:
+            descriptors.append(humidity_desc)
+        wind_desc = _describe_wind(wind)
+        if wind_desc:
+            descriptors.append(wind_desc)
 
-Write in a friendly, supportive tone that helps the user plan their week. Start directly with the forecast insight (no greetings). End the message naturally without inviting further questions or mentioning chat features."""
+        if prev_pressure is None:
+            descriptors.append("pressure steadies")
+        else:
+            delta = pressure - prev_pressure
+            if delta <= -4:
+                descriptors.append("pressure eases")
+            elif delta >= 4:
+                descriptors.append("pressure builds")
+            else:
+                descriptors.append("pressure steadies")
+
+        descriptor_text = _combine_descriptors(*descriptors)
+        context_lines.append(f"- {label}: {descriptor_text}")
+        prev_pressure = pressure
+
+    diagnoses_str = ", ".join(user_diagnoses) if user_diagnoses else "weather-sensitive conditions"
+    location_note = f" near {location}" if location else ""
+    weekday_clause = ", ".join(weekday_labels)
+
+    prompt_context = "\n".join(context_lines)
+    prompt = f"""You are FlareWeather, a calm weekly planning assistant for weather-sensitive people.
+
+User context: {diagnoses_str}{location_note}.
+
+{prompt_context}
+
+Use the weekday order exactly as provided: {weekday_clause}.
+For each day in that order, craft:
+- weather_pattern: 3-6 everyday words describing the weather feel (no numbers).
+- body_feel: 5-9 gentle words on how a sensitive body may feel (use "may"/"might").
+
+Return JSON EXACTLY:
+{{
+  "weekly_summary": "One to two sentences summarizing the week (no numbers, no greetings).",
+  "daily_patterns": [
+    {{"weather_pattern": "...", "body_feel": "..."}},
+    ... (7 total entries)
+  ],
+  "sources": ["Optional short source names"]
+}}
+
+RULES:
+- No numbers, measurements, or percentages.
+- No technical meteorology.
+- No instructions or medical advice.
+- Mention low-impact windows by noting when things "may feel easier".
+- Tone stays steady, kind, and factual.
+- Do not start with greetings or end with sign-offs.
+- Even if context shows numbers, do NOT include them in your output."""
 
     try:
         completion = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You are FlareWeather, a health and weather forecasting assistant. Your goal is to help users plan ahead by previewing how weather patterns over the next week may affect their symptoms. Always use conditional language and never make definitive statements about how the user feels."},
+                {"role": "system", "content": "You produce calm weekly outlooks in plain language and valid JSON."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.7
+            temperature=0.5,
+            response_format={"type": "json_object"}
         )
-        response_text = completion.choices[0].message.content.strip()
-
-        # Remove markdown code fences if present
-        response_text = response_text.replace("```json", "").replace("```", "").strip()
-
-        stripped_lower = response_text.lower()
-        if stripped_lower.startswith("{") or stripped_lower.startswith("[") or "\"insight\"" in stripped_lower:
-            print("⚠️  Weekly insight returned JSON despite instructions. Returning plain text fallback.")
-            return ("Weekly forecast insight is currently unavailable. Please check back shortly.", [])
-
-        sources: List[str] = []
-        cleaned_lines: List[str] = []
-        for line in response_text.splitlines():
-            stripped = line.strip()
-            if stripped.lower().startswith("source:"):
-                source_text = stripped.split(":", 1)[1].strip()
-                if source_text:
-                    sources.append(source_text)
-            else:
-                cleaned_lines.append(line)
-
-        cleaned_response = "\n".join(cleaned_lines).strip()
-        if not cleaned_response:
-            cleaned_response = "Unable to generate weekly forecast insight at this time."
-
-        return (
-            cleaned_response,
-            sources
-        )
-    except Exception as e:
-        print(f"❌ Error generating weekly forecast insight: {e}")
+        response_text = completion.choices[0].message.content.strip().strip("` ")
+        response_data = json.loads(response_text)
+    except Exception as exc:  # noqa: BLE001
+        print(f"❌ Error generating weekly forecast insight: {exc}")
         import traceback
         traceback.print_exc()
-        return ("Unable to generate weekly forecast insight at this time.", [])
+        fallback = json.dumps({
+            "weekly_summary": "Weekly outlook is unavailable right now.",
+            "daily_breakdown": []
+        })
+        return (fallback, [])
+
+    weekly_summary = response_data.get("weekly_summary", "").strip()
+    weekly_summary = _filter_app_messages(weekly_summary) or weekly_summary
+
+    patterns = response_data.get("daily_patterns", [])
+    if not isinstance(patterns, list):
+        patterns = []
+
+    sources = response_data.get("sources", []) or []
+
+    while len(patterns) < len(weekday_labels):
+        patterns.append({"weather_pattern": "steady pattern", "body_feel": "may feel easier on the body"})
+    if len(patterns) > len(weekday_labels):
+        patterns = patterns[:len(weekday_labels)]
+
+    daily_breakdown: List[Dict[str, str]] = []
+    for label, entry in zip(weekday_labels, patterns):
+        weather_pattern = entry.get("weather_pattern", "steady pattern")
+        body_feel = entry.get("body_feel", "may feel steady on the body")
+        weather_pattern = _filter_app_messages(weather_pattern) or weather_pattern
+        body_feel = _filter_app_messages(body_feel) or body_feel
+        insight_line = f"{weather_pattern} — {body_feel}"
+        daily_breakdown.append({
+            "label": label,
+            "insight": insight_line
+        })
+
+    payload = json.dumps({
+        "weekly_summary": weekly_summary,
+        "daily_breakdown": daily_breakdown
+    })
+
+    return (payload, sources)

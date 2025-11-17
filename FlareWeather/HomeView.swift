@@ -32,6 +32,7 @@ struct HomeView: View {
     @State private var hasInitialAnalysis = false
     @State private var isManualInsightRefresh = false
     @AppStorage("useFahrenheit") private var useFahrenheit = false
+    @AppStorage("hasGeneratedDailyInsightSession") private var hasGeneratedDailyInsightSession = false
     
     // Helper function to refresh analysis
     private func refreshAnalysis(force: Bool = false) async {
@@ -69,7 +70,7 @@ struct HomeView: View {
         if !hasInitialAnalysis || weatherService.weatherData == nil {
             print("🌤️ HomeView: No weather data or first appear, fetching weather...")
             Task {
-                try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                try? await Task.sleep(nanoseconds: 50_000_000) // 0.05 seconds
                 
                 if let location = getEffectiveLocation() {
                     print("📍 HomeView: Current location: \(location.coordinate.latitude), \(location.coordinate.longitude)")
@@ -95,7 +96,6 @@ struct HomeView: View {
             await weatherService.fetchWeatherData(for: location, forceRefresh: true)
             await weatherService.fetchWeeklyForecast(for: location)
             await weatherService.fetchHourlyForecast(for: location)
-            try? await Task.sleep(nanoseconds: 500_000_000)
             await refreshAnalysis()
         }
     }
@@ -230,9 +230,11 @@ struct HomeView: View {
             .cardEnterAnimation(delay: 0.4)
             
             // Weekly Forecast Insight Card
-            if let weeklyInsight = aiService.weeklyForecastInsight, !weeklyInsight.isEmpty {
+            let weeklySummary = aiService.weeklyInsightSummary ?? aiService.weeklyForecastInsight
+            if (weeklySummary != nil && !(weeklySummary ?? "").isEmpty) || !aiService.weeklyInsightDays.isEmpty {
                 WeeklyForecastInsightCardView(
-                    insight: weeklyInsight,
+                    summary: weeklySummary ?? "",
+                    days: aiService.weeklyInsightDays,
                     sources: aiService.weeklyInsightSources
                 )
                     .cardEnterAnimation(delay: 0.5)
@@ -241,175 +243,43 @@ struct HomeView: View {
         .padding(.vertical)
     }
     
-    // AI Insights Card
     private var aiInsightsCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Image(systemName: "lightbulb.fill")
-                    .font(.title3)
-                    .foregroundColor(Color.adaptiveText)
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Daily AI Insight")
-                        .font(.interHeadline)
-                        .foregroundColor(Color.adaptiveText)
-                    Text("Today's Health Analysis")
-                        .font(.interCaption)
-                        .foregroundColor(Color.adaptiveMuted)
+        DailyInsightCardView(
+            title: "Daily AI Insight",
+            subtitle: "Today's Health Analysis",
+            icon: "lightbulb.fill",
+            message: aiService.insightMessage.isEmpty ? "Analyzing weather patterns…" : aiService.insightMessage,
+            supportNote: aiService.supportNote,
+            personalAnecdote: aiService.personalAnecdote,
+            behaviorPrompt: aiService.behaviorPrompt,
+            citations: aiService.citations,
+            disclaimerText: "Flare isn't a substitute for medical professionals, just a weather-aware wellness guide.",
+            isLoading: aiService.isLoading,
+            isRefreshing: isManualInsightRefresh,
+            showRefreshButton: true,
+            showFeedbackPrompt: true,
+            onRefresh: {
+                guard !isManualInsightRefresh else { return }
+                isManualInsightRefresh = true
+                Task {
+                    await refreshAnalysis(force: true)
+                    await MainActor.run {
+                        isManualInsightRefresh = false
+                    }
                 }
-                
-                Spacer()
-                
-                if aiService.isLoading || isManualInsightRefresh {
-                    ProgressView()
-                        .tint(Color.adaptiveText)
-                        .scaleEffect(0.8)
-                        .transition(.opacity.combined(with: .scale))
-                        .animation(.easeInOut(duration: 0.2), value: aiService.isLoading)
+            },
+            feedbackBinding: $aiFeedback,
+            submitFeedback: { choice in
+                if let choice = choice {
+                    print("AI Feedback: \(choice ? "Helpful" : "Not Helpful")")
+                    Task {
+                        await aiService.submitFeedback(isHelpful: choice)
+                    }
                 } else {
-                    Button {
-                        guard !isManualInsightRefresh else { return }
-                        isManualInsightRefresh = true
-                        Task {
-                            await refreshAnalysis(force: true)
-                            await MainActor.run {
-                                isManualInsightRefresh = false
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.title3)
-                            .foregroundColor(Color.adaptiveText)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Refresh Insight")
+                    print("AI Feedback: Cleared")
                 }
             }
-            
-            if aiService.isLoading {
-                // Show loading message while analyzing
-                HStack {
-                    ProgressView()
-                        .tint(Color.adaptiveText)
-                        .scaleEffect(0.8)
-                    Text("Analyzing weather patterns…")
-                        .font(.interBody)
-                        .foregroundColor(Color.adaptiveMuted)
-                }
-            } else {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(aiService.insightMessage.isEmpty ? "Analyzing weather patterns…" : aiService.insightMessage)
-                        .font(.interBody)
-                        .foregroundColor(Color.adaptiveText)
-                        .lineSpacing(6)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                        .animation(.easeInOut(duration: 0.3), value: aiService.insightMessage)
-                    
-                    if let supportNote = aiService.supportNote, !supportNote.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Divider()
-                                .background(Color.adaptiveMuted.opacity(0.2))
-                            HStack(alignment: .top, spacing: 10) {
-                                Image(systemName: "hands.sparkles.fill")
-                                    .font(.interCaption)
-                                    .foregroundColor(Color.adaptiveText)
-                                Text(supportNote)
-                                    .font(.interCaption)
-                                    .foregroundColor(Color.adaptiveText)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .lineSpacing(4)
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 10)
-                            .background(Color.adaptiveCardBackground.opacity(0.45))
-                            .cornerRadius(14)
-                        }
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
-                        .animation(.easeInOut(duration: 0.3), value: aiService.supportNote)
-                    }
-
-                    if let personalAnecdote = aiService.personalAnecdote, !personalAnecdote.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Divider()
-                                .background(Color.adaptiveMuted.opacity(0.15))
-                            HStack(alignment: .top, spacing: 8) {
-                                Image(systemName: "quote.bubble")
-                                    .font(.interCaption)
-                                    .foregroundColor(Color.adaptiveMuted)
-                                Text(personalAnecdote)
-                                    .font(.interCaption)
-                                    .foregroundColor(Color.adaptiveMuted)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
-                    }
-
-                    if let behaviorPrompt = aiService.behaviorPrompt, !behaviorPrompt.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Divider()
-                                .background(Color.adaptiveMuted.opacity(0.15))
-                            HStack(spacing: 8) {
-                                Image(systemName: "pencil.and.list")
-                                    .font(.interCaption)
-                                    .foregroundColor(Color.adaptiveText)
-                                Text(behaviorPrompt)
-                                    .font(.interCaption)
-                                    .foregroundColor(Color.adaptiveText)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
-                    }
-                    
-                    // Medical disclaimer
-                    Text("Flare isn't a substitute for medical professionals, just a weather-aware wellness guide.")
-                        .font(.interSmall)
-                        .foregroundColor(Color.adaptiveMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 4)
-                    
-                    FeedbackPromptView(aiFeedback: $aiFeedback) { choice in
-                        if let choice = choice {
-                            print("AI Feedback: \(choice ? "Helpful" : "Not Helpful")")
-                            Task {
-                                await aiService.submitFeedback(isHelpful: choice)
-                            }
-                        } else {
-                            print("AI Feedback: Cleared")
-                        }
-                    }
-                }
-            }
-            
-            // Sources footer
-            if !aiService.citations.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Divider()
-                        .background(Color.adaptiveMuted.opacity(0.3))
-                    
-                    Text("Sources")
-                        .font(.interCaption)
-                        .fontWeight(.semibold)
-                        .foregroundColor(Color.adaptiveMuted)
-                    
-                    ForEach(aiService.citations, id: \.self) { citation in
-                        HStack(alignment: .top, spacing: 6) {
-                            Text("•")
-                                .font(.interCaption)
-                                .foregroundColor(Color.adaptiveMuted)
-                            Text(citation)
-                                .font(.interSmall)
-                                .foregroundColor(Color.adaptiveMuted)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                }
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
-            }
-        }
-        .cardStyle()
+        )
         .padding(.horizontal)
     }
     
@@ -467,12 +337,13 @@ struct HomeView: View {
     }
     
     private func handleViewAppearAction() {
+        hasInitialAnalysis = hasGeneratedDailyInsightSession
         handleViewAppear()
-        if !hasInitialAnalysis {
+        if !hasGeneratedDailyInsightSession {
             Task {
-                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
                 await refreshAnalysis()
                 hasInitialAnalysis = true
+                hasGeneratedDailyInsightSession = true
             }
         } else {
             print("⏭️ HomeView: Already have initial analysis, skipping onAppear refresh")
@@ -508,7 +379,257 @@ private struct LogoWordmarkView: View {
     }
 }
 
-private struct FeedbackPromptView: View {
+struct DailyInsightCardView: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let message: String
+    let supportNote: String?
+    let personalAnecdote: String?
+    let behaviorPrompt: String?
+    let citations: [String]
+    let disclaimerText: String
+    let isLoading: Bool
+    let isRefreshing: Bool
+    let showRefreshButton: Bool
+    let showFeedbackPrompt: Bool
+    var onRefresh: (() -> Void)?
+    var feedbackBinding: Binding<Bool?>?
+    var submitFeedback: ((Bool?) -> Void)?
+    
+    // Parse the formatted daily message into summary / why / comfort / sign-off sections.
+    private var parsedSections: (summary: String, why: String?, comfort: String?, signOff: String?) {
+        let normalized = message.replacingOccurrences(of: "\r\n", with: "\n")
+        let blocks = normalized
+            .components(separatedBy: "\n\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        
+        guard !blocks.isEmpty else {
+            return ("", nil, nil, nil)
+        }
+        
+        var summary = blocks.first ?? ""
+        var why: String?
+        var comfort: String?
+        var signOff: String?
+        
+        for block in blocks.dropFirst() {
+            if block.hasPrefix("Why:") {
+                let trimmed = block.dropFirst("Why:".count)
+                why = trimmed.trimmingCharacters(in: .whitespacesAndNewlines)
+            } else if block.hasPrefix("Comfort tip:") {
+                let trimmed = block.dropFirst("Comfort tip:".count)
+                comfort = trimmed.trimmingCharacters(in: .whitespacesAndNewlines)
+            } else {
+                signOff = block
+            }
+        }
+        
+        return (summary, why, comfort, signOff)
+    }
+    
+    var body: some View {
+        let sections = parsedSections
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Image(systemName: icon)
+                    .font(.title3)
+                    .foregroundColor(Color.adaptiveText)
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.interHeadline)
+                        .foregroundColor(Color.adaptiveText)
+                    Text(subtitle)
+                        .font(.interCaption)
+                        .foregroundColor(Color.adaptiveMuted)
+                }
+                
+                Spacer()
+                
+                if showRefreshButton {
+                    if isLoading || isRefreshing {
+                        ProgressView()
+                            .tint(Color.adaptiveText)
+                            .scaleEffect(0.8)
+                            .transition(.opacity.combined(with: .scale))
+                    } else if let onRefresh = onRefresh {
+                        Button(action: onRefresh) {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.title3)
+                                .foregroundColor(Color.adaptiveText)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Refresh Insight")
+                    }
+                }
+            }
+            
+            if isLoading {
+                HStack {
+                    ProgressView()
+                        .tint(Color.adaptiveText)
+                        .scaleEffect(0.8)
+                    Text("Analyzing weather patterns…")
+                        .font(.interBody)
+                        .foregroundColor(Color.adaptiveMuted)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    // Summary paragraph
+                    if !sections.summary.isEmpty {
+                        Text(sections.summary)
+                            .font(.interBody)
+                            .foregroundColor(Color.adaptiveText)
+                            .lineSpacing(6)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
+                    
+                    if sections.why != nil || sections.comfort != nil {
+                        Divider()
+                            .background(Color.adaptiveMuted.opacity(0.2))
+                    }
+                    
+                    // Why row with info icon
+                    if let why = sections.why, !why.isEmpty {
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: "info.circle.fill")
+                                .font(.interBody)
+                                .foregroundColor(Color(hex: "#1A6B5A"))
+                            Text("Why: \(why)")
+                                .font(.interBody)
+                                .foregroundColor(Color.adaptiveText)
+                                .lineSpacing(4)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    
+                    // Comfort tip row with hand icon
+                    if let comfort = sections.comfort, !comfort.isEmpty {
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: "hands.sparkles.fill")
+                                .font(.interBody)
+                                .foregroundColor(Color(hex: "#1A6B5A"))
+                            Text("Comfort tip: \(comfort)")
+                                .font(.interBody)
+                                .foregroundColor(Color.adaptiveText)
+                                .lineSpacing(4)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    
+                    // Closing line
+                    if let signOff = sections.signOff, !signOff.isEmpty {
+                        Text(signOff)
+                            .font(.interBody)
+                            .foregroundColor(Color.adaptiveMuted)
+                            .lineSpacing(4)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 4)
+                    }
+                    
+                    if let supportNote = supportNote, !supportNote.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Divider()
+                                .background(Color.adaptiveMuted.opacity(0.2))
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: "hands.sparkles.fill")
+                                    .font(.interCaption)
+                                    .foregroundColor(Color.adaptiveText)
+                                Text(supportNote)
+                                    .font(.interCaption)
+                                    .foregroundColor(Color.adaptiveText)
+                                    .lineSpacing(4)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(Color.adaptiveCardBackground.opacity(0.45))
+                            .cornerRadius(14)
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    }
+                    
+                    if let personalAnecdote = personalAnecdote, !personalAnecdote.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Divider()
+                                .background(Color.adaptiveMuted.opacity(0.15))
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: "quote.bubble")
+                                    .font(.interCaption)
+                                    .foregroundColor(Color.adaptiveMuted)
+                                Text(personalAnecdote)
+                                    .font(.interCaption)
+                                    .foregroundColor(Color.adaptiveMuted)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    }
+                    
+                    if let behaviorPrompt = behaviorPrompt, !behaviorPrompt.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Divider()
+                                .background(Color.adaptiveMuted.opacity(0.15))
+                            HStack(spacing: 8) {
+                                Image(systemName: "pencil.and.list")
+                                    .font(.interCaption)
+                                    .foregroundColor(Color.adaptiveText)
+                                Text(behaviorPrompt)
+                                    .font(.interCaption)
+                                    .foregroundColor(Color.adaptiveText)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    }
+                    
+                    Text(disclaimerText)
+                        .font(.interSmall)
+                        .foregroundColor(Color.adaptiveMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 4)
+                    
+                    if showFeedbackPrompt,
+                       let binding = feedbackBinding,
+                       let submitFeedback = submitFeedback {
+                        FeedbackPromptView(aiFeedback: binding, submitAction: submitFeedback)
+                    }
+                }
+            }
+            
+            if !citations.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Divider()
+                        .background(Color.adaptiveMuted.opacity(0.3))
+                    
+                    Text("Sources")
+                        .font(.interCaption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Color.adaptiveMuted)
+                    
+                    ForEach(citations, id: \.self) { citation in
+                        HStack(alignment: .top, spacing: 6) {
+                            Text("•")
+                                .font(.interCaption)
+                                .foregroundColor(Color.adaptiveMuted)
+                            Text(citation)
+                                .font(.interSmall)
+                                .foregroundColor(Color.adaptiveMuted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+        }
+        .cardStyle()
+    }
+}
+
+struct FeedbackPromptView: View {
     @Binding var aiFeedback: Bool?
     var submitAction: (Bool?) -> Void
     
@@ -1078,10 +1199,9 @@ struct HourlyForecastRow: View {
         forecast.pressure - previousPressure
     }
     
-    // Determine if pressure change is significant (>= 1 hPa)
-    // Lowered to 1.0 to show arrows more often - even small changes matter
+    // Determine if pressure change is significant
     private var hasSignificantPressureChange: Bool {
-        abs(pressureChange) >= 1.0
+        abs(pressureChange) >= 0.5
     }
     
     var body: some View {
@@ -1153,56 +1273,124 @@ struct HourlyForecastRow: View {
 }
 
 struct WeeklyForecastInsightCardView: View {
-    let insight: String
+    let summary: String
+    let days: [WeeklyInsightDay]
     let sources: [String]
+    
+    // Helper to format weekday labels (add period for shorter days)
+    private func formatWeekdayLabel(_ label: String) -> String {
+        let lowercased = label.lowercased()
+        if lowercased == "mon" || lowercased == "tue" || lowercased == "wed" || lowercased == "thu" || lowercased == "fri" || lowercased == "sat" || lowercased == "sun" {
+            // Capitalize first letter and add period
+            return label.prefix(1).uppercased() + label.dropFirst().lowercased() + "."
+        }
+        // Already formatted or longer name
+        return label
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Image(systemName: "calendar.badge.clock")
+            // Header: "Weekly Insight" (matching design)
+            HStack(spacing: 8) {
+                Image(systemName: "calendar")
                     .font(.title3)
                     .foregroundColor(Color.adaptiveText)
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Weekly AI Insight")
-                        .font(.interHeadline)
-                        .foregroundColor(Color.adaptiveText)
-                    Text("7-Day Symptom Outlook")
-                        .font(.interCaption)
-                        .foregroundColor(Color.adaptiveMuted)
-                }
-                
-                Spacer()
+                Text("Weekly Insight")
+                    .font(.interHeadline)
+                    .foregroundColor(Color.adaptiveText)
             }
             
-            Text(insight.isEmpty ? "Preparing your weekly forecast…" : insight)
-                .font(.interBody)
-                .foregroundColor(Color.adaptiveText)
-                .lineSpacing(6)
-                .fixedSize(horizontal: false, vertical: true)
+            // Weekly summary: one paragraph, no bullets, left-aligned
+            // Add line breaks between paragraphs if summary contains multiple paragraphs
+            if summary.isEmpty {
+                Text("Preparing your weekly insight…")
+                    .font(.interBody)
+                    .foregroundColor(Color.adaptiveMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                // Split summary by double newlines to detect paragraphs
+                let paragraphs = summary.components(separatedBy: "\n\n")
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+                
+                if paragraphs.count > 1 {
+                    // Multiple paragraphs - render with spacing
+                    VStack(alignment: .leading, spacing: 12) {
+                        ForEach(Array(paragraphs.enumerated()), id: \.offset) { _, paragraph in
+                            Text(paragraph)
+                                .font(.interBody)
+                                .foregroundColor(Color.adaptiveText)
+                                .lineSpacing(6)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .multilineTextAlignment(.leading)
+                        }
+                    }
+                } else {
+                    // Single paragraph
+                    Text(summary)
+                        .font(.interBody)
+                        .foregroundColor(Color.adaptiveText)
+                        .lineSpacing(6)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .multilineTextAlignment(.leading)
+                }
+            }
             
+            // Daily breakdown: weekday label (bold) followed by detail text (regular, lighter)
+            if !days.isEmpty {
+                Divider()
+                    .background(Color.adaptiveMuted.opacity(0.15))
+                
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(days) { day in
+                        HStack(alignment: .top, spacing: 12) {
+                            // Weekday label: bold, fixed width for alignment (e.g., "Mon.", "Tues.")
+                            // Increased width to prevent wrapping of detail text
+                            Text(formatWeekdayLabel(day.label))
+                                .font(.interBody)
+                                .fontWeight(.bold)
+                                .foregroundColor(Color.adaptiveText)
+                                .frame(width: 48, alignment: .leading) // Increased from 36 to 48 for more room
+                            
+                            // Detail text: regular, lighter gray, left-aligned
+                            Text(day.detail)
+                                .font(.interBody)
+                                .foregroundColor(Color.adaptiveMuted)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .multilineTextAlignment(.leading)
+                                .frame(maxWidth: .infinity, alignment: .leading) // Ensure left alignment
+                        }
+                    }
+                }
+            }
+            
+            // Medical disclaimer (always shown first)
+            Text("Flare isn't a substitute for medical professionals, just a weather-aware wellness guide.")
+                .font(.interSmall)
+                .foregroundColor(Color.adaptiveMuted)
+                .fixedSize(horizontal: false, vertical: true)
+                .multilineTextAlignment(.leading)
+                .padding(.top, 4)
+            
+            // Sources section (if any) - shown after disclaimer
             if !sources.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Divider()
                         .background(Color.adaptiveMuted.opacity(0.15))
+                        .padding(.top, 8)
                     Text("Sources")
                         .font(.interCaption)
+                        .fontWeight(.semibold)
                         .foregroundColor(Color.adaptiveMuted)
                     ForEach(sources, id: \.self) { source in
                         Text("• \(source)")
                             .font(.interCaption)
                             .foregroundColor(Color.adaptiveMuted)
                             .fixedSize(horizontal: false, vertical: true)
+                            .multilineTextAlignment(.leading)
                     }
                 }
             }
-            
-            // Medical disclaimer
-            Text("Flare isn't a substitute for medical professionals, just a weather-aware wellness guide.")
-                .font(.interSmall)
-                .foregroundColor(Color.adaptiveMuted)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 4)
         }
         .cardStyle()
         .padding(.horizontal)
@@ -1213,3 +1401,4 @@ struct WeeklyForecastInsightCardView: View {
     HomeView()
         .environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
 }
+

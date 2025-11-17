@@ -26,6 +26,28 @@ class AppleSignInRequest(BaseModel):
     name: Optional[str] = None
 
 
+class ForgotPasswordRequest(BaseModel):
+    """Request model for password reset"""
+    email: EmailStr
+
+
+class ForgotPasswordResponse(BaseModel):
+    """Response model for forgot password flow"""
+    message: str
+
+
+class ResetPasswordRequest(BaseModel):
+    """Request model for resetting password with code"""
+    email: EmailStr
+    code: str = Field(min_length=6, max_length=6)
+    new_password: str = Field(min_length=8)
+
+
+class ResetPasswordResponse(BaseModel):
+    """Response model for reset password"""
+    success: bool = True
+
+
 class AuthResponse(BaseModel):
     """Response model for authentication"""
     access_token: str

@@ -1,16 +1,19 @@
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timedelta
-from typing import List, Tuple
+from typing import List, Tuple, Optional, Dict, Any
+import logging
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 import uuid
 import json
+import random
 
 # Import with error handling to catch import errors early
 try:
     from models import (
-        CorrelationRequest, 
-        SymptomEntryPayload, 
+        CorrelationRequest,
+        SymptomEntryPayload,
         WeatherSnapshotPayload,
         SymptomEntry,
         WeatherSnapshot,
@@ -18,6 +21,10 @@ try:
         SignupRequest,
         LoginRequest,
         AppleSignInRequest,
+        ForgotPasswordRequest,
+        ForgotPasswordResponse,
+        ResetPasswordRequest,
+        ResetPasswordResponse,
         AuthResponse,
         UserResponse,
         FeedbackRequest,
@@ -27,7 +34,8 @@ try:
     from ai import generate_insight_with_papers, generate_flare_risk_assessment, generate_weekly_forecast_insight, _choose_forecast, _analyze_pressure_window
     from rag.query import query_rag
     from paper_search import search_papers, format_papers_for_prompt
-    from database import get_db, init_db, User, InsightFeedback
+    from database import get_db, init_db, User, InsightFeedback, PasswordReset
+    from mailgun_service import send_password_reset_email
     from auth import (
         verify_password,
         get_password_hash,
@@ -51,6 +59,8 @@ except ImportError as e:
     raise
 
 app = FastAPI(title="FlareWeather API")
+
+logger = logging.getLogger("flareweather.app")
 
 # Include Apple App Store Notifications router (if available)
 if apple_notifications_router_available and apple_notifications_router:
@@ -82,6 +92,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
+
+
+def generate_reset_code() -> str:
+    """Generate a random 6-digit numeric code."""
+    return f"{random.randint(0, 999999):06d}"
 
 
 def convert_payload_to_models(
@@ -158,8 +173,18 @@ async def signup(request: SignupRequest, db: Session = Depends(get_db)):
     Create a new user account
     """
     try:
+        normalized_email = (request.email or "").strip().lower()
+        if not normalized_email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email is required"
+            )
         # Check if user already exists
-        existing_user = db.query(User).filter(User.email == request.email).first()
+        existing_user = (
+            db.query(User)
+            .filter(func.lower(User.email) == normalized_email)
+            .first()
+        )
         if existing_user:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -172,7 +197,7 @@ async def signup(request: SignupRequest, db: Session = Depends(get_db)):
         
         new_user = User(
             id=user_id,
-            email=request.email,
+            email=normalized_email,
             hashed_password=hashed_password,
             name=request.name,
             apple_user_id=None,  # Regular signup, not Apple Sign In
@@ -197,7 +222,7 @@ async def signup(request: SignupRequest, db: Session = Depends(get_db)):
             access_token=access_token,
             token_type="bearer",
             user_id=user_id,
-            email=request.email,
+            email=normalized_email,
             name=request.name
         )
     except HTTPException:
@@ -218,12 +243,22 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
     Login and get access token
     """
     try:
-        print(f"🔐 Login attempt for email: {request.email}")
+        normalized_email = (request.email or "").strip().lower()
+        if not normalized_email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email is required"
+            )
+        print(f"🔐 Login attempt for email: {normalized_email}")
         
         # Find user by email
-        user = db.query(User).filter(User.email == request.email).first()
+        user = (
+            db.query(User)
+            .filter(func.lower(User.email) == normalized_email)
+            .first()
+        )
         if not user:
-            print(f"❌ Login failed: User not found for email {request.email}")
+            print(f"❌ Login failed: User not found for email {normalized_email}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect email or password"
@@ -283,7 +318,7 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
             access_token=access_token,
             token_type="bearer",
             user_id=user.id,
-            email=user.email or "",
+            email=user.email or normalized_email,
             name=user.name
         )
     except HTTPException:
@@ -401,6 +436,33 @@ async def get_current_user_info(current_user: dict = Depends(get_current_user), 
     )
 
 
+@app.delete("/auth/delete")
+async def delete_account(current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    """
+    Permanently delete the current user's account.
+    """
+    try:
+        user = db.query(User).filter(User.id == current_user["user_id"]).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        db.delete(user)
+        db.commit()
+        return {"status": "deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error deleting account: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete account"
+        )
+
+
 @app.post("/feedback", response_model=FeedbackResponse)
 async def submit_feedback(request: FeedbackRequest, db: Session = Depends(get_db)):
     """Record user feedback about AI insights"""
@@ -451,6 +513,102 @@ async def submit_feedback(request: FeedbackRequest, db: Session = Depends(get_db
         db.rollback()
         print(f"❌ Feedback error: {e}")
         raise HTTPException(status_code=500, detail="Failed to record feedback")
+
+
+@app.post("/auth/forgot-password", response_model=ForgotPasswordResponse)
+async def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """
+    Generate a reset code and send it via email. Always respond with a generic message.
+    """
+    normalized_email = request.email.lower()
+    generic_message = "If an account exists, we’ve sent a reset code."
+    try:
+        user = (
+            db.query(User)
+            .filter(func.lower(User.email) == normalized_email)
+            .first()
+        )
+        if not user:
+            logger.info("Password reset requested for unknown email: %s", normalized_email)
+            return ForgotPasswordResponse(message=generic_message)
+
+        code = generate_reset_code()
+        code_hash = get_password_hash(code)
+        reset_entry = PasswordReset(
+            user_id=user.id,
+            email=normalized_email,
+            code_hash=code_hash,
+            expires_at=datetime.utcnow() + timedelta(minutes=30)
+        )
+        db.add(reset_entry)
+        db.commit()
+
+        try:
+            await send_password_reset_email(normalized_email, code)
+        except Exception as email_error:
+            # Log but do not leak to client
+            logger.error("Password reset email failed for %s: %s", normalized_email, email_error)
+            # TODO: Consider retry/backoff for transient email errors.
+
+        logger.info("Password reset code created for %s", normalized_email)
+        return ForgotPasswordResponse(message=generic_message)
+    except Exception as e:
+        db.rollback()
+        logger.error("Password reset flow failed: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to process password reset request"
+        )
+
+
+@app.post("/auth/reset-password", response_model=ResetPasswordResponse)
+async def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
+    """
+    Validate a reset code and update the user's password.
+    """
+    normalized_email = request.email.lower()
+    try:
+        reset_entry = (
+            db.query(PasswordReset)
+            .filter(PasswordReset.email == normalized_email)
+            .filter(PasswordReset.used_at.is_(None))
+            .filter(PasswordReset.expires_at > datetime.utcnow())
+            .order_by(PasswordReset.created_at.desc())
+            .first()
+        )
+        if not reset_entry:
+            raise HTTPException(status_code=400, detail="Invalid or expired code.")
+
+        if not verify_password(request.code, reset_entry.code_hash):
+            raise HTTPException(status_code=400, detail="Invalid or expired code.")
+
+        user = (
+            db.query(User)
+            .filter(func.lower(User.email) == normalized_email)
+            .first()
+        )
+        if not user:
+            raise HTTPException(status_code=400, detail="Invalid or expired code.")
+
+        user.hashed_password = get_password_hash(request.new_password)
+        user.updated_at = datetime.utcnow()
+        reset_entry.used_at = datetime.utcnow()
+
+        # TODO: Revoke outstanding JWTs/session tokens once token store is implemented.
+
+        db.commit()
+        logger.info("Password reset completed for %s", normalized_email)
+        return ResetPasswordResponse(success=True)
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error("Reset password error for %s: %s", normalized_email, e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to reset password"
+        )
 
 
 @app.post("/analyze", response_model=InsightResponse)
