@@ -93,7 +93,9 @@ struct LoginView: View {
                         }
                         
                         Button("Forgot password?") {
+                            print("🔘 Forgot password button tapped")
                             showingForgotPassword = true
+                            print("🔘 showingForgotPassword set to: \(showingForgotPassword)")
                         }
                         .font(.interCaption)
                         .foregroundColor(Color.adaptiveText)

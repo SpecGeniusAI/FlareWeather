@@ -23,8 +23,7 @@ struct ResetPasswordCodeView: View {
     }
     
     var body: some View {
-        NavigationView {
-            ScrollView {
+        ScrollView {
                 VStack(spacing: 24) {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Enter your reset code")

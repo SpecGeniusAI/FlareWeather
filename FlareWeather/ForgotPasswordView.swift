@@ -12,8 +12,7 @@ struct ForgotPasswordView: View {
     private let authService = AuthService()
     
     var body: some View {
-        NavigationView {
-            ScrollView {
+        ScrollView {
                 VStack(spacing: 24) {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Reset your password")
