@@ -756,9 +756,23 @@ Move at a pace that feels kind to you.
                 whyText = rewriteVagueWhy(whyText, weatherFactor: weatherFactor)
             }
             
-            let comfortText = (sanitizeInsightText(filterAppMessages(comfortTip)) ?? comfortTip)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let signOffText = (sanitizeInsightText(filterAppMessages(signOff)) ?? signOff)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            var comfortText = (sanitizeInsightText(filterAppMessages(comfortTip)) ?? comfortTip)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            var signOffText = (sanitizeInsightText(filterAppMessages(signOff)) ?? signOff)?.trimmingCharacters(in: .whitespacesAndNewlines)
                 ?? "Move at a pace that feels kind to you."
+            
+            // Prevent duplicate: if comfort tip contains the sign-off text, remove it from comfort tip
+            let signOffLower = signOffText.lowercased()
+            if comfortText.lowercased().contains(signOffLower) {
+                // Remove sign-off text from comfort tip
+                comfortText = comfortText.replacingOccurrences(of: signOffText, with: "", options: [.caseInsensitive])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: ".,;:"))
+            }
+            
+            // If comfort tip is now empty after removing sign-off, use a generic one
+            if comfortText.isEmpty && comfortTip != nil && !comfortTip!.isEmpty {
+                comfortText = (sanitizeInsightText(filterAppMessages(comfortTip)) ?? comfortTip)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            }
             
             // Build formatted message following exact template:
             // summary
@@ -871,7 +885,26 @@ Move at a pace that feels kind to you.
     private func filterAppMessages(_ text: String?) -> String? {
         guard let text = text, !text.isEmpty else { return text }
         
-        let lowercased = text.lowercased()
+        var cleaned = text
+        
+        // Remove emoji and "Daily Insight" header (card title already includes this)
+        // Patterns like "☀️ Daily Insight", "Daily Insight:", "☀️ Daily Insight:", etc.
+        let headerPatterns = [
+            "(?i)☀️\\s*Daily\\s+Insight\\s*:?\\s*",
+            "(?i)☀\\s*Daily\\s+Insight\\s*:?\\s*",
+            "(?i)Daily\\s+Insight\\s*:?\\s*",
+            "(?i)^☀️\\s*",
+            "(?i)^☀\\s*"
+        ]
+        
+        for pattern in headerPatterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
+                let range = NSRange(cleaned.startIndex..., in: cleaned)
+                cleaned = regex.stringByReplacingMatches(in: cleaned, options: [], range: range, withTemplate: "")
+            }
+        }
+        
+        let lowercased = cleaned.lowercased()
         
         // Check for app-specific message indicators
         let filterPhrases = [
@@ -1182,10 +1215,31 @@ Move at a pace that feels kind to you.
                     }
                     
                     // Create descriptive text that may include em-dash or be plain
-                    if weatherPattern == "steady pattern" {
+                    // Vary the patterns more - don't use the same "gentle and mild air" for every day
+                    var variedPattern = weatherPattern
+                    
+                    // Vary patterns based on day index to avoid repetition
+                    let patternVariants = [
+                        (0...1): ["cooler air", "mild air", "gentle air"],
+                        (2...3): ["steady pressure", "calm conditions", "stable pattern"],
+                        (4...5): ["light humidity", "gentle breeze", "mild warmth"],
+                        (6...6): ["calm pattern", "steady trend", "stable conditions"]
+                    ]
+                    
+                    for (range, variants) in patternVariants {
+                        if range.contains(index) {
+                            let variantIndex = index % variants.count
+                            if variantIndex < variants.count {
+                                variedPattern = variants[variantIndex]
+                            }
+                            break
+                        }
+                    }
+                    
+                    if variedPattern == "steady pattern" || weatherPattern == "steady pattern" {
                         dayPatterns.append("Stable conditions \(bodyFeel).")
                     } else {
-                        dayPatterns.append("\(capitalizeFirstLetter(weatherPattern)) \(bodyFeel).")
+                        dayPatterns.append("\(capitalizeFirstLetter(variedPattern)) — \(bodyFeel).")
                     }
                 }
             } else {
@@ -1316,8 +1370,21 @@ Move at a pace that feels kind to you.
             "gentle"
         ]
         
+        // Check for "gentle and mild" patterns - these are low risk even with weather detail
+        if lowerText.contains("gentle and mild") || (lowerText.contains("gentle") && lowerText.contains("mild")) {
+            // If it's just gentle/mild with positive body-feel descriptions, it's low risk
+            let hasRiskIndicators = lowerText.contains("moderate") || lowerText.contains("high") || 
+                                    lowerText.contains("stiff") || lowerText.contains("tiring") || 
+                                    lowerText.contains("draining") || lowerText.contains("heavy") ||
+                                    lowerText.contains("tense") || lowerText.contains("effortful")
+            if !hasRiskIndicators {
+                return true
+            }
+        }
+        
         // Only return true for low risk if the text is SIMPLE and POSITIVE
         // Complex descriptions with weather details suggest moderate/high risk
+        // BUT: gentle/mild patterns are OK even with weather detail (handled above)
         let hasWeatherDetail = lowerText.contains("—") || lowerText.contains("-") || lowerText.contains("humidity") || lowerText.contains("temperature") || lowerText.contains("pressure")
         
         for phrase in positiveLowRiskPhrases {
