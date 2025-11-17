@@ -191,24 +191,12 @@ struct LoginView: View {
             .background(Color.adaptiveBackground.ignoresSafeArea())
             .navigationBarHidden(true)
             .tint(Color.adaptiveText)
-            .background(
-                NavigationLink(
-                    destination: ForgotPasswordView(),
-                    isActive: $showingForgotPassword
-                ) {
-                    EmptyView()
-                }
-                .hidden()
-            )
-            .background(
-                NavigationLink(
-                    destination: ResetPasswordCodeView(initialEmail: email),
-                    isActive: $showingResetCode
-                ) {
-                    EmptyView()
-                }
-                .hidden()
-            )
+            .navigationDestination(isPresented: $showingForgotPassword) {
+                ForgotPasswordView()
+            }
+            .navigationDestination(isPresented: $showingResetCode) {
+                ResetPasswordCodeView(initialEmail: email)
+            }
             .fullScreenCover(isPresented: $showingOnboarding) {
                 OnboardingFlowView()
                     .environmentObject(authManager)

@@ -410,7 +410,7 @@ struct DailyInsightCardView: View {
             return ("", nil, nil, nil)
         }
         
-        var summary = blocks.first ?? ""
+        let summary = blocks.first ?? ""
         var why: String?
         var comfort: String?
         var signOff: String?

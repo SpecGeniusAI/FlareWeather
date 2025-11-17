@@ -856,7 +856,7 @@ Move at a pace that feels kind to you.
         // Why: <why>
         // 
         // <closing_line>
-        var lines: [String] = [
+        let lines: [String] = [
             summaryText,
             "",
             "Why: \(whyText)",
@@ -1022,7 +1022,7 @@ Move at a pace that feels kind to you.
                     let label = item["label"] as? String ?? (index < weekdayLabels.count ? weekdayLabels[index] : "")
                     let detailRaw = item["insight"] as? String ?? ""
                     let filteredDetail = filterAppMessages(detailRaw) ?? detailRaw
-                    let sanitizedDetail = sanitizeInsightText(filteredDetail) ?? filteredDetail ?? ""
+                    let sanitizedDetail = sanitizeInsightText(filteredDetail) ?? filteredDetail
                     
                     // Ensure format is exactly: <weather> — <body feel> (two em-dashes)
                     let formattedDetail = formatWeeklyDayDetail(sanitizedDetail)
@@ -1036,7 +1036,7 @@ Move at a pace that feels kind to you.
                 for weekdayLabel in weekdayLabels {
                     if let detailRaw = dict[weekdayLabel] as? String {
                         let filteredDetail = filterAppMessages(detailRaw) ?? detailRaw
-                        let sanitizedDetail = sanitizeInsightText(filteredDetail) ?? filteredDetail ?? ""
+                        let sanitizedDetail = sanitizeInsightText(filteredDetail) ?? filteredDetail
                         let formattedDetail = formatWeeklyDayDetail(sanitizedDetail)
                         
                         if !formattedDetail.isEmpty {
@@ -1068,8 +1068,8 @@ Move at a pace that feels kind to you.
         // Remove source citations from summary - sources are displayed separately at the bottom
         let filteredWithoutSources = removeSourceCitations(filtered) ?? filtered
         // Fix broken templates caused by missing/null values (e.g., "temps ranging from to")
-        let fixedSummary = fixBrokenWeeklySummaryTemplate(filteredWithoutSources) ?? filteredWithoutSources
-        let sanitized = sanitizeInsightText(fixedSummary) ?? fixedSummary ?? ""
+        let fixedSummary = fixBrokenWeeklySummaryTemplate(filteredWithoutSources) ?? filteredWithoutSources ?? ""
+        let sanitized = sanitizeInsightText(fixedSummary) ?? fixedSummary
         
         // Check if text already has day lines (format: "Sat — ...")
         let lines = sanitized
@@ -1129,7 +1129,7 @@ Move at a pace that feels kind to you.
             
             if !remainingText.isEmpty {
                 // Split remaining text by sentences and try to distribute across days
-                let remainingSentences = remainingText.components(separatedBy: CharacterSet(charactersIn: ".!?"))
+                let _ = remainingText.components(separatedBy: CharacterSet(charactersIn: ".!?"))
                     .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                     .filter { !$0.isEmpty }
                 
@@ -1147,7 +1147,7 @@ Move at a pace that feels kind to you.
                 // Distribute sentences across days, or use pattern-based assignment
                 for (index, weekday) in weekdayLabels.enumerated() {
                     var weatherPattern = "steady pattern"
-                    var bodyFeel = bodyFeelVariants[index % bodyFeelVariants.count]
+                    let bodyFeel = bodyFeelVariants[index % bodyFeelVariants.count]
                     
                     // Try to extract day-specific mentions from text
                     let lowerText = remainingText.lowercased()

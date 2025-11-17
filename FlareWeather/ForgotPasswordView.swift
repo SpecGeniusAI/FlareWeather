@@ -108,15 +108,9 @@ struct ForgotPasswordView: View {
                         .foregroundColor(Color.adaptiveText)
                 }
             }
-            .background(
-                NavigationLink(
-                    destination: ResetPasswordCodeView(initialEmail: email),
-                    isActive: $showCodeEntry
-                ) {
-                    EmptyView()
-                }
-                .hidden()
-            )
+            .navigationDestination(isPresented: $showCodeEntry) {
+                ResetPasswordCodeView(initialEmail: email)
+            }
         }
         .tint(Color.adaptiveText)
     }
