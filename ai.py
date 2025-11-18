@@ -1003,16 +1003,37 @@ def generate_weekly_forecast_insight(
             print(f"⚠️ Error parsing forecast timestamp: {e}")
             pass
     
-    # Calculate tomorrow: always use first entry date minus 1 day
-    # The forecast entries start from "today" in the data, but we want to show "tomorrow" first
+    # Calculate tomorrow based on first entry date
+    # WeatherKit daily forecasts typically start from "today" (day 0)
+    # We want to show "tomorrow" first (day 1), so we need to figure out what tomorrow is
+    now_utc = datetime.utcnow()
+    today_utc_date = now_utc.replace(hour=0, minute=0, second=0, microsecond=0).date()
+    
     if first_entry_date:
+        # Calculate difference: how many days is the first entry from today?
+        days_from_today = (first_entry_date - today_utc_date).days
+        
+        print(f"🔍 Weekly forecast: first_entry_date={first_entry_date}, today_utc_date={today_utc_date}, days_from_today={days_from_today}")
+        
+        if days_from_today == 0:
+            # First entry is today, tomorrow is today + 1
+            tomorrow_date = today_utc_date + timedelta(days=1)
+        elif days_from_today == 1:
+            # First entry is tomorrow, use it
+            tomorrow_date = first_entry_date
+        elif days_from_today >= 2:
+            # First entry is 2+ days ahead, calculate tomorrow as first_entry - (days_from_today - 1)
+            tomorrow_date = first_entry_date - timedelta(days=(days_from_today - 1))
+        else:
+            # First entry is in the past, calculate tomorrow from today
+            tomorrow_date = today_utc_date + timedelta(days=1)
+        
         # Convert date to datetime at midnight UTC for calculations
-        tomorrow_datetime = datetime.combine(first_entry_date - timedelta(days=1), datetime.min.time(), tzinfo=datetime.timezone.utc).replace(tzinfo=None)
-        print(f"🔍 Weekly forecast: first_entry_date={first_entry_date}, tomorrow_datetime={tomorrow_datetime.strftime('%Y-%m-%d %A')}")
+        tomorrow_datetime = datetime.combine(tomorrow_date, datetime.min.time())
+        print(f"🔍   tomorrow_datetime={tomorrow_datetime.strftime('%Y-%m-%d %A')}")
     else:
         # Fallback: calculate tomorrow from UTC now
-        now_utc = datetime.utcnow()
-        tomorrow_datetime = (now_utc.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1))
+        tomorrow_datetime = now_utc.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
         print(f"🔍 Weekly forecast: No first entry date, using fallback tomorrow={tomorrow_datetime.strftime('%Y-%m-%d %A')}")
     
     # Generate weekday labels starting from tomorrow
