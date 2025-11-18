@@ -40,43 +40,105 @@ struct ResetPasswordCodeView: View {
                     .padding(.horizontal, 24)
                     
                     VStack(spacing: 18) {
-                        InputField(
-                            title: "Email",
-                            placeholder: "your@email.com",
-                            text: $email,
-                            keyboard: .emailAddress,
-                            contentType: .emailAddress,
-                            focusedField: _focusedField,
-                            field: .email
-                        )
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Email")
+                                .font(.interBody)
+                                .foregroundColor(Color.adaptiveText)
+                            
+                            ZStack(alignment: .leading) {
+                                if email.isEmpty {
+                                    Text("your@email.com")
+                                        .font(.interBody)
+                                        .foregroundColor(Color.adaptiveMuted)
+                                        .padding(.horizontal, 12)
+                                }
+                                TextField("", text: $email)
+                                    .font(.interBody)
+                                    .foregroundColor(Color.adaptiveText)
+                                    .tint(Color.adaptiveText)
+                                    .keyboardType(.emailAddress)
+                                    .textContentType(.emailAddress)
+                                    .autocapitalization(.none)
+                                    .padding(12)
+                                    .focused($focusedField, equals: .email)
+                            }
+                            .background(Color.adaptiveBackground)
+                            .cornerRadius(12)
+                        }
                         
-                        InputField(
-                            title: "Reset Code",
-                            placeholder: "123456",
-                            text: $code,
-                            keyboard: .numberPad,
-                            contentType: .oneTimeCode,
-                            focusedField: _focusedField,
-                            field: .code
-                        )
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Reset Code")
+                                .font(.interBody)
+                                .foregroundColor(Color.adaptiveText)
+                            
+                            ZStack(alignment: .leading) {
+                                if code.isEmpty {
+                                    Text("123456")
+                                        .font(.interBody)
+                                        .foregroundColor(Color.adaptiveMuted)
+                                        .padding(.horizontal, 12)
+                                }
+                                TextField("", text: $code)
+                                    .font(.interBody)
+                                    .foregroundColor(Color.adaptiveText)
+                                    .tint(Color.adaptiveText)
+                                    .keyboardType(.numberPad)
+                                    .textContentType(.oneTimeCode)
+                                    .autocapitalization(.none)
+                                    .padding(12)
+                                    .focused($focusedField, equals: .code)
+                            }
+                            .background(Color.adaptiveBackground)
+                            .cornerRadius(12)
+                        }
                         
-                        SecureInputField(
-                            title: "New Password",
-                            placeholder: "At least 8 characters",
-                            text: $newPassword,
-                            contentType: .newPassword,
-                            focusedField: _focusedField,
-                            field: .newPassword
-                        )
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("New Password")
+                                .font(.interBody)
+                                .foregroundColor(Color.adaptiveText)
+                            
+                            ZStack(alignment: .leading) {
+                                if newPassword.isEmpty {
+                                    Text("At least 8 characters")
+                                        .font(.interBody)
+                                        .foregroundColor(Color.adaptiveMuted)
+                                        .padding(.horizontal, 12)
+                                }
+                                SecureField("", text: $newPassword)
+                                    .font(.interBody)
+                                    .foregroundColor(Color.adaptiveText)
+                                    .tint(Color.adaptiveText)
+                                    .textContentType(.newPassword)
+                                    .padding(12)
+                                    .focused($focusedField, equals: .newPassword)
+                            }
+                            .background(Color.adaptiveBackground)
+                            .cornerRadius(12)
+                        }
                         
-                        SecureInputField(
-                            title: "Confirm Password",
-                            placeholder: "Re-enter new password",
-                            text: $confirmPassword,
-                            contentType: .newPassword,
-                            focusedField: _focusedField,
-                            field: .confirmPassword
-                        )
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Confirm Password")
+                                .font(.interBody)
+                                .foregroundColor(Color.adaptiveText)
+                            
+                            ZStack(alignment: .leading) {
+                                if confirmPassword.isEmpty {
+                                    Text("Re-enter new password")
+                                        .font(.interBody)
+                                        .foregroundColor(Color.adaptiveMuted)
+                                        .padding(.horizontal, 12)
+                                }
+                                SecureField("", text: $confirmPassword)
+                                    .font(.interBody)
+                                    .foregroundColor(Color.adaptiveText)
+                                    .tint(Color.adaptiveText)
+                                    .textContentType(.newPassword)
+                                    .padding(12)
+                                    .focused($focusedField, equals: .confirmPassword)
+                            }
+                            .background(Color.adaptiveBackground)
+                            .cornerRadius(12)
+                        }
                         
                         if let successMessage {
                             Text(successMessage)
@@ -123,9 +185,8 @@ struct ResetPasswordCodeView: View {
                         .foregroundColor(Color.adaptiveText)
                 }
             }
+            .tint(Color.adaptiveText)
         }
-        .tint(Color.adaptiveText)
-    }
     
     private var isFormValid: Bool {
         !email.isEmpty &&
@@ -156,79 +217,6 @@ struct ResetPasswordCodeView: View {
                 errorMessage = error.localizedDescription.isEmpty ? "That code is incorrect or has expired." : error.localizedDescription
             }
             isLoading = false
-        }
-    }
-}
-
-private struct InputField: View {
-    let title: String
-    let placeholder: String
-    @Binding var text: String
-    let keyboard: UIKeyboardType
-    let contentType: UITextContentType
-    @FocusState var focusedField: ResetPasswordCodeView.Field?
-    let field: ResetPasswordCodeView.Field
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.interBody)
-                .foregroundColor(Color.adaptiveText)
-            
-            ZStack(alignment: .leading) {
-                if text.isEmpty {
-                    Text(placeholder)
-                        .font(.interBody)
-                        .foregroundColor(Color.adaptiveMuted)
-                        .padding(.horizontal, 12)
-                }
-                TextField("", text: $text)
-                    .font(.interBody)
-                    .foregroundColor(Color.adaptiveText)
-                    .tint(Color.adaptiveText)
-                    .keyboardType(keyboard)
-                    .textContentType(contentType)
-                    .autocapitalization(.none)
-                    .padding(12)
-                    .focused($focusedField, equals: field)
-            }
-            .background(Color.adaptiveBackground)
-            .cornerRadius(12)
-        }
-    }
-}
-
-private struct SecureInputField: View {
-    let title: String
-    let placeholder: String
-    @Binding var text: String
-    let contentType: UITextContentType
-    @FocusState var focusedField: ResetPasswordCodeView.Field?
-    let field: ResetPasswordCodeView.Field
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.interBody)
-                .foregroundColor(Color.adaptiveText)
-            
-            ZStack(alignment: .leading) {
-                if text.isEmpty {
-                    Text(placeholder)
-                        .font(.interBody)
-                        .foregroundColor(Color.adaptiveMuted)
-                        .padding(.horizontal, 12)
-                }
-                SecureField("", text: $text)
-                    .font(.interBody)
-                    .foregroundColor(Color.adaptiveText)
-                    .tint(Color.adaptiveText)
-                    .textContentType(contentType)
-                    .padding(12)
-                    .focused($focusedField, equals: field)
-            }
-            .background(Color.adaptiveBackground)
-            .cornerRadius(12)
         }
     }
 }

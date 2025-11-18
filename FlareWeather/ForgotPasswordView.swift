@@ -110,9 +110,8 @@ struct ForgotPasswordView: View {
             .navigationDestination(isPresented: $showCodeEntry) {
                 ResetPasswordCodeView(initialEmail: email)
             }
+            .tint(Color.adaptiveText)
         }
-        .tint(Color.adaptiveText)
-    }
     
     private func submit() {
         guard !email.isEmpty else { return }

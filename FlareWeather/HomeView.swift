@@ -427,6 +427,19 @@ struct DailyInsightCardView: View {
             }
         }
         
+        // Prevent duplicate: if sign-off is the same as comfort tip, remove it
+        if let comfort = comfort, let signOff = signOff {
+            if comfort.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) == 
+               signOff.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) {
+                return (summary, why, comfort, nil)
+            }
+            // Also check if comfort tip contains the sign-off text
+            if comfort.lowercased().contains(signOff.lowercased()) || 
+               signOff.lowercased().contains(comfort.lowercased()) {
+                return (summary, why, comfort, nil)
+            }
+        }
+        
         return (summary, why, comfort, signOff)
     }
     

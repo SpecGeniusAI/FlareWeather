@@ -791,8 +791,16 @@ Move at a pace that feels kind to you.
             if !comfortText.isEmpty {
                 lines.append("")
                 lines.append("Comfort tip: \(comfortText)")
+                
+                // Prevent duplicate: if sign-off is the same as comfort tip, don't add it
+                if signOffText.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) == 
+                   comfortText.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) {
+                    // Don't add sign-off if it's the same as comfort tip
+                    return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+                }
             }
             
+            // Only add sign-off if it's different from comfort tip
             lines.append("")
             lines.append(signOffText)
             
@@ -862,21 +870,27 @@ Move at a pace that feels kind to you.
         }
         
         // For legacy text we skip comfort tip and keep a soft, fixed sign-off.
-        let signOffText = "Move at a pace that feels kind to you."
+        // But only if it's different from the summary
+        let defaultSignOff = "Move at a pace that feels kind to you."
+        let signOffText = defaultSignOff
         
         // Build formatted message following exact template:
         // summary
         // 
         // Why: <why>
         // 
-        // <closing_line>
-        let lines: [String] = [
+        // <closing_line> (only if different from summary)
+        var lines: [String] = [
             summaryText,
             "",
-            "Why: \(whyText)",
-            "",
-            signOffText
+            "Why: \(whyText)"
         ]
+        
+        // Only add sign-off if it's not the same as the summary (avoid duplicates)
+        if summaryText.lowercased() != signOffText.lowercased() {
+            lines.append("")
+            lines.append(signOffText)
+        }
         
         return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }
