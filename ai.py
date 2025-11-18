@@ -1128,7 +1128,7 @@ RULES:
 
     daily_breakdown: List[Dict[str, str]] = []
     previous_weather_pattern = None
-    previous_insight_line = None
+    previous_body_feel = None
     
     for label, entry in zip(weekday_labels, patterns):
         weather_pattern = entry.get("weather_pattern", "steady pattern")
@@ -1136,23 +1136,46 @@ RULES:
         weather_pattern = _filter_app_messages(weather_pattern) or weather_pattern
         body_feel = _filter_app_messages(body_feel) or body_feel
         
-        # Normalize weather pattern for comparison (trim whitespace, lowercase)
+        # Normalize for comparison (trim whitespace, lowercase)
         weather_pattern_normalized = weather_pattern.strip().lower()
+        body_feel_normalized = body_feel.strip().lower()
         
-        # Check if weather pattern is the same as previous day
-        # If weather conditions are identical, show fallback even if body_feel wording differs
+        # Only show "Expect similar comfort..." if:
+        # 1. Weather pattern is the same (steady weather)
+        # 2. Body feel is also similar/unchanged (no new insight worth mentioning)
+        # This ensures we only use the fallback when there's genuinely nothing new to say
         is_same_weather = (
             previous_weather_pattern and
             weather_pattern_normalized == previous_weather_pattern
         )
         
-        if is_same_weather:
+        # Check if body_feel is essentially the same (similar meaning, not just wording)
+        # Consider it the same if both mention similar comfort/feelings
+        is_similar_body_feel = False
+        if previous_body_feel:
+            # If weather patterns match and body_feel are both generic/similar, consider it duplicate
+            # Common patterns: "may feel steady", "may feel easier", "may feel stable", etc.
+            generic_patterns = ["may feel", "might feel", "could feel", "may experience", "might experience"]
+            both_generic = (
+                any(pattern in previous_body_feel for pattern in generic_patterns) and
+                any(pattern in body_feel_normalized for pattern in generic_patterns)
+            )
+            # Also check if they're very similar (80%+ word overlap)
+            if both_generic:
+                previous_words = set(previous_body_feel.split())
+                current_words = set(body_feel_normalized.split())
+                if previous_words and current_words:
+                    overlap = len(previous_words & current_words) / max(len(previous_words), len(current_words))
+                    is_similar_body_feel = overlap > 0.5  # More than 50% word overlap
+        
+        # Only show fallback if both weather AND body feel are similar (steady weather, no new insight)
+        if is_same_weather and is_similar_body_feel:
             insight_line = "Expect similar comfort levels to the previous day"
             # Don't update previous values - keep comparing against original pattern
         else:
             insight_line = f"{weather_pattern} — {body_feel}"
             previous_weather_pattern = weather_pattern_normalized
-            previous_insight_line = insight_line
+            previous_body_feel = body_feel_normalized
         
         daily_breakdown.append({
             "label": label,
