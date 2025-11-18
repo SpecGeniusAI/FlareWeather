@@ -544,10 +544,15 @@ async def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(
         db.commit()
 
         try:
+            print(f"📧 Sending password reset email to {normalized_email} with code: {code}")
             await send_password_reset_email(normalized_email, code)
+            print(f"✅ Password reset email sent successfully to {normalized_email}")
         except Exception as email_error:
             # Log but do not leak to client
             logger.error("Password reset email failed for %s: %s", normalized_email, email_error)
+            print(f"❌ Password reset email failed for {normalized_email}: {email_error}")
+            import traceback
+            traceback.print_exc()
             # TODO: Consider retry/backoff for transient email errors.
 
         logger.info("Password reset code created for %s", normalized_email)

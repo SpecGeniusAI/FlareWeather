@@ -46,6 +46,9 @@ async def send_password_reset_email(email: str, code: str) -> None:
     }
 
     try:
+        print(f"📧 Mailgun: Preparing to send email to {email}")
+        print(f"📧 Mailgun: URL: {url}, Domain: {MAILGUN_DOMAIN}, From: {MAILGUN_FROM_EMAIL}")
+        
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(
                 url,
@@ -53,15 +56,16 @@ async def send_password_reset_email(email: str, code: str) -> None:
                 auth=("api", MAILGUN_API_KEY)
             )
 
-        if response.status_code >= 400:
-            logger.error(
-                "Mailgun error %s when sending reset email to %s: %s",
-                response.status_code,
-                email,
-                response.text
-            )
-            raise RuntimeError("Failed to send password reset email.")
+        print(f"📧 Mailgun: Response status: {response.status_code}")
+        print(f"📧 Mailgun: Response text: {response.text[:200]}")  # First 200 chars
 
+        if response.status_code >= 400:
+            error_msg = f"Mailgun error {response.status_code} when sending reset email to {email}: {response.text}"
+            logger.error(error_msg)
+            print(f"❌ {error_msg}")
+            raise RuntimeError(f"Failed to send password reset email: {response.status_code}")
+
+        print(f"✅ Mailgun: Email sent successfully to {email}")
         if MAILGUN_DEBUG_EMAILS:
             logger.debug("Password reset email sent to %s", email)
 
