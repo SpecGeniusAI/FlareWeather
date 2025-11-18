@@ -167,6 +167,25 @@ async def health_check():
     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
 
 
+@app.post("/test-email")
+async def test_email(email: str):
+    """
+    Test endpoint to verify Mailgun email sending (for debugging only).
+    Remove or secure this in production.
+    """
+    try:
+        from mailgun_service import send_password_reset_email
+        test_code = "123456"
+        print(f"🧪 Testing email send to {email}")
+        await send_password_reset_email(email, test_code)
+        return {"status": "success", "message": f"Test email sent to {email}"}
+    except Exception as e:
+        print(f"❌ Test email failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"status": "error", "message": str(e)}
+
+
 @app.post("/auth/signup", response_model=AuthResponse)
 async def signup(request: SignupRequest, db: Session = Depends(get_db)):
     """

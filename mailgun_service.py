@@ -19,7 +19,9 @@ async def send_password_reset_email(email: str, code: str) -> None:
     without printing codes in production logs.
     """
     if not MAILGUN_API_KEY or not MAILGUN_DOMAIN or not MAILGUN_FROM_EMAIL:
-        raise RuntimeError("Mailgun environment variables are not fully configured.")
+        error_msg = f"Mailgun environment variables not fully configured. API_KEY: {'SET' if MAILGUN_API_KEY else 'NOT SET'}, DOMAIN: {MAILGUN_DOMAIN or 'NOT SET'}, FROM_EMAIL: {MAILGUN_FROM_EMAIL or 'NOT SET'}"
+        print(f"❌ {error_msg}")
+        raise RuntimeError(error_msg)
 
     subject = "Your FlareWeather Password Reset Code"
     text_body = (
