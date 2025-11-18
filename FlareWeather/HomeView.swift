@@ -661,26 +661,30 @@ struct DailyInsightCardView: View {
                             .padding(.top, 4)
                     }
                     
-                    if let supportNote = supportNote, !supportNote.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Divider()
-                                .background(Color.adaptiveMuted.opacity(0.2))
-                            HStack(alignment: .top, spacing: 10) {
-                                Image(systemName: "hands.sparkles.fill")
-                                    .font(.interCaption)
-                                    .foregroundColor(Color.adaptiveText)
-                                Text(supportNote)
-                                    .font(.interCaption)
-                                    .foregroundColor(Color.adaptiveText)
-                                    .lineSpacing(4)
-                                    .fixedSize(horizontal: false, vertical: true)
+                    // Don't show supportNote if there's already a comfort tip (prevents duplicate comfort tips)
+                    // Only show supportNote if there's no comfort tip from the parsed sections
+                    if sections.comfort == nil || sections.comfort?.isEmpty == true {
+                        if let supportNote = supportNote, !supportNote.isEmpty {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Divider()
+                                    .background(Color.adaptiveMuted.opacity(0.2))
+                                HStack(alignment: .top, spacing: 10) {
+                                    Image(systemName: "hands.sparkles.fill")
+                                        .font(.interCaption)
+                                        .foregroundColor(Color.adaptiveText)
+                                    Text(supportNote)
+                                        .font(.interCaption)
+                                        .foregroundColor(Color.adaptiveText)
+                                        .lineSpacing(4)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                                .background(Color.adaptiveCardBackground.opacity(0.45))
+                                .cornerRadius(14)
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 10)
-                            .background(Color.adaptiveCardBackground.opacity(0.45))
-                            .cornerRadius(14)
+                            .transition(.opacity.combined(with: .move(edge: .bottom)))
                         }
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }
                     
                     if let personalAnecdote = personalAnecdote, !personalAnecdote.isEmpty {
