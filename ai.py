@@ -1002,21 +1002,25 @@ def generate_weekly_forecast_insight(
         except (ValueError, AttributeError, KeyError):
             pass
     
-    # Calculate tomorrow: use first entry date minus days until it becomes "tomorrow"
-    # If first entry is Wednesday and we want Tuesday, subtract 1 day
-    # If first entry is already Tuesday, use it directly
+    # Calculate tomorrow: use first entry date to determine offset
+    # The first forecast entry might be for tomorrow, or 2+ days ahead
+    # We always want to show tomorrow as the first day
     if first_entry_date_naive:
-        # Calculate how many days the first entry is from "now" (in UTC, normalized to date)
-        now_date = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
-        days_ahead = (first_entry_date_naive - now_date).days
+        # Both dates are normalized to midnight, so we can compare directly
+        now_utc_date = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+        days_diff = (first_entry_date_naive - now_utc_date).days
         
-        # If first entry is 1 day ahead (tomorrow), use it
-        # If first entry is 2+ days ahead, subtract (days_ahead - 1) to get tomorrow
-        if days_ahead >= 1:
-            tomorrow_date = first_entry_date_naive - timedelta(days=(days_ahead - 1))
+        # Calculate tomorrow based on the difference
+        if days_diff >= 2:
+            # First entry is 2+ days ahead (e.g., Wed when today is Mon)
+            # Subtract (days_diff - 1) to get tomorrow (Tue)
+            tomorrow_date = first_entry_date_naive - timedelta(days=(days_diff - 1))
+        elif days_diff == 1:
+            # First entry is tomorrow, use it directly
+            tomorrow_date = first_entry_date_naive
         else:
-            # If first entry is today or in the past, just add 1 day to now
-            tomorrow_date = now_date + timedelta(days=1)
+            # First entry is today or in the past, calculate tomorrow from now
+            tomorrow_date = now_utc_date + timedelta(days=1)
     else:
         # Fallback: calculate tomorrow from UTC
         tomorrow_date = now_utc.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
