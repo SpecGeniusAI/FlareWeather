@@ -410,20 +410,88 @@ struct DailyInsightCardView: View {
             return ("", nil, nil, nil)
         }
         
-        let summary = blocks.first ?? ""
+        // Get summary and filter out "☀️ Daily Insight" header
+        var summary = blocks.first ?? ""
+        
+        // Remove "☀️ Daily Insight" header from summary (card title already has it)
+        let headerPatterns = [
+            "(?i)☀️\\s*Daily\\s+Insight\\s*:?\\s*",
+            "(?i)☀\\s*Daily\\s+Insight\\s*:?\\s*",
+            "(?i)Daily\\s+Insight\\s*:?\\s*",
+            "(?i)^☀️\\s*",
+            "(?i)^☀\\s*"
+        ]
+        
+        for pattern in headerPatterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
+                let range = NSRange(summary.startIndex..., in: summary)
+                summary = regex.stringByReplacingMatches(in: summary, options: [], range: range, withTemplate: "")
+            }
+        }
+        
+        summary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // If summary is now empty or just whitespace after removing header, use next block
+        // Also check if summary is ONLY the header (no actual content)
+        if summary.isEmpty || summary.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) == "daily insight" {
+            if blocks.count > 1 {
+                summary = blocks[1]
+                // Also filter header from this block just in case
+                for pattern in headerPatterns {
+                    if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
+                        let range = NSRange(summary.startIndex..., in: summary)
+                        summary = regex.stringByReplacingMatches(in: summary, options: [], range: range, withTemplate: "")
+                    }
+                }
+                summary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+            } else {
+                // Fallback if no other blocks
+                summary = ""
+            }
+        }
+        
         var why: String?
         var comfort: String?
         var signOff: String?
         
-        for block in blocks.dropFirst() {
-            if block.hasPrefix("Why:") {
-                let trimmed = block.dropFirst("Why:".count)
-                why = trimmed.trimmingCharacters(in: .whitespacesAndNewlines)
-            } else if block.hasPrefix("Comfort tip:") {
-                let trimmed = block.dropFirst("Comfort tip:".count)
-                comfort = trimmed.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Process remaining blocks (skip summary)
+        // If we used blocks[0] as summary and it was empty/just header, we may have used blocks[1] as summary
+        // So we need to figure out which blocks to skip
+        let blocksToProcess: [String]
+        if blocks.count > 0 && (blocks.first?.lowercased().contains("daily insight") ?? false || summary == blocks.first || summary.isEmpty) {
+            // If first block was header or we used blocks[1] as summary
+            if summary.isEmpty && blocks.count > 1 {
+                // We used blocks[1] as summary, so skip blocks[0] and blocks[1]
+                blocksToProcess = Array(blocks.dropFirst(2))
             } else {
-                signOff = block
+                // Normal case: first block is summary (after filtering header)
+                blocksToProcess = Array(blocks.dropFirst())
+            }
+        } else {
+            // First block wasn't header, process from block 1
+            blocksToProcess = Array(blocks.dropFirst())
+        }
+        
+        for block in blocksToProcess {
+            if block.hasPrefix("Why:") {
+                let trimmed = block.dropFirst("Why:".count).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty && why == nil {
+                    why = trimmed
+                }
+            } else if block.hasPrefix("Comfort tip:") {
+                // Only take the FIRST comfort tip, ignore duplicates
+                if comfort == nil {
+                    let trimmed = block.dropFirst("Comfort tip:".count).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty {
+                        comfort = trimmed
+                    }
+                }
+            } else {
+                // Sign-off is the last non-prefixed block (but not if it's a duplicate of comfort)
+                let trimmed = block.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty && signOff == nil {
+                    signOff = trimmed
+                }
             }
         }
         
