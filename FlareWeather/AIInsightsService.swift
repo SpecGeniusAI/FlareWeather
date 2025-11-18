@@ -760,18 +760,58 @@ Move at a pace that feels kind to you.
             var signOffText = (sanitizeInsightText(filterAppMessages(signOff)) ?? signOff)?.trimmingCharacters(in: .whitespacesAndNewlines)
                 ?? "Move at a pace that feels kind to you."
             
-            // Prevent duplicate: if comfort tip contains the sign-off text, remove it from comfort tip
-            let signOffLower = signOffText.lowercased()
-            if comfortText.lowercased().contains(signOffLower) {
-                // Remove sign-off text from comfort tip
-                comfortText = comfortText.replacingOccurrences(of: signOffText, with: "", options: [.caseInsensitive])
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                    .trimmingCharacters(in: CharacterSet(charactersIn: ".,;:"))
+            // Clean text for comparison (remove punctuation, trim whitespace)
+            let cleanComfort = comfortText.lowercased()
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .trimmingCharacters(in: CharacterSet(charactersIn: ".,;:!?"))
+            let cleanSignOff = signOffText.lowercased()
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .trimmingCharacters(in: CharacterSet(charactersIn: ".,;:!?"))
+            
+            // Prevent duplicate: if sign-off is the same as comfort tip, don't add it
+            var shouldSkipSignOff = false
+            
+            if !cleanComfort.isEmpty && !cleanSignOff.isEmpty {
+                // Check if they're exactly the same
+                if cleanComfort == cleanSignOff {
+                    shouldSkipSignOff = true
+                }
+                // Also check if one contains the other substantially
+                else {
+                    let shorter = min(cleanComfort.count, cleanSignOff.count)
+                    if shorter > 0 {
+                        if cleanComfort.contains(cleanSignOff) || cleanSignOff.contains(cleanComfort) {
+                            let matchLength = cleanComfort.contains(cleanSignOff) ? cleanSignOff.count : cleanComfort.count
+                            // If match is >80% of shorter text, consider it duplicate
+                            if Double(matchLength) / Double(shorter) > 0.8 {
+                                shouldSkipSignOff = true
+                            }
+                        }
+                    }
+                }
             }
             
-            // If comfort tip is now empty after removing sign-off, use a generic one
-            if comfortText.isEmpty && comfortTip != nil && !comfortTip!.isEmpty {
+            // If comfort tip contains the sign-off text, remove it from comfort tip
+            if !shouldSkipSignOff {
+                let signOffLower = signOffText.lowercased()
+                if comfortText.lowercased().contains(signOffLower) {
+                    // Remove sign-off text from comfort tip
+                    comfortText = comfortText.replacingOccurrences(of: signOffText, with: "", options: [.caseInsensitive])
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                        .trimmingCharacters(in: CharacterSet(charactersIn: ".,;:"))
+                }
+            }
+            
+            // If comfort tip is now empty after removing sign-off, restore original
+            if comfortText.isEmpty && comfortTip != nil && !comfortTip!.isEmpty && !shouldSkipSignOff {
                 comfortText = (sanitizeInsightText(filterAppMessages(comfortTip)) ?? comfortTip)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                // Re-check for duplicates after restoring
+                let restoredClean = comfortText.lowercased()
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: ".,;:!?"))
+                if restoredClean == cleanSignOff {
+                    shouldSkipSignOff = true
+                }
             }
             
             // Build formatted message following exact template:
@@ -781,7 +821,7 @@ Move at a pace that feels kind to you.
             // 
             // Comfort tip: <comfort_tip> (if present)
             // 
-            // <closing_line>
+            // <closing_line> (only if different from comfort tip)
             var lines: [String] = [
                 summaryText,
                 "",
@@ -791,18 +831,13 @@ Move at a pace that feels kind to you.
             if !comfortText.isEmpty {
                 lines.append("")
                 lines.append("Comfort tip: \(comfortText)")
-                
-                // Prevent duplicate: if sign-off is the same as comfort tip, don't add it
-                if signOffText.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) == 
-                   comfortText.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) {
-                    // Don't add sign-off if it's the same as comfort tip
-                    return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-                }
             }
             
             // Only add sign-off if it's different from comfort tip
-            lines.append("")
-            lines.append(signOffText)
+            if !shouldSkipSignOff && !signOffText.isEmpty {
+                lines.append("")
+                lines.append(signOffText)
+            }
             
             return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         }

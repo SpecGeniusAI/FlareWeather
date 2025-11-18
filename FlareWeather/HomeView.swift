@@ -429,14 +429,29 @@ struct DailyInsightCardView: View {
         
         // Prevent duplicate: if sign-off is the same as comfort tip, remove it
         if let comfort = comfort, let signOff = signOff {
-            if comfort.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) == 
-               signOff.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) {
+            let comfortClean = comfort.lowercased()
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .trimmingCharacters(in: CharacterSet(charactersIn: ".,;:!?"))
+            let signOffClean = signOff.lowercased()
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .trimmingCharacters(in: CharacterSet(charactersIn: ".,;:!?"))
+            
+            // Check if they're exactly the same (ignoring punctuation)
+            if comfortClean == signOffClean {
                 return (summary, why, comfort, nil)
             }
-            // Also check if comfort tip contains the sign-off text
-            if comfort.lowercased().contains(signOff.lowercased()) || 
-               signOff.lowercased().contains(comfort.lowercased()) {
-                return (summary, why, comfort, nil)
+            
+            // Also check if one contains the other (for partial matches)
+            // Only remove if one is a substantial match (>80% of the shorter text)
+            let shorter = min(comfortClean.count, signOffClean.count)
+            if shorter > 0 {
+                if comfortClean.contains(signOffClean) || signOffClean.contains(comfortClean) {
+                    // Only consider it a duplicate if the match is substantial
+                    let matchLength = comfortClean.contains(signOffClean) ? signOffClean.count : comfortClean.count
+                    if Double(matchLength) / Double(shorter) > 0.8 {
+                        return (summary, why, comfort, nil)
+                    }
+                }
             }
         }
         
