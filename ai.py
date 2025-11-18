@@ -984,7 +984,8 @@ def generate_weekly_forecast_insight(
     now_utc = datetime.utcnow()
     
     # Parse first entry's timestamp to get the date
-    first_entry_date_naive = None
+    # Keep it in UTC to match our comparison with now_utc
+    first_entry_date_utc = None
     if "timestamp" in first_entry:
         try:
             timestamp_str = first_entry["timestamp"]
@@ -992,38 +993,47 @@ def generate_weekly_forecast_insight(
                 if timestamp_str.endswith("Z"):
                     timestamp_str = timestamp_str.replace("Z", "+00:00")
                 first_entry_date = datetime.fromisoformat(timestamp_str)
-                # Convert to naive datetime (remove timezone, keep the date)
+                # Convert to UTC if it has timezone info, then make naive for comparison
                 if first_entry_date.tzinfo:
-                    first_entry_date_naive = first_entry_date.astimezone().replace(tzinfo=None)
+                    first_entry_date_utc = first_entry_date.astimezone(datetime.timezone.utc).replace(tzinfo=None)
                 else:
-                    first_entry_date_naive = first_entry_date
+                    # Assume UTC if no timezone info
+                    first_entry_date_utc = first_entry_date
                 # Normalize to midnight
-                first_entry_date_naive = first_entry_date_naive.replace(hour=0, minute=0, second=0, microsecond=0)
-        except (ValueError, AttributeError, KeyError):
+                first_entry_date_utc = first_entry_date_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+        except (ValueError, AttributeError, KeyError) as e:
+            print(f"⚠️ Error parsing forecast timestamp: {e}")
             pass
     
     # Calculate tomorrow: use first entry date to determine offset
     # The first forecast entry might be for tomorrow, or 2+ days ahead
     # We always want to show tomorrow as the first day
-    if first_entry_date_naive:
-        # Both dates are normalized to midnight, so we can compare directly
-        now_utc_date = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
-        days_diff = (first_entry_date_naive - now_utc_date).days
+    now_utc_date = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    if first_entry_date_utc:
+        # Both dates are in UTC, normalized to midnight, so we can compare directly
+        days_diff = (first_entry_date_utc - now_utc_date).days
+        
+        print(f"🔍 Weekly forecast debug: first_entry_date_utc={first_entry_date_utc}, now_utc_date={now_utc_date}, days_diff={days_diff}")
         
         # Calculate tomorrow based on the difference
         if days_diff >= 2:
-            # First entry is 2+ days ahead (e.g., Wed when today is Mon)
+            # First entry is 2+ days ahead (e.g., Wed when today is Mon in UTC)
             # Subtract (days_diff - 1) to get tomorrow (Tue)
-            tomorrow_date = first_entry_date_naive - timedelta(days=(days_diff - 1))
+            tomorrow_date = first_entry_date_utc - timedelta(days=(days_diff - 1))
+            print(f"🔍 First entry is {days_diff} days ahead, calculating tomorrow as: {tomorrow_date}")
         elif days_diff == 1:
             # First entry is tomorrow, use it directly
-            tomorrow_date = first_entry_date_naive
+            tomorrow_date = first_entry_date_utc
+            print(f"🔍 First entry is tomorrow, using: {tomorrow_date}")
         else:
             # First entry is today or in the past, calculate tomorrow from now
             tomorrow_date = now_utc_date + timedelta(days=1)
+            print(f"🔍 First entry is today/past, calculating tomorrow from now: {tomorrow_date}")
     else:
         # Fallback: calculate tomorrow from UTC
-        tomorrow_date = now_utc.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+        tomorrow_date = now_utc_date + timedelta(days=1)
+        print(f"🔍 No first entry date, using fallback: {tomorrow_date}")
     
     # Generate weekday labels starting from tomorrow
     weekday_labels = []
