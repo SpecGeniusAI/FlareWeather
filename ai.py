@@ -1170,7 +1170,7 @@ RULES:
         
         # Only show fallback if both weather AND body feel are similar (steady weather, no new insight)
         if is_same_weather and is_similar_body_feel:
-            insight_line = "Expect similar comfort levels to the previous day"
+            insight_line = "No changes expected."
             # Don't update previous values - keep comparing against original pattern
         else:
             insight_line = f"{weather_pattern} — {body_feel}"
