@@ -1093,7 +1093,7 @@ RULES:
 
     daily_breakdown: List[Dict[str, str]] = []
     previous_weather_pattern = None
-    previous_body_feel = None
+    previous_insight_line = None
     
     for label, entry in zip(weekday_labels, patterns):
         weather_pattern = entry.get("weather_pattern", "steady pattern")
@@ -1101,24 +1101,23 @@ RULES:
         weather_pattern = _filter_app_messages(weather_pattern) or weather_pattern
         body_feel = _filter_app_messages(body_feel) or body_feel
         
-        # Normalize for comparison (trim whitespace, lowercase)
+        # Normalize weather pattern for comparison (trim whitespace, lowercase)
         weather_pattern_normalized = weather_pattern.strip().lower()
-        body_feel_normalized = body_feel.strip().lower()
         
-        # Check if both weather pattern AND body feel are the same as previous day
-        is_same_as_previous = (
-            previous_weather_pattern and previous_body_feel and
-            weather_pattern_normalized == previous_weather_pattern and
-            body_feel_normalized == previous_body_feel
+        # Check if weather pattern is the same as previous day
+        # If weather conditions are identical, show fallback even if body_feel wording differs
+        is_same_weather = (
+            previous_weather_pattern and
+            weather_pattern_normalized == previous_weather_pattern
         )
         
-        if is_same_as_previous:
+        if is_same_weather:
             insight_line = "Expect similar comfort levels to the previous day"
-            # Don't update previous values since we want to keep showing this for consecutive duplicates
+            # Don't update previous values - keep comparing against original pattern
         else:
             insight_line = f"{weather_pattern} — {body_feel}"
             previous_weather_pattern = weather_pattern_normalized
-            previous_body_feel = body_feel_normalized
+            previous_insight_line = insight_line
         
         daily_breakdown.append({
             "label": label,
