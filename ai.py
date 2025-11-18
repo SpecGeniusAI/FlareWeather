@@ -986,6 +986,8 @@ def generate_weekly_forecast_insight(
     
     # Try to detect user's timezone from first forecast entry
     user_offset_hours = 0
+    first_entry_date_utc = None
+    
     if "timestamp" in first_entry:
         try:
             timestamp_str = first_entry["timestamp"]
@@ -993,6 +995,8 @@ def generate_weekly_forecast_insight(
                 if timestamp_str.endswith("Z"):
                     timestamp_str = timestamp_str.replace("Z", "+00:00")
                 first_entry_date = datetime.fromisoformat(timestamp_str)
+                first_entry_date_utc = first_entry_date.astimezone(datetime.now().astimezone().tzinfo).replace(tzinfo=None) if first_entry_date.tzinfo else first_entry_date
+                
                 # Calculate timezone offset if present
                 if first_entry_date.tzinfo:
                     user_offset = first_entry_date.utcoffset()
@@ -1002,11 +1006,12 @@ def generate_weekly_forecast_insight(
             pass
     
     # Calculate "today" in user's timezone, then "tomorrow"
-    # This is approximate - ideally we'd have user's exact timezone from frontend
+    # Add 1 day to ensure we always start from tomorrow, not today
     now_user_tz = now_utc + timedelta(hours=user_offset_hours)
-    tomorrow_user_tz = (now_user_tz + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    today_user_tz = now_user_tz.replace(hour=0, minute=0, second=0, microsecond=0)
+    tomorrow_user_tz = today_user_tz + timedelta(days=1)
     
-    # Generate weekday labels starting from tomorrow
+    # Generate weekday labels starting from tomorrow (always +1 day from today)
     weekday_labels = []
     for i in range(7):
         day = tomorrow_user_tz + timedelta(days=i)
