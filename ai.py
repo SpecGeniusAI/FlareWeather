@@ -756,7 +756,7 @@ OUTPUT VALID JSON EXACTLY:
   "personal_anecdote": "Optional relatable line.",
   "behavior_prompt": "Optional gentle reminder.",
   "daily_insight": {{
-    "summary_sentence": "Follow this exact format: 'The weather is expected to be [specific weather pattern description] which could impact [specific body systems or conditions].' Be specific about the weather (pressure changes, humidity shifts, temperature swings, wind patterns) and which conditions or body systems may be affected. Use descriptive language, not numbers. Example: 'The weather is expected to be dropping pressure with rising humidity which could impact joint stiffness and inflammation.'",
+    "summary_sentence": "REQUIRED FORMAT: '[Weather description] which could [impact statement].' You MUST include both parts: 1) describe the weather pattern (cool air, heavy humidity, dropping pressure, rising temperatures, etc.) 2) ALWAYS end with 'which could [impact]' - describe potential body impacts like discomfort, joint stiffness, inflammation, headaches, muscle tension, breathing challenges, etc. Never just describe weather alone. Example: 'Today brings cool air with a heavy blanket of humidity which could cause some discomfort.'",
     "why_line": "Explain why this specific weather event causes flares or symptoms. Focus on the scientific mechanism: how pressure changes affect joint fluid, how humidity impacts inflammation, how temperature shifts affect blood flow, etc. Be educational but accessible. Example: 'Dropping pressure can cause tissues to expand slightly, increasing pressure on sensitive joints and nerves.'",
     "comfort_tip": "Either one of the allowed comfort tips or empty string.",
     "sign_off": "One calm sign-off sentence."
