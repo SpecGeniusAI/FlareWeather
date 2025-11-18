@@ -127,7 +127,7 @@ struct ForgotPasswordView: View {
         Task { @MainActor in
             do {
                 try await authService.forgotPassword(email: email)
-                successMessage = "If an account exists, we’ve emailed a reset code."
+                successMessage = "If an account exists, we've emailed a reset code. Please check your junk mail or spam folders if you don't see it."
                 isFieldFocused = false
             } catch {
                 errorMessage = error.localizedDescription
