@@ -1038,7 +1038,7 @@ For each day in that order, craft:
 
 Return JSON EXACTLY:
 {{
-  "weekly_summary": "One to two sentences summarizing the week (no numbers, no greetings).",
+  "weekly_summary": "REQUIRED FORMAT: '[Overall weekly weather pattern description] which could [impact statement].' You MUST include both parts: 1) describe the overall weekly weather pattern (shifting pressures, humidity trends, temperature changes, wind patterns, etc.) 2) ALWAYS end with 'which could [impact]' - describe potential body impacts like discomfort, joint stiffness, inflammation, headaches, muscle tension, breathing challenges, etc. Never just describe weather alone. One to two sentences, no numbers, no greetings. Example: 'The week ahead brings dropping pressure midweek with rising humidity which could increase joint discomfort and inflammation.'",
   "daily_patterns": [
     {{"weather_pattern": "...", "body_feel": "..."}},
     ... (7 total entries)
