@@ -980,7 +980,7 @@ def generate_weekly_forecast_insight(
 
     # Parse the first entry's timestamp to determine starting day (uses user's timezone)
     first_entry = forecast_entries[0]
-    start_date = datetime.utcnow()  # Default fallback
+    start_date = datetime.utcnow() + timedelta(days=1)  # Default: tomorrow in UTC
     
     if "timestamp" in first_entry:
         try:
@@ -989,14 +989,20 @@ def generate_weekly_forecast_insight(
             if isinstance(timestamp_str, str):
                 if timestamp_str.endswith("Z"):
                     timestamp_str = timestamp_str.replace("Z", "+00:00")
-                start_date = datetime.fromisoformat(timestamp_str)
+                first_entry_date = datetime.fromisoformat(timestamp_str)
+                # Extract just the date part (without time) to get the day
+                start_date = first_entry_date.replace(hour=0, minute=0, second=0, microsecond=0)
         except (ValueError, AttributeError, KeyError):
-            # If timestamp parsing fails, use current time as fallback
-            start_date = datetime.utcnow()
+            # If timestamp parsing fails, use tomorrow as fallback
+            start_date = datetime.utcnow() + timedelta(days=1)
     
-    # Generate weekday labels starting from the first forecast day (next 7 days)
-    # This ensures we use the user's timezone via the forecast timestamp
-    weekday_labels = _next_weekday_labels(start_date, count=7)
+    # Generate weekday labels starting from the first forecast day
+    # _next_weekday_labels adds 1 day, but first_entry is already tomorrow, so subtract 1
+    # OR create labels directly from start_date
+    weekday_labels = []
+    for i in range(7):
+        day = start_date + timedelta(days=i)
+        weekday_labels.append(day.strftime("%a"))
     
     # Use forecast entries directly - they should already start from tomorrow
     ordered_entries = forecast_entries[:len(weekday_labels)]
