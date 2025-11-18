@@ -3,6 +3,7 @@ import UIKit
 
 struct ResetPasswordCodeView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.presentationMode) var presentationMode
     @State private var email: String
     @State private var code: String = ""
     @State private var newPassword: String = ""
@@ -211,7 +212,12 @@ struct ResetPasswordCodeView: View {
                 successMessage = "Password updated. You can log in now."
                 focusedField = nil
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                    // Dismiss this view (ResetPasswordCodeView)
                     dismiss()
+                    // Dismiss the parent view (ForgotPasswordView) to return to LoginView
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        presentationMode.wrappedValue.dismiss()
+                    }
                 }
             } catch {
                 errorMessage = error.localizedDescription.isEmpty ? "That code is incorrect or has expired." : error.localizedDescription
