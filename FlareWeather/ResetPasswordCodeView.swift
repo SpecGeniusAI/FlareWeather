@@ -3,7 +3,6 @@ import UIKit
 
 struct ResetPasswordCodeView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.presentationMode) var presentationMode
     @State private var email: String
     @State private var code: String = ""
     @State private var newPassword: String = ""
@@ -14,13 +13,15 @@ struct ResetPasswordCodeView: View {
     @FocusState private var focusedField: Field?
     
     private let authService = AuthService()
+    private let onSuccess: (() -> Void)?
     
     enum Field: Hashable {
         case email, code, newPassword, confirmPassword
     }
     
-    init(initialEmail: String = "") {
+    init(initialEmail: String = "", onSuccess: (() -> Void)? = nil) {
         _email = State(initialValue: initialEmail)
+        self.onSuccess = onSuccess
     }
     
     var body: some View {
@@ -216,7 +217,7 @@ struct ResetPasswordCodeView: View {
                     dismiss()
                     // Dismiss the parent view (ForgotPasswordView) to return to LoginView
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        presentationMode.wrappedValue.dismiss()
+                        onSuccess?()
                     }
                 }
             } catch {

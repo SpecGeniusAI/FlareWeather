@@ -108,7 +108,13 @@ struct ForgotPasswordView: View {
                 }
             }
             .navigationDestination(isPresented: $showCodeEntry) {
-                ResetPasswordCodeView(initialEmail: email)
+                ResetPasswordCodeView(
+                    initialEmail: email,
+                    onSuccess: {
+                        // Dismiss this view (ForgotPasswordView) when password is reset
+                        dismiss()
+                    }
+                )
             }
             .tint(Color.adaptiveText)
         }
