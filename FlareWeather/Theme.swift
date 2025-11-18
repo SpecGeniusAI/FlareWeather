@@ -107,7 +107,7 @@ struct PrimaryButtonStyle: ButtonStyle {
         configuration.label
             .padding(.horizontal, 24)
             .padding(.vertical, 12)
-            .background(Color.adaptiveCardBackground)
+            .background(colorScheme == .dark ? Color.darkCardBackground : Color.adaptiveCardBackground)
             .foregroundColor(colorScheme == .dark ? .white : .black) // White in dark mode, black in light mode
             .font(.interBody.weight(.medium))
             .cornerRadius(12)

@@ -979,15 +979,12 @@ def generate_weekly_forecast_insight(
         return (payload, [])
 
     # Always start weekday labels from tomorrow (user's perspective)
-    # The forecast entries might start from any day, but we want to show tomorrow-first
-    # Parse first entry to detect timezone, but always calculate from "tomorrow"
+    # Use the first forecast entry's date to determine the starting point
     first_entry = forecast_entries[0]
     now_utc = datetime.utcnow()
     
-    # Try to detect user's timezone from first forecast entry
-    user_offset_hours = 0
-    first_entry_date_utc = None
-    
+    # Parse first entry's timestamp to get the date
+    first_entry_date_naive = None
     if "timestamp" in first_entry:
         try:
             timestamp_str = first_entry["timestamp"]
@@ -995,26 +992,39 @@ def generate_weekly_forecast_insight(
                 if timestamp_str.endswith("Z"):
                     timestamp_str = timestamp_str.replace("Z", "+00:00")
                 first_entry_date = datetime.fromisoformat(timestamp_str)
-                first_entry_date_utc = first_entry_date.astimezone(datetime.now().astimezone().tzinfo).replace(tzinfo=None) if first_entry_date.tzinfo else first_entry_date
-                
-                # Calculate timezone offset if present
+                # Convert to naive datetime (remove timezone, keep the date)
                 if first_entry_date.tzinfo:
-                    user_offset = first_entry_date.utcoffset()
-                    if user_offset:
-                        user_offset_hours = user_offset.total_seconds() / 3600
+                    first_entry_date_naive = first_entry_date.astimezone().replace(tzinfo=None)
+                else:
+                    first_entry_date_naive = first_entry_date
+                # Normalize to midnight
+                first_entry_date_naive = first_entry_date_naive.replace(hour=0, minute=0, second=0, microsecond=0)
         except (ValueError, AttributeError, KeyError):
             pass
     
-    # Calculate "today" in user's timezone, then "tomorrow"
-    # Add 1 day to ensure we always start from tomorrow, not today
-    now_user_tz = now_utc + timedelta(hours=user_offset_hours)
-    today_user_tz = now_user_tz.replace(hour=0, minute=0, second=0, microsecond=0)
-    tomorrow_user_tz = today_user_tz + timedelta(days=1)
+    # Calculate tomorrow: use first entry date minus days until it becomes "tomorrow"
+    # If first entry is Wednesday and we want Tuesday, subtract 1 day
+    # If first entry is already Tuesday, use it directly
+    if first_entry_date_naive:
+        # Calculate how many days the first entry is from "now" (in UTC, normalized to date)
+        now_date = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+        days_ahead = (first_entry_date_naive - now_date).days
+        
+        # If first entry is 1 day ahead (tomorrow), use it
+        # If first entry is 2+ days ahead, subtract (days_ahead - 1) to get tomorrow
+        if days_ahead >= 1:
+            tomorrow_date = first_entry_date_naive - timedelta(days=(days_ahead - 1))
+        else:
+            # If first entry is today or in the past, just add 1 day to now
+            tomorrow_date = now_date + timedelta(days=1)
+    else:
+        # Fallback: calculate tomorrow from UTC
+        tomorrow_date = now_utc.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
     
-    # Generate weekday labels starting from tomorrow (always +1 day from today)
+    # Generate weekday labels starting from tomorrow
     weekday_labels = []
     for i in range(7):
-        day = tomorrow_user_tz + timedelta(days=i)
+        day = tomorrow_date + timedelta(days=i)
         weekday_labels.append(day.strftime("%a"))
     
     # Use forecast entries directly - they should already start from tomorrow
