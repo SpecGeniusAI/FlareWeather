@@ -168,11 +168,17 @@ async def health_check():
 
 
 @app.post("/test-email")
-async def test_email(email: str):
+async def test_email(email: str, auth_token: Optional[str] = None):
     """
     Test endpoint to verify Mailgun email sending (for debugging only).
-    Remove or secure this in production.
+    Should be secured with authentication in production or removed.
     """
+    # Basic protection: only allow in development or with auth token
+    # TODO: Remove this endpoint before production or add proper authentication
+    import os
+    if os.getenv("ENVIRONMENT") == "production" and not auth_token:
+        raise HTTPException(status_code=403, detail="Test endpoint disabled in production")
+    
     try:
         from mailgun_service import send_password_reset_email
         test_code = "123456"
