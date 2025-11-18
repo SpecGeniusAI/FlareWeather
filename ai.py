@@ -756,7 +756,7 @@ OUTPUT VALID JSON EXACTLY:
   "personal_anecdote": "Optional relatable line.",
   "behavior_prompt": "Optional gentle reminder.",
   "daily_insight": {{
-    "summary_sentence": "One-sentence summary of today's pattern.",
+    "summary_sentence": "One to two sentences describing today's weather pattern and how it may affect weather-sensitive bodies. Be specific about the weather conditions (pressure, humidity, temperature, wind) using descriptive language, not numbers.",
     "why_line": "One-sentence hint about how sensitive bodies may feel.",
     "comfort_tip": "Either one of the allowed comfort tips or empty string.",
     "sign_off": "One calm sign-off sentence."

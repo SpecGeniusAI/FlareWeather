@@ -833,10 +833,20 @@ Move at a pace that feels kind to you.
                 lines.append("Comfort tip: \(comfortText)")
             }
             
-            // Only add sign-off if it's different from comfort tip
+            // Only add sign-off if it's different from comfort tip AND summary
             if !shouldSkipSignOff && !signOffText.isEmpty {
-                lines.append("")
-                lines.append(signOffText)
+                let cleanSignOff = signOffText.lowercased()
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: ".,;:!?"))
+                let cleanSummary = summaryText.lowercased()
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: ".,;:!?"))
+                
+                // Don't add sign-off if it matches summary
+                if cleanSignOff != cleanSummary && !cleanSignOff.contains(cleanSummary) && !cleanSummary.contains(cleanSignOff) {
+                    lines.append("")
+                    lines.append(signOffText)
+                }
             }
             
             return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)

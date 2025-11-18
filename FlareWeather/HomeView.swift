@@ -495,30 +495,64 @@ struct DailyInsightCardView: View {
             }
         }
         
-        // Prevent duplicate: if sign-off is the same as comfort tip, remove it
-        if let comfort = comfort, let signOff = signOff {
-            let comfortClean = comfort.lowercased()
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .trimmingCharacters(in: CharacterSet(charactersIn: ".,;:!?"))
+        // Prevent duplicate: if sign-off matches summary, comfort tip, or why, remove it
+        let summaryClean = summary.lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: ".,;:!?"))
+        
+        if let signOff = signOff {
             let signOffClean = signOff.lowercased()
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .trimmingCharacters(in: CharacterSet(charactersIn: ".,;:!?"))
             
-            // Check if they're exactly the same (ignoring punctuation)
-            if comfortClean == signOffClean {
+            // Check if sign-off is the same as summary (common duplicate)
+            if !summaryClean.isEmpty && signOffClean == summaryClean {
                 return (summary, why, comfort, nil)
             }
             
-            // Also check if one contains the other (for partial matches)
-            // Only remove if one is a substantial match (>80% of the shorter text)
-            let shorter = min(comfortClean.count, signOffClean.count)
-            if shorter > 0 {
-                if comfortClean.contains(signOffClean) || signOffClean.contains(comfortClean) {
-                    // Only consider it a duplicate if the match is substantial
-                    let matchLength = comfortClean.contains(signOffClean) ? signOffClean.count : comfortClean.count
-                    if Double(matchLength) / Double(shorter) > 0.8 {
-                        return (summary, why, comfort, nil)
+            // Check if sign-off contains summary or vice versa
+            if !summaryClean.isEmpty {
+                if signOffClean.contains(summaryClean) || summaryClean.contains(signOffClean) {
+                    let shorter = min(summaryClean.count, signOffClean.count)
+                    if shorter > 0 {
+                        let matchLength = signOffClean.contains(summaryClean) ? summaryClean.count : signOffClean.count
+                        if Double(matchLength) / Double(shorter) > 0.8 {
+                            return (summary, why, comfort, nil)
+                        }
                     }
+                }
+            }
+            
+            // Check if sign-off is the same as comfort tip
+            if let comfort = comfort {
+                let comfortClean = comfort.lowercased()
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: ".,;:!?"))
+                
+                if comfortClean == signOffClean {
+                    return (summary, why, comfort, nil)
+                }
+                
+                // Also check if one contains the other (for partial matches)
+                let shorter = min(comfortClean.count, signOffClean.count)
+                if shorter > 0 {
+                    if comfortClean.contains(signOffClean) || signOffClean.contains(comfortClean) {
+                        let matchLength = comfortClean.contains(signOffClean) ? signOffClean.count : comfortClean.count
+                        if Double(matchLength) / Double(shorter) > 0.8 {
+                            return (summary, why, comfort, nil)
+                        }
+                    }
+                }
+            }
+            
+            // Check if sign-off is the same as why
+            if let why = why {
+                let whyClean = why.lowercased()
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: ".,;:!?"))
+                
+                if whyClean == signOffClean {
+                    return (summary, why, comfort, nil)
                 }
             }
         }
