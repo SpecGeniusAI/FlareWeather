@@ -1092,12 +1092,21 @@ RULES:
         patterns = patterns[:len(weekday_labels)]
 
     daily_breakdown: List[Dict[str, str]] = []
+    previous_insight = None
+    
     for label, entry in zip(weekday_labels, patterns):
         weather_pattern = entry.get("weather_pattern", "steady pattern")
         body_feel = entry.get("body_feel", "may feel steady on the body")
         weather_pattern = _filter_app_messages(weather_pattern) or weather_pattern
         body_feel = _filter_app_messages(body_feel) or body_feel
         insight_line = f"{weather_pattern} — {body_feel}"
+        
+        # If this day is the same as the previous day, use fallback message
+        if previous_insight and insight_line == previous_insight:
+            insight_line = "Expect similar comfort levels to the previous day"
+        else:
+            previous_insight = insight_line
+        
         daily_breakdown.append({
             "label": label,
             "insight": insight_line
