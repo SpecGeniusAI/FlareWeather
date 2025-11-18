@@ -978,12 +978,12 @@ def generate_weekly_forecast_insight(
         })
         return (payload, [])
 
-    if len(forecast_entries) > 1:
-        ordered_entries = forecast_entries[1:] + forecast_entries[:1]
-    else:
-        ordered_entries = forecast_entries
-
+    # Generate weekday labels starting from tomorrow (next 7 days)
     weekday_labels = _next_weekday_labels(datetime.utcnow(), count=7)
+    
+    # Use forecast entries directly - they should already start from tomorrow
+    # The rotation was causing a mismatch with weekday labels
+    ordered_entries = forecast_entries[:len(weekday_labels)]
 
     while len(ordered_entries) < len(weekday_labels):
         ordered_entries.append(ordered_entries[-1])
