@@ -1362,6 +1362,8 @@ def generate_weekly_forecast_insight(
     # Track all calculated risks to ensure variation
     calculated_risks = []  # List of (label, risk_level, risk_score, day_data)
     
+    print(f"🔍 Starting weekly insight generation for {len(ordered_entries)} days")
+    
     for label, day_data in zip(weekday_labels, ordered_entries):
         temp = day_data.get("temperature", 0)
         humidity = day_data.get("humidity", 0)
@@ -1388,6 +1390,7 @@ def generate_weekly_forecast_insight(
         # Store calculated risk for variation check
         risk_score_approx = {"High": 3, "Moderate": 2, "Low": 1}.get(suggested_risk, 1)
         calculated_risks.append((label, suggested_risk, risk_score_approx, day_data))
+        print(f"📝 Stored risk for {label}: {suggested_risk} (score: {risk_score_approx})")
         
         # Build descriptors from weather data
         descriptors = [_describe_temperature(temp)]
@@ -1427,10 +1430,13 @@ def generate_weekly_forecast_insight(
         pressure_delta = pressure - prev_pressure if prev_pressure is not None else 0
         temp_delta = temp - prev_temp if prev_temp is not None else 0
         humidity_delta = humidity - prev_humidity if prev_humidity is not None else 0
+        prev_pressure_str = f"{prev_pressure:.1f}" if prev_pressure is not None else "None"
+        prev_temp_str = f"{prev_temp:.1f}" if prev_temp is not None else "None"
+        prev_humidity_str = f"{prev_humidity:.0f}" if prev_humidity is not None else "None"
         print(f"📊 Weekly risk calc for {label}: temp={temp:.1f}°C (Δ{temp_delta:+.1f}), humidity={humidity:.0f}% (Δ{humidity_delta:+.0f}), pressure={pressure:.1f}hPa (Δ{pressure_delta:+.1f}), "
-              f"prev_pressure={prev_pressure:.1f if prev_pressure else None}hPa, "
-              f"prev_temp={prev_temp:.1f if prev_temp else None}°C, "
-              f"prev_humidity={prev_humidity:.0f if prev_humidity else None}%, "
+              f"prev_pressure={prev_pressure_str}hPa, "
+              f"prev_temp={prev_temp_str}°C, "
+              f"prev_humidity={prev_humidity_str}%, "
               f"risk={suggested_risk}, factors={risk_factors_str}")
         
         # Update previous values for next iteration
@@ -1447,6 +1453,8 @@ def generate_weekly_forecast_insight(
     
     # ALWAYS force variation if we have fewer than 3 Moderate/High days
     needs_variation = (moderate_count + high_count) < 3
+    
+    print(f"📊 Risk summary: {high_count} High, {moderate_count} Moderate, {low_count} Low. Needs variation: {needs_variation}")
     
     if needs_variation and len(calculated_risks) > 0:
         print(f"⚠️ Only {moderate_count} Moderate and {high_count} High days - forcing aggressive variation (need at least 3)")
@@ -1708,6 +1716,10 @@ BAD EXAMPLE (repeating):
         patterns = []
 
     sources = response_data.get("sources", []) or []
+    
+    print(f"📥 AI returned {len(patterns)} daily patterns")
+    for i, p in enumerate(patterns):
+        print(f"   Day {i}: risk={p.get('risk', 'Low')}, descriptor='{p.get('descriptor', '')[:50]}...'")
 
     # Default fallback patterns using approved descriptors - expanded list for variety
     low_fallbacks = [
