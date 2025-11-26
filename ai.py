@@ -1438,14 +1438,18 @@ def generate_weekly_forecast_insight(
         prev_temp = temp
         prev_humidity = humidity
     
-    # CRITICAL: Ensure variation - ALWAYS force at least 3-4 days to Moderate/High
+    # CRITICAL: ALWAYS force variation - ensure at least 3-4 days are Moderate/High
     # Don't wait for all Low - be proactive about variation
     all_low = all(risk == "Low" for _, risk, _, _ in calculated_risks)
     low_count = sum(1 for _, risk, _, _ in calculated_risks if risk == "Low")
+    moderate_count = sum(1 for _, risk, _, _ in calculated_risks if risk == "Moderate")
+    high_count = sum(1 for _, risk, _, _ in calculated_risks if risk == "High")
     
-    # If more than 4 days are Low, force variation (even if not all are Low)
-    if (all_low or low_count > 4) and len(calculated_risks) > 0:
-        print(f"⚠️ All {len(calculated_risks)} days calculated as Low risk - forcing aggressive variation")
+    # ALWAYS force variation if we have fewer than 3 Moderate/High days
+    needs_variation = (moderate_count + high_count) < 3
+    
+    if needs_variation and len(calculated_risks) > 0:
+        print(f"⚠️ Only {moderate_count} Moderate and {high_count} High days - forcing aggressive variation (need at least 3)")
         # Find days with largest absolute changes (pressure, temp, humidity)
         # Sort by approximate change magnitude
         def calculate_change_magnitude(day_data_tuple):
@@ -1466,9 +1470,12 @@ def generate_weekly_forecast_insight(
         sorted_by_change = sorted(calculated_risks, key=calculate_change_magnitude, reverse=True)
         
         # Force top 3-4 days to Moderate/High (more aggressive - ensure real variation)
-        # For 7 days, force at least 3 to be Moderate or High
-        forced_count = min(max(3, len(sorted_by_change) // 2), len(sorted_by_change))
-        print(f"🔧 Forcing {forced_count} days to Moderate/High risk")
+        # For 7 days, ALWAYS force at least 3 to be Moderate or High
+        # Calculate how many we need to force
+        current_moderate_high = moderate_count + high_count
+        needed = max(3 - current_moderate_high, 0)  # Need at least 3 total
+        forced_count = min(max(needed, 3), len(sorted_by_change))  # Force at least 3, up to all days
+        print(f"🔧 Forcing {forced_count} days to Moderate/High risk (currently have {current_moderate_high} Moderate/High)")
         
         for i in range(forced_count):
             label, _, _, day_data = sorted_by_change[i]
@@ -1763,9 +1770,19 @@ BAD EXAMPLE (repeating):
     moderate_hints = sum(1 for r in day_risk_hints if r == "Moderate")
     high_hints = sum(1 for r in day_risk_hints if r == "High")
     
-    # If AI returned all Low OR too many Low (more than 4), AND we have forced Moderate/High hints, replace
-    if (all_low_in_response or low_count_in_response > 4) and len(day_risk_hints) > 0 and (moderate_hints > 0 or high_hints > 0):
-        print(f"❌ AI ignored forced risks ({moderate_hints} Moderate, {high_hints} High hints provided, but {low_count_in_response} Low in response). Replacing with fallbacks that respect suggested risks.")
+    # ALWAYS check: If we have forced Moderate/High hints but AI returned mostly Low, replace
+    # Also check for "steady conditions" in descriptors - this is forbidden
+    has_steady_conditions = any("steady conditions" in str(entry.get("descriptor", "")).lower() for entry in patterns)
+    
+    # If AI returned all Low OR too many Low (more than 4), OR used forbidden "steady conditions", AND we have forced Moderate/High hints, replace
+    should_replace = (all_low_in_response or low_count_in_response > 4 or has_steady_conditions) and len(day_risk_hints) > 0 and (moderate_hints > 0 or high_hints > 0)
+    
+    if should_replace:
+        reason = []
+        if all_low_in_response: reason.append("all Low")
+        if low_count_in_response > 4: reason.append(f"{low_count_in_response} Low days")
+        if has_steady_conditions: reason.append("forbidden 'steady conditions'")
+        print(f"❌ AI ignored forced risks ({moderate_hints} Moderate, {high_hints} High hints provided, but: {', '.join(reason)}). Replacing with fallbacks that respect suggested risks.")
         # Replace patterns with fallbacks that match the forced risk hints
         patterns = []
         for i, (label, risk_hint) in enumerate(zip(weekday_labels, day_risk_hints)):
