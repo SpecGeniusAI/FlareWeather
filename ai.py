@@ -1438,9 +1438,13 @@ def generate_weekly_forecast_insight(
         prev_temp = temp
         prev_humidity = humidity
     
-    # CRITICAL: Ensure variation - if ALL days are Low, force at least 3-4 days to Moderate/High based on largest changes
+    # CRITICAL: Ensure variation - ALWAYS force at least 3-4 days to Moderate/High
+    # Don't wait for all Low - be proactive about variation
     all_low = all(risk == "Low" for _, risk, _, _ in calculated_risks)
-    if all_low and len(calculated_risks) > 0:
+    low_count = sum(1 for _, risk, _, _ in calculated_risks if risk == "Low")
+    
+    # If more than 4 days are Low, force variation (even if not all are Low)
+    if (all_low or low_count > 4) and len(calculated_risks) > 0:
         print(f"⚠️ All {len(calculated_risks)} days calculated as Low risk - forcing aggressive variation")
         # Find days with largest absolute changes (pressure, temp, humidity)
         # Sort by approximate change magnitude
@@ -1812,8 +1816,9 @@ BAD EXAMPLE (repeating):
         elif " - " in descriptor:
             descriptor_after_dash = descriptor.split(" - ", 1)[1].lower().strip()
         
-        # Check if descriptor contains forbidden vague phrases
-        if any(vague in descriptor_after_dash for vague in vague_forbidden):
+        # Check if descriptor contains forbidden vague phrases (check full descriptor too, not just after dash)
+        descriptor_lower = descriptor.lower()
+        if any(vague in descriptor_after_dash for vague in vague_forbidden) or any(vague in descriptor_lower for vague in vague_forbidden):
             print(f"⚠️ Rejecting vague descriptor: '{descriptor}' - replacing with approved fallback")
             # Replace with approved fallback based on risk
             if risk.upper() == "HIGH":
