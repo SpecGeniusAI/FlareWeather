@@ -1451,13 +1451,13 @@ def generate_weekly_forecast_insight(
     moderate_count = sum(1 for _, risk, _, _ in calculated_risks if risk == "Moderate")
     high_count = sum(1 for _, risk, _, _ in calculated_risks if risk == "High")
     
-    # ALWAYS force variation if we have fewer than 3 Moderate/High days
-    needs_variation = (moderate_count + high_count) < 3
+    # Force variation if we have fewer than 2 Moderate/High days (less aggressive - allow more Low days)
+    needs_variation = (moderate_count + high_count) < 2
     
     print(f"📊 Risk summary: {high_count} High, {moderate_count} Moderate, {low_count} Low. Needs variation: {needs_variation}")
     
     if needs_variation and len(calculated_risks) > 0:
-        print(f"⚠️ Only {moderate_count} Moderate and {high_count} High days - forcing aggressive variation (need at least 3)")
+        print(f"⚠️ Only {moderate_count} Moderate and {high_count} High days - forcing variation (need at least 2)")
         # Find days with largest absolute changes (pressure, temp, humidity)
         # Sort by approximate change magnitude
         def calculate_change_magnitude(day_data_tuple):
@@ -1477,21 +1477,21 @@ def generate_weekly_forecast_insight(
         # Sort by change magnitude (descending)
         sorted_by_change = sorted(calculated_risks, key=calculate_change_magnitude, reverse=True)
         
-        # Force top 3-4 days to Moderate/High (more aggressive - ensure real variation)
-        # For 7 days, ALWAYS force at least 3 to be Moderate or High
+        # Force 2-3 days to Moderate/High (less aggressive - allow more Low days)
+        # For 7 days, force at least 2 to be Moderate or High (not 3)
         # Calculate how many we need to force
         current_moderate_high = moderate_count + high_count
-        needed = max(3 - current_moderate_high, 0)  # Need at least 3 total
-        forced_count = min(max(needed, 3), len(sorted_by_change))  # Force at least 3, up to all days
+        needed = max(2 - current_moderate_high, 0)  # Need at least 2 total (not 3)
+        forced_count = min(max(needed, 2), len(sorted_by_change))  # Force at least 2, up to 3 days max
         print(f"🔧 Forcing {forced_count} days to Moderate/High risk (currently have {current_moderate_high} Moderate/High)")
         
         for i in range(forced_count):
             label, _, _, day_data = sorted_by_change[i]
             change_mag = calculate_change_magnitude(sorted_by_change[i])
             
-            # Update the risk hint for this day - be more aggressive
-            # If change is significant, make it High; otherwise Moderate
-            forced_risk = "High" if change_mag > 5 else "Moderate"  # Lowered threshold from 10 to 5
+            # Update the risk hint for this day - less aggressive
+            # Only make it High if change is very significant; otherwise Moderate
+            forced_risk = "High" if change_mag > 8 else "Moderate"  # Raised threshold from 5 to 8
             
             # Find and update in context_lines and day_risk_hints
             for j, (orig_label, orig_risk, _, _) in enumerate(calculated_risks):
@@ -1786,8 +1786,9 @@ BAD EXAMPLE (repeating):
     # Also check for "steady conditions" in descriptors - this is forbidden
     has_steady_conditions = any("steady conditions" in str(entry.get("descriptor", "")).lower() for entry in patterns)
     
-    # If AI returned all Low OR too many Low (more than 4), OR used forbidden "steady conditions", AND we have forced Moderate/High hints, replace
-    should_replace = (all_low_in_response or low_count_in_response > 4 or has_steady_conditions) and len(day_risk_hints) > 0 and (moderate_hints > 0 or high_hints > 0)
+    # If AI returned all Low OR too many Low (more than 5), OR used forbidden "steady conditions", AND we have forced Moderate/High hints, replace
+    # Less aggressive: only replace if more than 5 Low days (was 4)
+    should_replace = (all_low_in_response or low_count_in_response > 5 or has_steady_conditions) and len(day_risk_hints) > 0 and (moderate_hints > 0 or high_hints > 0)
     
     if should_replace:
         reason = []
