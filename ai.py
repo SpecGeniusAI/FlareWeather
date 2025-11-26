@@ -96,7 +96,34 @@ def _format_daily_message(
 ALLOWED_COMFORT_TIPS = [
     "Keep your day flexible.",
     "Move at a pace that feels kind to you.",
-    "Small pauses can help you stay grounded."
+    "Small pauses can help you stay grounded.",
+    "Take breaks when your body asks for them.",
+    "Listen to what your body needs today.",
+    "Gentle movement may help you feel steadier.",
+    "Rest when you need it—there's no rush.",
+    "Stay warm and keep yourself comfortable.",
+    "Hydration can support your body through shifts.",
+    "Plan lighter activities if possible.",
+    "Give yourself permission to adjust as needed.",
+    "Warm layers may help your body adapt.",
+    "Pace yourself and take things slowly.",
+    "Find moments of calm throughout the day.",
+    "Your body knows what it needs—trust it.",
+    "Gentle stretches might ease any tension.",
+    "Stay cozy and keep comfort close.",
+    "Take things one moment at a time.",
+    "Restorative moments can make a difference.",
+    "Be kind to yourself as conditions shift.",
+    "Light movement and rest can balance well.",
+    "Keep essentials within easy reach.",
+    "Comfort and care are your priorities today.",
+    "Small adjustments can help you feel better.",
+    "Listen closely to how you're feeling.",
+    "Warm drinks and soft spaces may help.",
+    "There's no need to push through today.",
+    "Gentle pacing can help your body adapt.",
+    "Comfort and rest are perfectly valid choices.",
+    "Your well-being comes first today."
 ]
 
 
@@ -208,9 +235,12 @@ PERSONAL_ANECDOTES = {
 }
 
 BEHAVIOR_PROMPTS = [
-    "Remember to stay hydrated and rest when needed.",
-    "Take breaks and pace yourself throughout the day.",
-    "Listen to your body and adjust your plans as needed."
+    "Staying warm and moving gently can help your body adapt.",
+    "Extra hydration may support your body through these shifts.",
+    "Planning lighter activities may give your body more space.",
+    "Taking breaks and pacing yourself can make a difference.",
+    "Gentle movement and staying warm often help during changes.",
+    "Listening to your body and adjusting plans as needed supports you."
 ]
 
 
@@ -674,6 +704,7 @@ def generate_flare_risk_assessment(
     weather_factor: str = "pressure",
     papers: List[Dict[str, str]] = None,
     user_diagnoses: Optional[List[str]] = None,
+    user_sensitivities: Optional[List[str]] = None,
     location: Optional[str] = None,
     hourly_forecast: Optional[List[Dict[str, float]]] = None
 ) -> Tuple[str, str, str, str, List[str], Optional[str], str, int, Optional[str], Optional[str]]:
@@ -722,9 +753,15 @@ def generate_flare_risk_assessment(
         hourly_note = "Upcoming hours stay fairly steady."
 
     diagnoses_str = ", ".join(user_diagnoses) if user_diagnoses else "general weather sensitivity"
+    sensitivities_str = ", ".join(user_sensitivities) if user_sensitivities else None
     location_str = f"around {location}" if location else "in your area"
     comfort_clause = ", ".join([f'"{tip}"' for tip in ALLOWED_COMFORT_TIPS])
     papers_text = format_papers_for_prompt(papers) if papers else "Reference trusted health organizations only if needed."
+    
+    # Build sensitivities context for prompt
+    sensitivities_context = ""
+    if sensitivities_str:
+        sensitivities_context = f"\n- Known weather triggers: {sensitivities_str} (prioritize these factors in your analysis)"
 
     prompt = f"""You are the FlareWeather Forecasting Assistant.
 
@@ -732,12 +769,21 @@ CONTEXT:
 - Location: {location_str}
 - Weather mood: {weather_descriptor}.
 - Hourly cue: {hourly_note}
-- Diagnoses in mind: {diagnoses_str}
-- Comfort tips you may use exactly: {comfort_clause}
+- Diagnoses in mind: {diagnoses_str}{sensitivities_context}
+- Comfort tips you may use exactly (VARY your selection - don't repeat the same tips): {comfort_clause}
 - Optional research notes: {papers_text}
 
+CRITICAL COMFORT TIP RULES:
+- You MUST vary comfort tip selections - NEVER repeat the same tip
+- NEVER use "Move at a pace that feels kind to you" or similar phrases repeatedly
+- Rotate through ALL 30 available tips - don't favor any single one
+- Match the tip to the specific weather conditions (e.g., use warmth tips for cold, hydration for humidity shifts)
+- If you've used a tip recently, choose a different one
+- The user has seen repetitive tips - prioritize variety over familiarity
+
 MANDATORY STYLE:
-- Plain, everyday language only.
+- Plain, everyday language only - use grade 12 reading level vocabulary.
+- Never use made-up words, technical jargon, or obscure terms.
 - Never use numbers, units, or percentages.
 - Never reference technical meteorology (no hPa, dewpoint, fronts, etc.).
 - Never give medical advice or instructions.
@@ -745,21 +791,22 @@ MANDATORY STYLE:
 - Allowed feeling words: reactive, easier, gentle, steady, calmer.
 - Keep sentences short and calm.
 - Even if context shows numbers, do NOT include them in your output.
+- You MUST naturally mention the user's conditions or sensitivities when relevant (e.g., "For those with arthritis, this humidity shift may feel noticeable" or "If pressure changes are a trigger for you, today's drop may be worth planning around"). Keep it conversational and non-medical. If the user has specific diagnoses or sensitivities, reference them in the insight.
 
 OUTPUT VALID JSON EXACTLY:
 {{
   "risk": "LOW | MODERATE | HIGH",
   "forecast": "Short headline with no numbers.",
   "why": "Brief sentence on why bodies may notice today.",
-  "sources": ["Optional short source names"],
-  "support_note": "Optional gentle note.",
+  "sources": ["Optional source names - if provided, use format: 'Title (Journal, Year)' or 'Title - Journal' for credibility"],
+  "support_note": "Optional gentle note with actionable guidance (e.g., 'Consider planning lighter activities for mid-day' or 'Mornings may feel easier than afternoons').",
   "personal_anecdote": "Optional relatable line.",
-  "behavior_prompt": "Optional gentle reminder.",
+  "behavior_prompt": "Optional gentle reminder with specific timing or preparation (e.g., 'Staying warm and moving gently can help' or 'Extra hydration may support your body today').",
   "daily_insight": {{
-    "summary_sentence": "REQUIRED FORMAT: '[Weather description] which could [impact statement].' You MUST include both parts: 1) describe the weather pattern (cool air, heavy humidity, dropping pressure, rising temperatures, etc.) 2) ALWAYS end with 'which could [impact]' - describe potential body impacts like discomfort, joint stiffness, inflammation, headaches, muscle tension, breathing challenges, etc. Never just describe weather alone. Example: 'Today brings cool air with a heavy blanket of humidity which could cause some discomfort.'",
-    "why_line": "Explain why this specific weather event causes flares or symptoms. Focus on the scientific mechanism: how pressure changes affect joint fluid, how humidity impacts inflammation, how temperature shifts affect blood flow, etc. Be educational but accessible. Example: 'Dropping pressure can cause tissues to expand slightly, increasing pressure on sensitive joints and nerves.'",
-    "comfort_tip": "Either one of the allowed comfort tips or empty string.",
-    "sign_off": "One calm sign-off sentence."
+    "summary_sentence": "REQUIRED FORMAT: '[Weather description] which could [impact statement].' You MUST include both parts: 1) describe the weather pattern (cool air, heavy humidity, dropping pressure, rising temperatures, etc.) 2) ALWAYS end with 'which could [impact]' - describe potential body impacts like discomfort, joint stiffness, inflammation, headaches, muscle tension, breathing challenges, etc. Never just describe weather alone. CRITICAL: If the user has specific conditions or sensitivities listed above, you MUST reference them in this sentence. EXAMPLES: If user has arthritis: 'Today brings cool air with a heavy blanket of humidity which could increase joint stiffness, especially for those with arthritis.' If user has migraines: 'Dropping pressure today which could trigger headaches if you're sensitive to pressure changes.' If user has pressure sensitivity: 'Rapid pressure shifts today which could be noticeable if pressure changes affect you.' Use grade 12 reading level vocabulary - no made-up words or technical jargon.",
+    "why_line": "REQUIRED: Explain why this specific weather event causes flares or symptoms. CRITICAL REQUIREMENT: If the user has ANY conditions or sensitivities listed above, you MUST mention them by name in this explanation. Do NOT give generic explanations. Personalize it to their specific situation. Focus on the scientific mechanism: how pressure changes affect joint fluid, how humidity impacts inflammation, how temperature shifts affect blood flow, etc. Be educational but accessible. Use grade 12 reading level vocabulary - no made-up words or technical jargon. EXAMPLES: If user has arthritis: 'For those with arthritis, dropping pressure can cause tissues to expand slightly, increasing pressure on sensitive joints.' If user has migraines: 'If you experience migraines, rapid pressure drops can trigger headaches by affecting blood vessel dilation.' If user has pressure sensitivity: 'Since pressure shifts are a trigger for you, this drop may be particularly noticeable in your joints and breathing.' If user has multiple conditions, mention the most relevant one for today's weather. Include timing if relevant (e.g., 'Pressure shifts often feel most noticeable in the first few hours').",
+    "comfort_tip": f"CRITICAL: Select ONE comfort tip from the allowed list. You MUST vary your selection - NEVER use 'Move at a pace that feels kind to you' or similar phrases repeatedly. Rotate through different tips. Match the tip to today's specific weather conditions. If risk is MODERATE or HIGH, always include a tip. If risk is LOW, you may leave empty. Available tips: {comfort_clause}. IMPORTANT: Avoid repeating tips you've used recently - choose something different each time.",
+    "sign_off": "One calm sign-off sentence with gentle forward-looking guidance (e.g., 'Take things at your own pace today' or 'Your body knows what it needs')."
   }}
 }}
 
@@ -785,7 +832,8 @@ DO NOT:
                 {"role": "system", "content": "You translate weather moods into calm, compassionate guidance for weather-sensitive people."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.6,
+            temperature=0.5,  # Slightly lower for faster, more consistent responses
+            max_tokens=800,  # Limit response size for faster generation
             response_format={"type": "json_object"}
         )
         response_text = completion.choices[0].message.content.strip()
@@ -844,7 +892,13 @@ DO NOT:
             daily_why_line = "Steady cues often feel easier on the body."
 
     if not daily_comfort_tip and risk != "LOW":
-        daily_comfort_tip = ALLOWED_COMFORT_TIPS[0]
+        # Randomly select a comfort tip for variety, but avoid the most common one
+        # Exclude "Move at a pace that feels kind to you" to force variety
+        available_tips = [tip for tip in ALLOWED_COMFORT_TIPS if "pace that feels kind" not in tip.lower()]
+        if available_tips:
+            daily_comfort_tip = random.choice(available_tips)
+        else:
+            daily_comfort_tip = random.choice(ALLOWED_COMFORT_TIPS)
     elif not daily_comfort_tip:
         daily_comfort_tip = ""
 
@@ -890,7 +944,37 @@ DO NOT:
     if sources:
         sources = [s for s in sources if s]
     elif papers:
-        sources = [
+        # Enhanced citation formatting: "Title (Journal, Year)" or "Title - Journal" or just "Title"
+        enhanced_sources = []
+        for paper in papers:
+            title = paper.get("title", "").strip()
+            journal = paper.get("journal", "").strip()
+            year = paper.get("year", "").strip()
+            source_id = paper.get("source", "").strip()
+            
+            if not title:
+                # Fallback to source ID if no title
+                if source_id:
+                    enhanced_sources.append(source_id)
+                continue
+            
+            # Build enhanced citation
+            citation_parts = [title]
+            
+            # Add journal and year if available
+            if journal and journal != "Unknown journal":
+                if year and year != "Unknown":
+                    citation_parts.append(f"({journal}, {year})")
+                else:
+                    citation_parts.append(f"({journal})")
+            elif year and year != "Unknown":
+                citation_parts.append(f"({year})")
+            
+            # Join parts with space
+            enhanced_citation = " ".join(citation_parts)
+            enhanced_sources.append(enhanced_citation)
+        
+        sources = enhanced_sources if enhanced_sources else [
             paper.get("source") or paper.get("title")
             for paper in papers
             if paper.get("source") or paper.get("title")
@@ -953,7 +1037,14 @@ def generate_insight_with_papers(
 def generate_weekly_forecast_insight(
     weekly_forecast: List[Dict[str, float]],
     user_diagnoses: Optional[List[str]] = None,
-    location: Optional[str] = None
+    user_sensitivities: Optional[List[str]] = None,
+    location: Optional[str] = None,
+    today_risk_context: Optional[str] = None,
+    today_pressure: Optional[float] = None,
+    today_temp: Optional[float] = None,
+    today_humidity: Optional[float] = None,
+    pressure_trend: Optional[str] = None,
+    tomorrow_expected_pressure: Optional[float] = None
 ) -> Tuple[str, List[str]]:
     """Generate a weekly outlook that follows the locked structure."""
     if not client:
@@ -1053,15 +1144,252 @@ def generate_weekly_forecast_insight(
     while len(ordered_entries) < len(weekday_labels):
         ordered_entries.append(ordered_entries[-1])
 
+    # Helper function to calculate risk based on weather factors, user diagnoses, and sensitivities
+    def calculate_day_risk(
+        pressure: float,
+        prev_pressure: Optional[float],
+        temp: float,
+        prev_temp: Optional[float],
+        humidity: float,
+        prev_humidity: Optional[float],
+        wind: float,
+        diagnoses: Optional[List[str]],
+        sensitivities: Optional[List[str]] = None
+    ) -> tuple[str, list[str]]:
+        """
+        Calculate risk level and risk factors for a day based on weather changes and user diagnoses.
+        Returns: (risk_level, risk_factors)
+        """
+        risk_factors = []
+        risk_score = 0  # Accumulate risk points
+        
+        # Normalize diagnoses to lowercase for matching
+        normalized_diags = [d.lower() for d in (diagnoses or [])]
+        has_fibro = any("fibro" in d for d in normalized_diags)
+        has_migraine = any("migraine" in d for d in normalized_diags)
+        has_arthritis = any("arthrit" in d for d in normalized_diags)
+        has_chronic_pain = any("chronic pain" in d or "chronic" in d for d in normalized_diags)
+        # Chronic pain and arthritis share similar sensitivities to pressure changes
+        has_pain_sensitivity = has_arthritis or has_chronic_pain
+        
+        # Normalize sensitivities to lowercase for matching
+        normalized_sens = [s.lower() for s in (sensitivities or [])]
+        has_pressure_sensitivity = any("pressure" in s for s in normalized_sens)
+        has_humidity_sensitivity = any("humidity" in s for s in normalized_sens)
+        has_temperature_sensitivity = any("temperature" in s or "temp" in s for s in normalized_sens)
+        has_wind_sensitivity = any("wind" in s for s in normalized_sens)
+        
+        # 1. PRESSURE CHANGES (affects all conditions, especially migraines)
+        if prev_pressure is not None:
+            pressure_delta = pressure - prev_pressure
+            abs_pressure_delta = abs(pressure_delta)
+            
+            # Pressure DROPS are especially problematic for arthritis/chronic pain
+            is_pressure_drop = pressure_delta < 0  # Negative delta = dropping pressure
+            
+            # More sensitive thresholds - smaller changes should trigger risk
+            if abs_pressure_delta >= 6:  # Lowered from 8
+                risk_factors.append("rapid pressure shift")
+                risk_score += 3  # High impact
+                if has_migraine:
+                    risk_score += 1  # Migraines especially sensitive to rapid pressure changes
+                if is_pressure_drop and has_pain_sensitivity:
+                    risk_score += 2  # Pressure drops are very triggering for arthritis/chronic pain
+                if has_pressure_sensitivity:
+                    risk_score += 2  # User has explicitly identified pressure as a trigger
+            elif abs_pressure_delta >= 3:  # Lowered from 4
+                risk_factors.append("noticeable pressure change")
+                risk_score += 2  # Moderate impact
+                if has_migraine:
+                    risk_score += 1
+                if is_pressure_drop and has_pain_sensitivity:
+                    risk_score += 1  # Pressure drops trigger arthritis/chronic pain
+                if has_pressure_sensitivity:
+                    risk_score += 1  # User has explicitly identified pressure as a trigger
+            elif abs_pressure_delta >= 1.5:  # Lowered from 2 - more sensitive
+                risk_factors.append("slight pressure shift")
+                risk_score += 1  # Low impact - but still triggers Moderate
+                if is_pressure_drop and has_pain_sensitivity:
+                    risk_score += 1  # Even small pressure drops can affect arthritis/chronic pain
+                if has_pressure_sensitivity:
+                    risk_score += 1  # User has explicitly identified pressure as a trigger
+        else:
+            risk_factors.append("pressure steadies")
+        
+        # 2. TEMPERATURE SWINGS (affects arthritis, fibromyalgia)
+        if prev_temp is not None:
+            temp_delta = temp - prev_temp
+            abs_temp_delta = abs(temp_delta)
+            
+            # More sensitive thresholds
+            if abs_temp_delta >= 6:  # Lowered from 8
+                risk_factors.append("significant temperature swing")
+                risk_score += 2
+                if has_arthritis or has_fibro:
+                    risk_score += 1  # Joint/muscle conditions sensitive to temp changes
+                if has_temperature_sensitivity:
+                    risk_score += 1  # User has explicitly identified temperature as a trigger
+            elif abs_temp_delta >= 3:  # Lowered from 4
+                risk_factors.append("moderate temperature change")
+                risk_score += 1
+                if has_arthritis:
+                    risk_score += 1
+                if has_temperature_sensitivity:
+                    risk_score += 1  # User has explicitly identified temperature as a trigger
+        
+        # 3. HUMIDITY SWINGS (affects arthritis, fibromyalgia)
+        if prev_humidity is not None:
+            humidity_delta = humidity - prev_humidity
+            abs_humidity_delta = abs(humidity_delta)
+            
+            # More sensitive thresholds
+            if abs_humidity_delta >= 20:  # Lowered from 25
+                risk_factors.append("major humidity swing")
+                risk_score += 2
+                if has_arthritis:
+                    risk_score += 1  # Arthritis sensitive to humidity
+                if has_humidity_sensitivity:
+                    risk_score += 1  # User has explicitly identified humidity as a trigger
+            elif abs_humidity_delta >= 12:  # Lowered from 15
+                risk_factors.append("noticeable humidity change")
+                risk_score += 1
+                if has_arthritis:
+                    risk_score += 1
+                if has_humidity_sensitivity:
+                    risk_score += 1  # User has explicitly identified humidity as a trigger
+        
+        # 4. EXTREME HUMIDITY LEVELS (absolute values matter too)
+        if humidity >= 80:
+            risk_factors.append("very high humidity")
+            risk_score += 1
+            if has_arthritis:
+                risk_score += 1
+        elif humidity <= 30:
+            risk_factors.append("very dry air")
+            risk_score += 1
+        
+        # 5. STORM FRONT DETECTION (rapid pressure drop + wind + humidity spike)
+        # Classic storm front: pressure drops rapidly, wind increases, humidity rises
+        is_storm_front = False
+        if prev_pressure is not None:
+            pressure_drop = prev_pressure - pressure  # Positive = dropping
+            if pressure_drop >= 3 and wind >= 15 and humidity >= 60:  # Lowered thresholds
+                is_storm_front = True
+                risk_factors.append("storm front approaching")
+                risk_score += 3  # Storm fronts are high risk
+                if has_migraine:
+                    risk_score += 2  # Migraines very sensitive to storm fronts
+        
+        # 6. COLD + HUMIDITY (arthritis trigger)
+        if temp <= 10 and humidity >= 70:
+            risk_factors.append("cold, damp conditions")
+            risk_score += 1
+            if has_arthritis:
+                risk_score += 1
+        
+        # 7. RAPID WEATHER TRANSITIONS (multiple factors changing at once)
+        # More sensitive thresholds for detecting multiple changes
+        change_count = sum([
+            abs_pressure_delta >= 1.5 if prev_pressure is not None else False,  # Lowered from 2
+            abs_temp_delta >= 3 if prev_temp is not None else False,  # Lowered from 4
+            abs_humidity_delta >= 12 if prev_humidity is not None else False  # Lowered from 15
+        ])
+        if change_count >= 2:
+            risk_factors.append("multiple weather shifts")
+            risk_score += 1  # Compound effect
+        
+        # 8. ABSOLUTE WEATHER CONDITIONS (even without previous values, extreme conditions matter)
+        # If we don't have previous values, still check absolute conditions
+        if prev_pressure is None and prev_temp is None and prev_humidity is None:
+            # First day - check absolute conditions
+            if humidity >= 80:
+                risk_factors.append("very high humidity")
+                risk_score += 1
+                if has_arthritis:
+                    risk_score += 1
+            elif humidity <= 30:
+                risk_factors.append("very dry air")
+                risk_score += 1
+            if temp <= 10 and humidity >= 70:
+                risk_factors.append("cold, damp conditions")
+                risk_score += 1
+                if has_arthritis:
+                    risk_score += 1
+            if wind >= 25:
+                risk_factors.append("strong winds")
+                risk_score += 1
+        
+        # Convert risk score to risk level
+        # More aggressive thresholds to ensure variation in risk levels
+        if risk_score >= 3:  # High risk threshold
+            risk_level = "High"
+        elif risk_score >= 1:  # Any change = at least Moderate (lowered from 2)
+            risk_level = "Moderate"
+        else:
+            # risk_score == 0: No changes detected or truly stable conditions
+            risk_level = "Low"
+        
+        print(f"🔍 calculate_day_risk result: risk_score={risk_score} → risk_level={risk_level}, factors={risk_factors}")
+        return risk_level, risk_factors
+    
     context_lines = ["Weekly Weather Notes:"]
-    prev_pressure: Optional[float] = None
+    # Use today's values as baseline for tomorrow (first day of weekly forecast)
+    # BUT: If pressure is dropping later today, use tomorrow's expected pressure instead
+    # This accounts for pressure drops happening later today that will affect tomorrow
+    if tomorrow_expected_pressure and pressure_trend and "drop" in pressure_trend.lower():
+        # Pressure is dropping later today - use tomorrow's expected pressure for accurate comparison
+        prev_pressure = tomorrow_expected_pressure
+        print(f"📊 Weekly forecast: Pressure dropping later today ({pressure_trend}). Using tomorrow's expected pressure ({prev_pressure:.1f}hPa) as baseline")
+    else:
+        prev_pressure = today_pressure
+        if prev_pressure:
+            print(f"📊 Weekly forecast: Using today's pressure ({prev_pressure:.1f}hPa) as baseline for tomorrow's risk calculation")
+        else:
+            print(f"⚠️ Weekly forecast: today_pressure is None, using default 1013hPa")
+            prev_pressure = 1013.0  # Default sea level pressure
+    
+    prev_temp = today_temp if today_temp is not None else 20.0  # Default 20°C
+    prev_humidity = today_humidity if today_humidity is not None else 50.0  # Default 50%
+    
+    # Store baseline for forced variation logic
+    baseline_pressure = prev_pressure
+    baseline_temp = prev_temp
+    baseline_humidity = prev_humidity
+    
+    print(f"📊 Weekly forecast baseline: pressure={prev_pressure:.1f}hPa, temp={prev_temp:.1f}°C, humidity={prev_humidity:.0f}%")
+    day_risk_hints = []  # Track suggested risk levels based on data
 
+    # Track all calculated risks to ensure variation
+    calculated_risks = []  # List of (label, risk_level, risk_score, day_data)
+    
     for label, day_data in zip(weekday_labels, ordered_entries):
         temp = day_data.get("temperature", 0)
         humidity = day_data.get("humidity", 0)
         wind = day_data.get("wind", 0)
         pressure = day_data.get("pressure", prev_pressure if prev_pressure is not None else 1013)
+        
+        # Validate we have actual data
+        if temp == 0 and humidity == 0 and pressure == (prev_pressure if prev_pressure is not None else 1013):
+            print(f"⚠️ Warning: Day {label} appears to have missing/invalid forecast data")
 
+        # Calculate comprehensive risk based on all factors, user diagnoses, and sensitivities
+        suggested_risk, risk_factors = calculate_day_risk(
+            pressure=pressure,
+            prev_pressure=prev_pressure,
+            temp=temp,
+            prev_temp=prev_temp,
+            humidity=humidity,
+            prev_humidity=prev_humidity,
+            wind=wind,
+            diagnoses=user_diagnoses,
+            sensitivities=user_sensitivities
+        )
+        
+        # Store calculated risk for variation check
+        risk_score_approx = {"High": 3, "Moderate": 2, "Low": 1}.get(suggested_risk, 1)
+        calculated_risks.append((label, suggested_risk, risk_score_approx, day_data))
+        
+        # Build descriptors from weather data
         descriptors = [_describe_temperature(temp)]
         humidity_desc = _describe_humidity(humidity)
         if humidity_desc:
@@ -1069,62 +1397,281 @@ def generate_weekly_forecast_insight(
         wind_desc = _describe_wind(wind)
         if wind_desc:
             descriptors.append(wind_desc)
-
-        if prev_pressure is None:
-            descriptors.append("pressure steadies")
-        else:
+        
+        # Add pressure descriptor
+        if prev_pressure is not None:
             delta = pressure - prev_pressure
-            if delta <= -4:
-                descriptors.append("pressure eases")
-            elif delta >= 4:
-                descriptors.append("pressure builds")
+            if abs(delta) >= 8:
+                descriptors.append("pressure shifts sharply")
+            elif abs(delta) >= 4:
+                if delta < 0:
+                    descriptors.append("pressure drops noticeably")
+                else:
+                    descriptors.append("pressure rises noticeably")
+            elif abs(delta) >= 2:
+                if delta < 0:
+                    descriptors.append("pressure eases slightly")
+                else:
+                    descriptors.append("pressure builds slightly")
             else:
                 descriptors.append("pressure steadies")
-
+        else:
+            descriptors.append("pressure steadies")
+        
         descriptor_text = _combine_descriptors(*descriptors)
-        context_lines.append(f"- {label}: {descriptor_text}")
+        risk_factors_str = ", ".join(risk_factors) if risk_factors else "stable conditions"
+        context_lines.append(f"- {label}: {descriptor_text} [SUGGESTED RISK: {suggested_risk} - Factors: {risk_factors_str}]")
+        day_risk_hints.append(suggested_risk)
+        
+        # Debug logging for risk calculation
+        pressure_delta = pressure - prev_pressure if prev_pressure is not None else 0
+        temp_delta = temp - prev_temp if prev_temp is not None else 0
+        humidity_delta = humidity - prev_humidity if prev_humidity is not None else 0
+        print(f"📊 Weekly risk calc for {label}: temp={temp:.1f}°C (Δ{temp_delta:+.1f}), humidity={humidity:.0f}% (Δ{humidity_delta:+.0f}), pressure={pressure:.1f}hPa (Δ{pressure_delta:+.1f}), "
+              f"prev_pressure={prev_pressure:.1f if prev_pressure else None}hPa, "
+              f"prev_temp={prev_temp:.1f if prev_temp else None}°C, "
+              f"prev_humidity={prev_humidity:.0f if prev_humidity else None}%, "
+              f"risk={suggested_risk}, factors={risk_factors_str}")
+        
+        # Update previous values for next iteration
         prev_pressure = pressure
+        prev_temp = temp
+        prev_humidity = humidity
+    
+    # CRITICAL: Ensure variation - if ALL days are Low, force at least 3-4 days to Moderate/High based on largest changes
+    all_low = all(risk == "Low" for _, risk, _, _ in calculated_risks)
+    if all_low and len(calculated_risks) > 0:
+        print(f"⚠️ All {len(calculated_risks)} days calculated as Low risk - forcing aggressive variation")
+        # Find days with largest absolute changes (pressure, temp, humidity)
+        # Sort by approximate change magnitude
+        def calculate_change_magnitude(day_data_tuple):
+            _, _, _, day_data = day_data_tuple
+            temp = day_data.get("temperature", 0)
+            humidity = day_data.get("humidity", 0)
+            pressure = day_data.get("pressure", baseline_pressure if baseline_pressure else 1013)
+            
+            # Calculate deltas from baseline
+            pressure_delta = abs(pressure - (baseline_pressure if baseline_pressure else 1013))
+            temp_delta = abs(temp - (baseline_temp if baseline_temp else 20))
+            humidity_delta = abs(humidity - (baseline_humidity if baseline_humidity else 50))
+            
+            # Weighted sum of changes
+            return pressure_delta * 2 + temp_delta * 1.5 + humidity_delta * 0.5
+        
+        # Sort by change magnitude (descending)
+        sorted_by_change = sorted(calculated_risks, key=calculate_change_magnitude, reverse=True)
+        
+        # Force top 3-4 days to Moderate/High (more aggressive - ensure real variation)
+        # For 7 days, force at least 3 to be Moderate or High
+        forced_count = min(max(3, len(sorted_by_change) // 2), len(sorted_by_change))
+        print(f"🔧 Forcing {forced_count} days to Moderate/High risk")
+        
+        for i in range(forced_count):
+            label, _, _, day_data = sorted_by_change[i]
+            change_mag = calculate_change_magnitude(sorted_by_change[i])
+            
+            # Update the risk hint for this day - be more aggressive
+            # If change is significant, make it High; otherwise Moderate
+            forced_risk = "High" if change_mag > 5 else "Moderate"  # Lowered threshold from 10 to 5
+            
+            # Find and update in context_lines and day_risk_hints
+            for j, (orig_label, orig_risk, _, _) in enumerate(calculated_risks):
+                if orig_label == label:
+                    # Update the hint
+                    day_risk_hints[j] = forced_risk
+                    # Update context line
+                    for k, line in enumerate(context_lines):
+                        if line.startswith(f"- {label}:"):
+                            # Replace the risk in the context line
+                            context_lines[k] = line.replace(f"[SUGGESTED RISK: {orig_risk}", f"[SUGGESTED RISK: {forced_risk}")
+                            break
+                    print(f"🔧 Forced {label} from Low to {forced_risk} (change magnitude: {change_mag:.1f})")
+                    break
+        
+        # Log summary of forced changes
+        moderate_count = sum(1 for r in day_risk_hints if r == "Moderate")
+        high_count = sum(1 for r in day_risk_hints if r == "High")
+        print(f"📊 After forced variation: {high_count} High, {moderate_count} Moderate, {len(day_risk_hints) - moderate_count - high_count} Low")
 
     diagnoses_str = ", ".join(user_diagnoses) if user_diagnoses else "weather-sensitive conditions"
+    sensitivities_str = ", ".join(user_sensitivities) if user_sensitivities else None
     location_note = f" near {location}" if location else ""
     weekday_clause = ", ".join(weekday_labels)
+    
+    # Build sensitivities context for prompt
+    sensitivities_context = ""
+    if sensitivities_str:
+        sensitivities_context = f" Known weather triggers: {sensitivities_str} (prioritize these factors when determining risk levels and descriptors)."
 
     prompt_context = "\n".join(context_lines)
+    
+    # Add today's risk context if provided (helps maintain consistency)
+    today_context = ""
+    if today_risk_context:
+        pressure_trend_note = ""
+        if pressure_trend and "drop" in pressure_trend.lower():
+            pressure_trend_note = f" Pressure is {pressure_trend} later today, which will affect tomorrow's conditions - tomorrow should reflect this change, not show Low risk."
+        today_context = f"\n\nIMPORTANT CONTEXT: {today_risk_context}{pressure_trend_note} Consider this when determining risk levels for the week ahead. If today has variability (Moderate/High risk) or pressure is dropping, the week may show a transition pattern rather than all steady conditions."
+    
     prompt = f"""You are FlareWeather, a calm weekly planning assistant for weather-sensitive people.
 
-User context: {diagnoses_str}{location_note}.
+User context: {diagnoses_str}{location_note}.{sensitivities_context}
 
-{prompt_context}
+CRITICAL LANGUAGE RULES:
+- Use grade 12 reading level vocabulary only - no made-up words, technical jargon, or obscure terms.
+- If you're unsure if a word is too complex, use a simpler alternative.
+- Never use words that don't exist in standard dictionaries.
+- Use plain, everyday language that anyone can understand.
+
+CRITICAL REQUIREMENT: You MUST mention the user's specific conditions or sensitivities in the daily blurbs when the weather matches their triggers. Do NOT give generic descriptions. Personalize each day's descriptor to their situation. EXAMPLES: If user has arthritis and humidity is high: "Moderate risk — high humidity may increase joint stiffness for those with arthritis" or "High risk — damp conditions could be challenging for arthritis." If user has migraines and pressure is dropping: "Moderate risk — pressure drop may trigger headaches if you experience migraines" or "High risk — rapid pressure shift could activate migraine sensitivity." If user has pressure sensitivity: "Moderate risk — pressure shift may be noticeable if pressure changes affect you." If user has multiple conditions, mention the most relevant one for that day's weather. Keep it conversational and non-medical - reference their triggers naturally.
+
+{prompt_context}{today_context}
 
 Use the weekday order exactly as provided: {weekday_clause}.
-For each day in that order, craft:
-- weather_pattern: 3-6 everyday words describing the weather feel (no numbers).
-- body_feel: 5-9 gentle words on how a sensitive body may feel (use "may"/"might").
+
+RISK LEVEL DETERMINATION (USE THE SUGGESTED RISK LEVELS PROVIDED):
+The suggested risk levels are calculated based on:
+- Pressure changes (affects all conditions, especially migraines)
+- Temperature swings (affects arthritis, fibromyalgia)
+- Humidity swings (affects arthritis, fibromyalgia)
+- Storm fronts (rapid pressure drop + wind + humidity - especially triggers migraines)
+- Extreme humidity levels (very high/low)
+- Cold + damp conditions (arthritis trigger)
+- Multiple simultaneous weather shifts (compound effect)
+
+RISK LEVELS:
+- LOW RISK: Stable conditions, minimal changes across all factors
+- MODERATE RISK: Noticeable changes in one or more factors, or moderate changes in multiple factors
+- HIGH RISK: Rapid/large changes, storm fronts, or multiple significant shifts happening together
+
+CRITICAL: Each day's weather data includes a [SUGGESTED RISK: X - Factors: ...] hint calculated from actual weather data AND your specific conditions ({diagnoses_str}). 
+
+ABSOLUTE REQUIREMENT: You MUST use the exact risk level from the [SUGGESTED RISK] hint. DO NOT override it or default to Low.
+- If the hint says "High", you MUST use "High risk" for that day - NO EXCEPTIONS
+- If the hint says "Moderate", you MUST use "Moderate risk" for that day - NO EXCEPTIONS  
+- Only use "Low risk" if the hint explicitly says "Low"
+
+VALIDATION: Before returning your response, verify that you used the exact risk levels from the [SUGGESTED RISK] hints. If you see "Moderate" or "High" in the hints, those days MUST show "Moderate risk" or "High risk" in your output, NOT "Low risk".
+
+DO NOT default to Low risk for all days. The risk calculation considers your specific sensitivities ({diagnoses_str}) and all weather factors, not just pressure. The suggested risks are calculated from real weather data - trust them and use them exactly as provided.
+
+CRITICAL: You are generating daily descriptors for weekly insights. Each day must have a risk level (Low, Moderate, or High) and a short descriptor following STRICT rules.
+
+STRUCTURE: Weekday — Risk Level — descriptor (3-6 words after risk label)
+
+STRICT RULES:
+1. KEEP IT SHORT: 3-6 words after the risk label
+2. NO MEDICAL CLAIMS: No "reduce," "treat," "prevent," "cause," "trigger," "flare," "symptom spikes"
+3. WELLNESS-SAFE wording ONLY - use approved phrases below
+4. NO VAGUE PHRASES: ABSOLUTELY FORBIDDEN - "a bit more", "a bit", "bit more", "more", "a bit easier", "a bit achy", "bit achy", "may feel different," "supportive," "gentle shift," "things may feel off", "more stable", "at ease", "more balanced", "steady conditions", "gentle conditions", "balanced conditions"
+5. NO WEATHER NUMBERS: No pressure values, temps, humidity %, wind speeds
+6. EACH DAY MUST BE UNIQUE - even if all days are "Low," descriptors MUST vary
+7. LANGUAGE LEVEL: Use grade 12 reading level vocabulary only - no made-up words, technical jargon, or obscure terms. Never use words that don't exist in standard dictionaries.
+8. MENTION CONDITIONS/SENSITIVITIES: If the user has specific conditions (e.g., arthritis, migraines, fibromyalgia) or sensitivities (e.g., pressure shifts, humidity changes), reference them naturally in the descriptors when relevant (e.g., "pressure-sensitive day" or "arthritis-aware shift")
+9. VALIDATION: Before returning your response, check EVERY descriptor. If ANY descriptor contains "a bit", "bit more", "more", "a bit easier", "a bit achy", or any other vague phrase not in the approved lists, you MUST replace it with an approved descriptor from the lists above. DO NOT return vague phrases.
+
+RISK LEVEL RULES:
+
+LOW RISK DAYS:
+- Always begin with: "Low flare risk —"
+- Then choose ONE descriptor from THIS EXACT LIST ONLY - YOU MUST ROTATE THROUGH ALL OPTIONS, never repeat:
+  * "steady pressure"
+  * "stable pattern"
+  * "predictable day"
+  * "cool, calm air"
+  * "gentle humidity"
+  * "smooth conditions"
+  * "easy-going pattern"
+  * "soft, steady trend"
+  * "low-impact day"
+  * "calm weather pattern"
+  * "settled weather"
+  * "consistent pattern"
+  * "steady trend"
+- FORBIDDEN vague descriptors (DO NOT USE): "more stable", "at ease", "more balanced", "steady conditions", "gentle conditions", "balanced conditions", or any other phrases not in the approved list above
+- CRITICAL: Even if multiple days are Low risk, each MUST have a DIFFERENT descriptor from the approved list. Never use the same descriptor twice in one week.
+
+MODERATE RISK DAYS:
+- Always begin with: "Moderate risk —"
+- Then choose ONE descriptor from THIS EXACT LIST ONLY (vary across days):
+  * "noticeable pressure shifts"
+  * "light stiffness possible"
+  * "mixed weather patterns"
+  * "variable conditions ahead"
+  * "pressure changes expected"
+  * "shifting weather pattern"
+  * "unsettled conditions"
+  * "changing pressure trend"
+  * "moderate weather shifts"
+  * "transitional conditions"
+  * "pressure fluctuations"
+  * "weather pattern shifts"
+- FORBIDDEN vague descriptors (DO NOT USE): "slightly effortful", "mild body sensitivity", "more activating", "less predictable", "mild discomfort", "a bit achy", "bit achy", "achy", "slightly uncomfortable", or any vague/medical-sounding phrases not in the approved list above
+
+HIGH RISK DAYS:
+- Always begin with: "High risk —"
+- Then choose ONE descriptor from THIS EXACT LIST ONLY (vary across days):
+  * "draining conditions"
+  * "unstable pattern"
+  * "heavier-feeling weather"
+  * "high-variability pattern"
+  * "challenging conditions"
+  * "tense, activating shift"
+  * "rapid pressure changes"
+  * "significant weather shifts"
+  * "unsettled weather pattern"
+  * "major pressure fluctuations"
+  * "storm front conditions"
+  * "dramatic weather changes"
+- FORBIDDEN vague descriptors (DO NOT USE): "stronger body sensitivity", "more demanding", "a bit achy", "bit achy", "achy", or any vague/medical-sounding phrases not in the approved list above
 
 Return JSON EXACTLY:
 {{
-  "weekly_summary": "REQUIRED FORMAT: '[Overall weekly weather pattern description] which could [impact statement].' You MUST include both parts: 1) describe the overall weekly weather pattern (shifting pressures, humidity trends, temperature changes, wind patterns, etc.) 2) ALWAYS end with 'which could [impact]' - describe potential body impacts like discomfort, joint stiffness, inflammation, headaches, muscle tension, breathing challenges, etc. Never just describe weather alone. One to two sentences, no numbers, no greetings. Example: 'The week ahead brings dropping pressure midweek with rising humidity which could increase joint discomfort and inflammation.'",
+  "weekly_summary": "REQUIRED FORMAT: '[Overall weekly weather pattern description] which could [impact statement].' You MUST include both parts: 1) describe the overall weekly weather pattern (shifting pressures, humidity trends, temperature changes, wind patterns, etc.) 2) ALWAYS end with 'which could [impact]' - describe potential body impacts personalized to the user's conditions/sensitivities. CRITICAL: If the user has specific conditions or sensitivities, you MUST mention them in the summary. EXAMPLES: If user has arthritis: 'The week ahead brings dropping pressure midweek with rising humidity which could increase joint stiffness and inflammation for those with arthritis, so planning lighter activities midweek may help.' If user has migraines: 'Pressure shifts throughout the week which could trigger headaches if you experience migraines, especially midweek when changes are most rapid.' If user has pressure sensitivity: 'Multiple pressure shifts this week which could be noticeable if pressure changes affect you, with the most significant change midweek.' Never just describe weather alone. One to two sentences, no numbers, no greetings. Always include a brief actionable preparation note.",
   "daily_patterns": [
-    {{"weather_pattern": "...", "body_feel": "..."}},
-    ... (7 total entries)
+    {{"risk": "Low|Moderate|High", "descriptor": "MUST include full phrase like 'Low flare risk — steady pressure' or 'Moderate risk — slightly effortful conditions' or 'High risk — draining conditions'. The descriptor MUST include both the risk level prefix AND the descriptor text after the dash. CRITICAL: When the weather matches the user's triggers, you MUST reference their conditions/sensitivities in the descriptor. EXAMPLES: If user has arthritis and humidity is high: 'Moderate risk — high humidity may increase joint stiffness' or 'High risk — damp conditions challenging for arthritis.' If user has migraines and pressure is dropping: 'Moderate risk — pressure drop may trigger headaches' or 'High risk — rapid pressure shift activates migraine sensitivity.' If user has pressure sensitivity: 'Moderate risk — pressure shift noticeable if pressure changes affect you.' If weather doesn't match their triggers, use the approved descriptors from the list. Each day must be unique."}},
+    ... (7 total entries, each UNIQUE descriptor)
   ],
-  "sources": ["Optional short source names"]
+  "sources": ["Optional short source names"],
+  "preparation_tip": "REQUIRED: Provide a specific, actionable preparation suggestion for the week personalized to the user's conditions/sensitivities and the week's weather pattern. Make it practical and helpful. EXAMPLES: If user has arthritis and humidity is rising: 'Consider planning lighter activities for midweek when humidity peaks, and staying warm may help ease joint stiffness.' If user has migraines and pressure is shifting: 'Pressure changes midweek may be most noticeable - consider having your usual comfort measures ready and planning rest time.' If user has pressure sensitivity: 'The most significant pressure shift happens midweek - planning ahead for that day may help you manage any discomfort.' If multiple challenging days: 'Several days this week have noticeable shifts - consider pacing activities and having comfort measures ready.' Always make it specific to their conditions and the week's pattern. Keep it brief (1-2 sentences) and actionable."
 }}
 
-RULES:
-- No numbers, measurements, or percentages.
-- No technical meteorology.
-- No instructions or medical advice.
-- Mention low-impact windows by noting when things "may feel easier".
-- Tone stays steady, kind, and factual.
-- Do not start with greetings or end with sign-offs.
-- Even if context shows numbers, do NOT include them in your output."""
+EXAMPLES:
+- {{"risk": "Low", "descriptor": "Low flare risk — stable pattern"}}
+- {{"risk": "Low", "descriptor": "Low flare risk — gentle humidity"}}
+- {{"risk": "Moderate", "descriptor": "Moderate risk — light stiffness possible"}}
+- {{"risk": "High", "descriptor": "High risk — draining conditions"}}
+
+CRITICAL RULES:
+1. Use ONLY the approved descriptors listed above. Do NOT create new phrases or use vague language like "more stable", "at ease", "more balanced", "steady conditions", "a bit more", "a bit", "bit more", "more", "a bit easier", "a bit achy", "bit achy", or ANY other phrases not explicitly in the approved lists.
+2. Vary selections so each day is unique - NEVER repeat the same descriptor in one week.
+3. If multiple days have the same risk level, you MUST use different descriptors for each.
+4. Rotate through all available descriptors before repeating any.
+5. Even if all 7 days are "Low" risk, each must have a completely different descriptor from the approved list.
+6. If you use a descriptor not in the approved list, the response will be rejected. Stick to the exact phrases provided.
+7. FORBIDDEN vague phrases that will cause rejection: "a bit more", "a bit", "bit more", "more", "a bit easier", "a bit achy", "bit achy", "more stable", "at ease", "more balanced", "steady conditions", "gentle conditions", "balanced conditions", "supportive", "moody", "unusual", "relaxed", "relaxing", "may feel", "might notice", "may sense", "might experience", "could help", "may help", "might help".
+8. If you cannot find an appropriate approved descriptor, use the closest match from the approved list - NEVER invent new phrases.
+
+EXAMPLE OF GOOD VARIATION (all Low risk but different):
+- Day 1: "Low flare risk — steady pressure"
+- Day 2: "Low flare risk — stable pattern"  
+- Day 3: "Low flare risk — predictable day"
+- Day 4: "Low flare risk — cool, calm air"
+- Day 5: "Low flare risk — gentle humidity"
+- Day 6: "Low flare risk — smooth conditions"
+- Day 7: "Low flare risk — easy-going pattern"
+
+BAD EXAMPLE (repeating):
+- Day 1: "Low flare risk — steady pressure"
+- Day 2: "Low flare risk — steady pressure"  ❌ WRONG - REPEATED
+- Day 3: "Low flare risk — stable pattern"
+"""
 
     try:
         completion = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You produce calm weekly outlooks in plain language and valid JSON."},
+                {"role": "system", "content": "You produce calm weekly outlooks in plain language and valid JSON. CRITICAL RULES: 1) Each daily_pattern descriptor MUST include BOTH the risk level prefix AND the descriptive text after the dash. Example: 'Low flare risk — steady pressure' NOT just 'Low flare risk'. 2) You MUST use ONLY the approved descriptors from the lists provided - NEVER create new phrases. 3) ABSOLUTELY FORBIDDEN vague phrases: 'a bit more', 'a bit', 'bit more', 'more', 'a bit easier', 'a bit achy', 'bit achy', 'more stable', 'at ease', 'more balanced', 'steady conditions'. 4) If you use any vague phrase not in the approved lists, your response will be rejected. 5) The descriptor after the dash is REQUIRED and provides value to users - use approved phrases only. 6) MOST IMPORTANT: You MUST use the exact risk level from [SUGGESTED RISK: X] hints in the weather data. If a hint says 'Moderate' or 'High', you MUST use that risk level - DO NOT default to 'Low'. Your response will be rejected if you ignore the suggested risk levels."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.5,
@@ -1151,70 +1698,276 @@ RULES:
 
     sources = response_data.get("sources", []) or []
 
+    # Default fallback patterns using approved descriptors - expanded list for variety
+    low_fallbacks = [
+        "Low flare risk — steady pressure",
+        "Low flare risk — stable pattern",
+        "Low flare risk — predictable day",
+        "Low flare risk — cool, calm air",
+        "Low flare risk — gentle humidity",
+        "Low flare risk — smooth conditions",
+        "Low flare risk — easy-going pattern",
+        "Low flare risk — soft, steady trend",
+        "Low flare risk — low-impact day",
+        "Low flare risk — calm weather pattern",
+        "Low flare risk — settled weather",
+        "Low flare risk — consistent pattern",
+        "Low flare risk — steady trend",
+        "Low flare risk — quiet weather day",
+        "Low flare risk — unchanging conditions",
+        "Low flare risk — even pressure pattern"
+    ]
+    moderate_fallbacks = [
+        "Moderate risk — noticeable pressure shifts",
+        "Moderate risk — light stiffness possible",
+        "Moderate risk — mixed weather patterns",
+        "Moderate risk — variable conditions ahead",
+        "Moderate risk — pressure changes expected",
+        "Moderate risk — shifting weather pattern",
+        "Moderate risk — unsettled conditions",
+        "Moderate risk — changing pressure trend",
+        "Moderate risk — moderate weather shifts",
+        "Moderate risk — transitional conditions",
+        "Moderate risk — pressure fluctuations",
+        "Moderate risk — weather pattern shifts"
+    ]
+    high_fallbacks = [
+        "High risk — draining conditions",
+        "High risk — unstable pattern",
+        "High risk — heavier-feeling weather",
+        "High risk — high-variability pattern",
+        "High risk — challenging conditions",
+        "High risk — rapid pressure changes",
+        "High risk — significant weather shifts",
+        "High risk — storm front conditions",
+        "High risk — unsettled weather pattern",
+        "High risk — major pressure fluctuations",
+        "High risk — dramatic weather changes"
+    ]
+
     while len(patterns) < len(weekday_labels):
-        patterns.append({"weather_pattern": "steady pattern", "body_feel": "may feel easier on the body"})
+        patterns.append({"risk": "Low", "descriptor": random.choice(low_fallbacks)})
     if len(patterns) > len(weekday_labels):
         patterns = patterns[:len(weekday_labels)]
 
+    # CRITICAL: Validate that AI used the forced risk levels
+    # If we forced variation but AI returned all Low, reject and use fallbacks with forced risks
+    all_low_in_response = all(entry.get("risk", "Low").strip().lower() == "low" for entry in patterns)
+    if all_low_in_response and len(day_risk_hints) > 0:
+        moderate_hints = sum(1 for r in day_risk_hints if r == "Moderate")
+        high_hints = sum(1 for r in day_risk_hints if r == "High")
+        if moderate_hints > 0 or high_hints > 0:
+            print(f"❌ AI ignored forced risks ({moderate_hints} Moderate, {high_hints} High hints provided). Replacing with fallbacks that respect suggested risks.")
+            # Replace patterns with fallbacks that match the forced risk hints
+            patterns = []
+            for i, (label, risk_hint) in enumerate(zip(weekday_labels, day_risk_hints)):
+                if risk_hint == "High":
+                    descriptor = random.choice(high_fallbacks)
+                elif risk_hint == "Moderate":
+                    descriptor = random.choice(moderate_fallbacks)
+                else:
+                    descriptor = random.choice(low_fallbacks)
+                patterns.append({"risk": risk_hint, "descriptor": descriptor})
+            print(f"✅ Replaced with fallbacks: {sum(1 for p in patterns if p.get('risk') == 'High')} High, {sum(1 for p in patterns if p.get('risk') == 'Moderate')} Moderate")
+
     daily_breakdown: List[Dict[str, str]] = []
-    previous_weather_pattern = None
-    previous_body_feel = None
+    used_descriptors = set()  # Track used descriptors to enforce variation
     
     for label, entry in zip(weekday_labels, patterns):
-        weather_pattern = entry.get("weather_pattern", "steady pattern")
-        body_feel = entry.get("body_feel", "may feel steady on the body")
-        weather_pattern = _filter_app_messages(weather_pattern) or weather_pattern
-        body_feel = _filter_app_messages(body_feel) or body_feel
+        # New format: risk and descriptor
+        risk = entry.get("risk", "Low").strip()
+        descriptor = entry.get("descriptor", "")
         
-        # Normalize for comparison (trim whitespace, lowercase)
-        weather_pattern_normalized = weather_pattern.strip().lower()
-        body_feel_normalized = body_feel.strip().lower()
+        # Fallback to old format if needed for backward compatibility
+        if not descriptor:
+            weather_pattern = entry.get("weather_pattern", "steady pattern")
+            body_feel = entry.get("body_feel", "may feel steady on the body")
+            if weather_pattern and body_feel:
+                descriptor = f"{weather_pattern} — {body_feel}"
+            else:
+                # Use fallback based on risk
+                if risk.upper() == "HIGH":
+                    descriptor = random.choice(high_fallbacks)
+                elif risk.upper() == "MODERATE":
+                    descriptor = random.choice(moderate_fallbacks)
+                else:
+                    descriptor = random.choice(low_fallbacks)
         
-        # Only show "Expect similar comfort..." if:
-        # 1. Weather pattern is the same (steady weather)
-        # 2. Body feel is also similar/unchanged (no new insight worth mentioning)
-        # This ensures we only use the fallback when there's genuinely nothing new to say
-        is_same_weather = (
-            previous_weather_pattern and
-            weather_pattern_normalized == previous_weather_pattern
-        )
+        descriptor = _filter_app_messages(descriptor) or descriptor
         
-        # Check if body_feel is essentially the same (similar meaning, not just wording)
-        # Consider it the same if both mention similar comfort/feelings
-        is_similar_body_feel = False
-        if previous_body_feel:
-            # If weather patterns match and body_feel are both generic/similar, consider it duplicate
-            # Common patterns: "may feel steady", "may feel easier", "may feel stable", etc.
-            generic_patterns = ["may feel", "might feel", "could feel", "may experience", "might experience"]
-            both_generic = (
-                any(pattern in previous_body_feel for pattern in generic_patterns) and
-                any(pattern in body_feel_normalized for pattern in generic_patterns)
-            )
-            # Also check if they're very similar (80%+ word overlap)
-            if both_generic:
-                previous_words = set(previous_body_feel.split())
-                current_words = set(body_feel_normalized.split())
-                if previous_words and current_words:
-                    overlap = len(previous_words & current_words) / max(len(previous_words), len(current_words))
-                    is_similar_body_feel = overlap > 0.5  # More than 50% word overlap
+        # VALIDATION: Reject vague descriptors not in approved list
+        vague_forbidden = [
+            "more stable", "at ease", "more balanced", "steady conditions", 
+            "gentle conditions", "balanced conditions", "more predictable",
+            "easier day", "calmer day", "better conditions", "a bit easier",
+            "bit easier", "easier", "slightly easier", "somewhat easier",
+            "a bit achy", "bit achy", "achy", "slightly uncomfortable",
+            "mild body sensitivity", "slightly effortful", "more activating",
+            "less predictable", "mild discomfort", "stronger body sensitivity",
+            "more demanding"
+        ]
+        descriptor_after_dash = ""
+        if " — " in descriptor:
+            descriptor_after_dash = descriptor.split(" — ", 1)[1].lower().strip()
+        elif " - " in descriptor:
+            descriptor_after_dash = descriptor.split(" - ", 1)[1].lower().strip()
         
-        # Only show fallback if both weather AND body feel are similar (steady weather, no new insight)
-        if is_same_weather and is_similar_body_feel:
-            insight_line = "No changes expected."
-            # Don't update previous values - keep comparing against original pattern
-        else:
-            insight_line = f"{weather_pattern} — {body_feel}"
-            previous_weather_pattern = weather_pattern_normalized
-            previous_body_feel = body_feel_normalized
+        # Check if descriptor contains forbidden vague phrases
+        if any(vague in descriptor_after_dash for vague in vague_forbidden):
+            print(f"⚠️ Rejecting vague descriptor: '{descriptor}' - replacing with approved fallback")
+            # Replace with approved fallback based on risk
+            if risk.upper() == "HIGH":
+                descriptor = random.choice(high_fallbacks)
+            elif risk.upper() == "MODERATE":
+                descriptor = random.choice(moderate_fallbacks)
+            else:
+                descriptor = random.choice(low_fallbacks)
+        
+        # Ensure descriptor follows the format: "Risk Level — descriptor"
+        if not descriptor.startswith(("Low flare risk", "Moderate risk", "High risk")):
+            # Auto-add risk prefix if missing
+            if risk.upper() == "HIGH":
+                if not descriptor.startswith("High risk"):
+                    descriptor = f"High risk — {descriptor}"
+            elif risk.upper() == "MODERATE":
+                if not descriptor.startswith("Moderate risk"):
+                    descriptor = f"Moderate risk — {descriptor}"
+            else:
+                if not descriptor.startswith("Low flare risk"):
+                    descriptor = f"Low flare risk — {descriptor}"
+        
+        # ENFORCE VARIATION: If this descriptor was already used, replace it
+        descriptor_lower = descriptor.lower()
+        if descriptor_lower in used_descriptors:
+            # Find an unused alternative based on risk level
+            if risk.upper() == "HIGH":
+                available = [d for d in high_fallbacks if d.lower() not in used_descriptors]
+                if available:
+                    descriptor = random.choice(available)
+                else:
+                    # All used, reset and pick randomly
+                    descriptor = random.choice(high_fallbacks)
+            elif risk.upper() == "MODERATE":
+                available = [d for d in moderate_fallbacks if d.lower() not in used_descriptors]
+                if available:
+                    descriptor = random.choice(available)
+                else:
+                    descriptor = random.choice(moderate_fallbacks)
+            else:
+                # Low risk - most common, need most variety
+                available = [d for d in low_fallbacks if d.lower() not in used_descriptors]
+                if available:
+                    descriptor = random.choice(available)
+                else:
+                    # All used, reset and pick randomly
+                    descriptor = random.choice(low_fallbacks)
+        
+        # VALIDATION: Ensure descriptor has actual descriptive content after the dash
+        # If it's just "Low flare risk" or "Low flare risk —" with nothing after, add a descriptor
+        if descriptor.lower().strip() in ["low flare risk", "moderate risk", "high risk"]:
+            # Missing descriptor part - add one based on risk level
+            if risk.upper() == "HIGH":
+                descriptor = random.choice(high_fallbacks)
+            elif risk.upper() == "MODERATE":
+                descriptor = random.choice(moderate_fallbacks)
+            else:
+                descriptor = random.choice(low_fallbacks)
+        elif " — " in descriptor and descriptor.split(" — ", 1)[1].strip() == "":
+            # Has dash but no descriptor after it
+            if risk.upper() == "HIGH":
+                descriptor = random.choice(high_fallbacks)
+            elif risk.upper() == "MODERATE":
+                descriptor = random.choice(moderate_fallbacks)
+            else:
+                descriptor = random.choice(low_fallbacks)
+        elif not " — " in descriptor and descriptor.lower().startswith(("low flare risk", "moderate risk", "high risk")):
+            # Has risk level but no dash/descriptor - add one
+            if risk.upper() == "HIGH":
+                descriptor = random.choice(high_fallbacks)
+            elif risk.upper() == "MODERATE":
+                descriptor = random.choice(moderate_fallbacks)
+            else:
+                descriptor = random.choice(low_fallbacks)
+        
+        # ENFORCE VARIATION: If this descriptor was already used, replace it
+        descriptor_lower = descriptor.lower()
+        if descriptor_lower in used_descriptors:
+            # Find an unused alternative based on risk level
+            if risk.upper() == "HIGH":
+                available = [d for d in high_fallbacks if d.lower() not in used_descriptors]
+                if available:
+                    descriptor = random.choice(available)
+                else:
+                    # All used, reset and pick randomly
+                    descriptor = random.choice(high_fallbacks)
+            elif risk.upper() == "MODERATE":
+                available = [d for d in moderate_fallbacks if d.lower() not in used_descriptors]
+                if available:
+                    descriptor = random.choice(available)
+                else:
+                    descriptor = random.choice(moderate_fallbacks)
+            else:
+                # Low risk - most common, need most variety
+                available = [d for d in low_fallbacks if d.lower() not in used_descriptors]
+                if available:
+                    descriptor = random.choice(available)
+                else:
+                    # All used, reset and pick randomly
+                    descriptor = random.choice(low_fallbacks)
+        
+        # Track this descriptor as used
+        used_descriptors.add(descriptor.lower())
+        
+        # Final validation: ensure format is correct
+        if not " — " in descriptor:
+            # Missing dash - add it
+            if descriptor.lower().startswith("low flare risk"):
+                base = "Low flare risk"
+                desc_part = descriptor[len("Low flare risk"):].strip()
+                if desc_part:
+                    descriptor = f"{base} — {desc_part}"
+                else:
+                    descriptor = random.choice(low_fallbacks)
+            elif descriptor.lower().startswith("moderate risk"):
+                base = "Moderate risk"
+                desc_part = descriptor[len("Moderate risk"):].strip()
+                if desc_part:
+                    descriptor = f"{base} — {desc_part}"
+                else:
+                    descriptor = random.choice(moderate_fallbacks)
+            elif descriptor.lower().startswith("high risk"):
+                base = "High risk"
+                desc_part = descriptor[len("High risk"):].strip()
+                if desc_part:
+                    descriptor = f"{base} — {desc_part}"
+                else:
+                    descriptor = random.choice(high_fallbacks)
+        
+        # Final debug: ensure we have a valid descriptor
+        if " — " not in descriptor or descriptor.split(" — ", 1)[1].strip() == "":
+            print(f"⚠️ WARNING: Invalid descriptor format for {label}: '{descriptor}' - using fallback")
+            if risk.upper() == "HIGH":
+                descriptor = random.choice(high_fallbacks)
+            elif risk.upper() == "MODERATE":
+                descriptor = random.choice(moderate_fallbacks)
+            else:
+                descriptor = random.choice(low_fallbacks)
+        
+        print(f"✅ Daily insight for {label}: {descriptor}")
         
         daily_breakdown.append({
             "label": label,
-            "insight": insight_line
+            "insight": descriptor
         })
 
+    # Extract preparation tip if provided
+    preparation_tip = response_data.get("preparation_tip", "").strip()
+    preparation_tip = _filter_app_messages(preparation_tip) or preparation_tip
+    
     payload = json.dumps({
         "weekly_summary": weekly_summary,
-        "daily_breakdown": daily_breakdown
+        "daily_breakdown": daily_breakdown,
+        "preparation_tip": preparation_tip if preparation_tip else None
     })
 
     return (payload, sources)

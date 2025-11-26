@@ -683,6 +683,11 @@ async def analyze_data(request: CorrelationRequest):
         if user_diagnoses:
             print(f"🏥 User diagnoses: {', '.join(user_diagnoses)}")
         
+        # Get user sensitivities/triggers if provided
+        user_sensitivities = request.sensitivities or []
+        if user_sensitivities:
+            print(f"🎯 User sensitivities: {', '.join(user_sensitivities)}")
+        
         # Determine search query - use diagnoses if available, otherwise use generic terms
         if user_diagnoses:
             # Use first diagnosis as primary search term, combine others
@@ -727,7 +732,41 @@ async def analyze_data(request: CorrelationRequest):
                     title = paper.get("title", "No title")[:60]
                     source = paper.get("source", "Unknown")
                     print(f"   {i}. {title}... [Source: {source}]")
-                citations = [paper.get("source", paper.get("title", "Unknown")) for paper in papers]
+                
+                # Enhanced citation formatting: "Title (Journal, Year)" for better credibility
+                enhanced_citations = []
+                for paper in papers:
+                    title = paper.get("title", "").strip()
+                    journal = paper.get("journal", "").strip()
+                    year = paper.get("year", "").strip()
+                    source_id = paper.get("source", "").strip()
+                    
+                    if not title:
+                        if source_id:
+                            enhanced_citations.append(source_id)
+                        continue
+                    
+                    # Build enhanced citation
+                    citation_parts = [title]
+                    
+                    # Add journal and year if available
+                    if journal and journal != "Unknown journal":
+                        if year and year != "Unknown":
+                            citation_parts.append(f"({journal}, {year})")
+                        else:
+                            citation_parts.append(f"({journal})")
+                    elif year and year != "Unknown":
+                        citation_parts.append(f"({year})")
+                    
+                    # Join parts with space
+                    enhanced_citation = " ".join(citation_parts)
+                    enhanced_citations.append(enhanced_citation)
+                
+                citations = enhanced_citations if enhanced_citations else [
+                    paper.get("source", paper.get("title", "Unknown")) 
+                    for paper in papers 
+                    if paper.get("source") or paper.get("title")
+                ]
                 # Filter out "Unknown" sources
                 citations = [c for c in citations if c and c != "Unknown"]
                 print(f"📚 Citations to return: {citations}")
@@ -810,6 +849,7 @@ async def analyze_data(request: CorrelationRequest):
                 weather_factor=strongest_factor,
                 papers=papers,
                 user_diagnoses=user_diagnoses,
+                user_sensitivities=user_sensitivities,
                 location=None,  # Could extract from request if available
                 hourly_forecast=hourly_forecast_data
             )
@@ -868,10 +908,34 @@ async def analyze_data(request: CorrelationRequest):
                 print(f"📊 Prepared {len(weekly_forecast_data)} daily forecast points for weekly insight")
                 # Generate weekly forecast insight
                 try:
+                    # Pass today's risk level, current weather, and pressure trend to weekly forecast
+                    today_risk_context = f"Today's flare risk is {risk}." if risk else None
+                    today_pressure = current_weather.get("pressure") if current_weather else None
+                    today_temp = current_weather.get("temperature") if current_weather else None
+                    today_humidity = current_weather.get("humidity") if current_weather else None
+                    
+                    # Calculate tomorrow's expected pressure based on hourly forecast (pressure drops later today affect tomorrow)
+                    tomorrow_expected_pressure = None
+                    if hourly_forecast_data and len(hourly_forecast_data) > 0:
+                        # Get pressure from the last few hours of today / first hours of tomorrow
+                        # This accounts for pressure drops happening later today
+                        future_pressures = [h.get("pressure") for h in hourly_forecast_data[-12:] if h.get("pressure")]
+                        if future_pressures:
+                            # Use the pressure at the end of today/start of tomorrow
+                            tomorrow_expected_pressure = future_pressures[-1]
+                            print(f"📊 Weekly forecast: Tomorrow's expected pressure from hourly forecast: {tomorrow_expected_pressure:.1f}hPa")
+                    
                     weekly_forecast_insight_text, weekly_insight_sources = generate_weekly_forecast_insight(
                         weekly_forecast=weekly_forecast_data,
                         user_diagnoses=user_diagnoses,
-                        location=None  # Could extract from request if available
+                        user_sensitivities=user_sensitivities,
+                        location=None,  # Could extract from request if available
+                        today_risk_context=today_risk_context,
+                        today_pressure=today_pressure,
+                        today_temp=today_temp,
+                        today_humidity=today_humidity,
+                        pressure_trend=pressure_trend,
+                        tomorrow_expected_pressure=tomorrow_expected_pressure
                     )
                     weekly_forecast_insight = weekly_forecast_insight_text
                     print(f"✅ Generated weekly forecast insight")

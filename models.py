@@ -90,6 +90,7 @@ class CorrelationRequest(BaseModel):
     weekly_forecast: Optional[List[WeatherSnapshotPayload]] = []  # Optional weekly forecast data (7-day)
     user_id: Optional[str] = None
     diagnoses: Optional[List[str]] = None  # User's health diagnoses/conditions for personalization
+    sensitivities: Optional[List[str]] = None  # User's weather sensitivities/triggers (e.g., "Pressure shifts", "Humidity changes")
 
 
 # Internal models for processing (with datetime objects)
