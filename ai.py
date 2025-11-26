@@ -1757,22 +1757,26 @@ BAD EXAMPLE (repeating):
     # CRITICAL: Validate that AI used the forced risk levels
     # If we forced variation but AI returned all Low, reject and use fallbacks with forced risks
     all_low_in_response = all(entry.get("risk", "Low").strip().lower() == "low" for entry in patterns)
-    if all_low_in_response and len(day_risk_hints) > 0:
-        moderate_hints = sum(1 for r in day_risk_hints if r == "Moderate")
-        high_hints = sum(1 for r in day_risk_hints if r == "High")
-        if moderate_hints > 0 or high_hints > 0:
-            print(f"❌ AI ignored forced risks ({moderate_hints} Moderate, {high_hints} High hints provided). Replacing with fallbacks that respect suggested risks.")
-            # Replace patterns with fallbacks that match the forced risk hints
-            patterns = []
-            for i, (label, risk_hint) in enumerate(zip(weekday_labels, day_risk_hints)):
-                if risk_hint == "High":
-                    descriptor = random.choice(high_fallbacks)
-                elif risk_hint == "Moderate":
-                    descriptor = random.choice(moderate_fallbacks)
-                else:
-                    descriptor = random.choice(low_fallbacks)
-                patterns.append({"risk": risk_hint, "descriptor": descriptor})
-            print(f"✅ Replaced with fallbacks: {sum(1 for p in patterns if p.get('risk') == 'High')} High, {sum(1 for p in patterns if p.get('risk') == 'Moderate')} Moderate")
+    low_count_in_response = sum(1 for entry in patterns if entry.get("risk", "Low").strip().lower() == "low")
+    
+    # Also check if we have forced risks that should be used
+    moderate_hints = sum(1 for r in day_risk_hints if r == "Moderate")
+    high_hints = sum(1 for r in day_risk_hints if r == "High")
+    
+    # If AI returned all Low OR too many Low (more than 4), AND we have forced Moderate/High hints, replace
+    if (all_low_in_response or low_count_in_response > 4) and len(day_risk_hints) > 0 and (moderate_hints > 0 or high_hints > 0):
+        print(f"❌ AI ignored forced risks ({moderate_hints} Moderate, {high_hints} High hints provided, but {low_count_in_response} Low in response). Replacing with fallbacks that respect suggested risks.")
+        # Replace patterns with fallbacks that match the forced risk hints
+        patterns = []
+        for i, (label, risk_hint) in enumerate(zip(weekday_labels, day_risk_hints)):
+            if risk_hint == "High":
+                descriptor = random.choice(high_fallbacks)
+            elif risk_hint == "Moderate":
+                descriptor = random.choice(moderate_fallbacks)
+            else:
+                descriptor = random.choice(low_fallbacks)
+            patterns.append({"risk": risk_hint, "descriptor": descriptor})
+        print(f"✅ Replaced with fallbacks: {sum(1 for p in patterns if p.get('risk') == 'High')} High, {sum(1 for p in patterns if p.get('risk') == 'Moderate')} Moderate")
 
     daily_breakdown: List[Dict[str, str]] = []
     used_descriptors = set()  # Track used descriptors to enforce variation
