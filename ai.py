@@ -773,25 +773,11 @@ CONTEXT:
 - Comfort tips you may use exactly (VARY your selection - don't repeat the same tips): {comfort_clause}
 - Optional research notes: {papers_text}
 
-CRITICAL COMFORT TIP RULES:
-- You MUST vary comfort tip selections - NEVER repeat the same tip
-- NEVER use "Move at a pace that feels kind to you" or similar phrases repeatedly
-- Rotate through ALL 30 available tips - don't favor any single one
-- Match the tip to the specific weather conditions (e.g., use warmth tips for cold, hydration for humidity shifts)
-- If you've used a tip recently, choose a different one
-- The user has seen repetitive tips - prioritize variety over familiarity
-
-MANDATORY STYLE:
-- Plain, everyday language only - use grade 12 reading level vocabulary.
-- Never use made-up words, technical jargon, or obscure terms.
-- Never use numbers, units, or percentages.
-- Never reference technical meteorology (no hPa, dewpoint, fronts, etc.).
-- Never give medical advice or instructions.
-- Never promise outcomes; use gentle "may" framing.
-- Allowed feeling words: reactive, easier, gentle, steady, calmer.
+STYLE RULES:
+- Grade 12 vocabulary only. No numbers, units, technical terms, or medical advice.
+- Use tentative language (may, might). Never promise outcomes.
 - Keep sentences short and calm.
-- Even if context shows numbers, do NOT include them in your output.
-- You MUST naturally mention the user's conditions or sensitivities when relevant (e.g., "For those with arthritis, this humidity shift may feel noticeable" or "If pressure changes are a trigger for you, today's drop may be worth planning around"). Keep it conversational and non-medical. If the user has specific diagnoses or sensitivities, reference them in the insight.
+- Reference user's conditions/sensitivities when relevant.
 
 OUTPUT VALID JSON EXACTLY:
 {{
@@ -799,13 +785,13 @@ OUTPUT VALID JSON EXACTLY:
   "forecast": "Short headline with no numbers.",
   "why": "Brief sentence on why bodies may notice today.",
   "sources": ["Optional source names - if provided, use format: 'Title (Journal, Year)' or 'Title - Journal' for credibility"],
-  "support_note": "Optional gentle note with actionable guidance (e.g., 'Consider planning lighter activities for mid-day' or 'Mornings may feel easier than afternoons').",
+  "support_note": "Optional actionable guidance.",
   "personal_anecdote": "Optional relatable line.",
-  "behavior_prompt": "Optional gentle reminder with specific timing or preparation (e.g., 'Staying warm and moving gently can help' or 'Extra hydration may support your body today').",
+  "behavior_prompt": "Optional gentle reminder with timing.",
   "daily_insight": {{
-    "summary_sentence": "REQUIRED FORMAT: '[Weather description] which could [impact statement].' You MUST include both parts: 1) describe the weather pattern (cool air, heavy humidity, dropping pressure, rising temperatures, etc.) 2) ALWAYS end with 'which could [impact]' - describe potential body impacts like discomfort, joint stiffness, inflammation, headaches, muscle tension, breathing challenges, etc. Never just describe weather alone. CRITICAL: If the user has specific conditions or sensitivities listed above, you MUST reference them in this sentence. EXAMPLES: If user has arthritis: 'Today brings cool air with a heavy blanket of humidity which could increase joint stiffness, especially for those with arthritis.' If user has migraines: 'Dropping pressure today which could trigger headaches if you're sensitive to pressure changes.' If user has pressure sensitivity: 'Rapid pressure shifts today which could be noticeable if pressure changes affect you.' Use grade 12 reading level vocabulary - no made-up words or technical jargon.",
-    "why_line": "REQUIRED: Explain why this specific weather event causes flares or symptoms. CRITICAL REQUIREMENT: If the user has ANY conditions or sensitivities listed above, you MUST mention them by name in this explanation. Do NOT give generic explanations. Personalize it to their specific situation. Focus on the scientific mechanism: how pressure changes affect joint fluid, how humidity impacts inflammation, how temperature shifts affect blood flow, etc. Be educational but accessible. Use grade 12 reading level vocabulary - no made-up words or technical jargon. EXAMPLES: If user has arthritis: 'For those with arthritis, dropping pressure can cause tissues to expand slightly, increasing pressure on sensitive joints.' If user has migraines: 'If you experience migraines, rapid pressure drops can trigger headaches by affecting blood vessel dilation.' If user has pressure sensitivity: 'Since pressure shifts are a trigger for you, this drop may be particularly noticeable in your joints and breathing.' If user has multiple conditions, mention the most relevant one for today's weather. Include timing if relevant (e.g., 'Pressure shifts often feel most noticeable in the first few hours').",
-    "comfort_tip": f"CRITICAL: Generate a specific, actionable comfort tip (up to 20 words) that includes a medical tradition source. VARY your approach - alternate between Western medicine, Chinese medicine (TCM), Ayurveda, and other traditions. ALWAYS mention the source (e.g., 'Western medicine suggests...', 'Chinese medicine recommends...', 'Ayurveda suggests...'). Be specific when possible (e.g., 'Chinese medicine suggests a 5-minute tai-chi routine' for muscle tension, 'Western medicine recommends gentle stretching' for joint stiffness). Match the tip to today's specific weather conditions and symptoms mentioned in the insight. Use tentative language (may, might, can help) - NEVER use definitive statements like 'will work' or 'guaranteed'. If risk is MODERATE or HIGH, always include a tip. If risk is LOW, you may leave empty. Examples: 'Chinese medicine suggests a 5-minute tai-chi routine to ease muscle tension', 'Western medicine recommends gentle stretching; Ayurveda suggests warm oil massage', 'For joint stiffness, Western medicine suggests movement; Chinese medicine recommends acupressure points'. IMPORTANT: Ensure variety - don't repeat the same tradition or approach.",
+    "summary_sentence": "REQUIRED: '[Weather description] which could [impact].' Include weather pattern and body impact. If user has conditions/sensitivities, reference them. Use grade 12 vocabulary. Example: 'Cool air with heavy humidity which could increase joint stiffness, especially for those with arthritis.'",
+    "why_line": "REQUIRED: Explain why this weather causes symptoms. If user has conditions, mention them. Personalize. Focus on mechanism: how pressure affects joints, humidity impacts inflammation, temperature affects blood flow. Use grade 12 vocabulary. Example: 'For those with arthritis, dropping pressure can cause tissues to expand, increasing pressure on sensitive joints.'",
+    "comfort_tip": f"Generate a specific comfort tip (up to 20 words) with a medical tradition source. Alternate between Western medicine, Chinese medicine (TCM), and Ayurveda. ALWAYS mention source (e.g., 'Western medicine suggests...', 'Chinese medicine recommends...'). Be specific when possible (e.g., 'Chinese medicine suggests a 5-minute tai-chi routine' for muscle tension). Match tip to today's weather and symptoms. Use tentative language (may, might) - NEVER definitive statements. If risk is MODERATE or HIGH, include a tip. If LOW, leave empty. Ensure variety.",
     "sign_off": "One calm sign-off sentence with gentle forward-looking guidance (e.g., 'Take things at your own pace today' or 'Your body knows what it needs')."
   }}
 }}
@@ -834,8 +820,8 @@ DO NOT:
                 {"role": "system", "content": "You translate weather moods into calm, compassionate guidance for weather-sensitive people."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.5,  # Slightly lower for faster, more consistent responses
-            max_tokens=600,  # Reduced from 800 for faster generation
+            temperature=0.4,  # Lower temperature for faster, more consistent responses
+            max_tokens=500,  # Further reduced for faster generation (comfort tips are now shorter)
             response_format={"type": "json_object"}
         )
         response_text = completion.choices[0].message.content.strip()
