@@ -759,16 +759,12 @@ STYLE: Grade 12 vocab. No numbers/units. Tentative language (may, might). Short 
 OUTPUT JSON:
 {{
   "risk": "LOW | MODERATE | HIGH",
-  "forecast": "Actionable headline with value (e.g., 'Seize the day — low flare risk as weather patterns have stabilized' or 'Plan ahead — moderate risk with pressure shifts expected'). Include risk context and actionable guidance. No numbers.",
+  "forecast": "Actionable headline with risk context. Examples: 'Seize the day — low flare risk' or 'Plan ahead — moderate risk'. No numbers.",
   "why": "Brief why bodies may notice",
-  "sources": ["Optional: 'Title (Journal, Year)'"],
-  "support_note": "Optional guidance",
-  "personal_anecdote": "Optional relatable line",
-  "behavior_prompt": "Optional reminder",
   "daily_insight": {{
     "summary_sentence": "REQUIRED: '[Weather] which could [impact].' Example: 'Cool air with heavy humidity which could increase joint stiffness, especially for those with arthritis.'",
     "why_line": "REQUIRED: Explain mechanism. Example: 'For those with arthritis, dropping pressure can cause tissues to expand, increasing pressure on sensitive joints.'",
-    "comfort_tip": "REQUIRED if MODERATE/HIGH. Up to 20 words. MUST include medical source: 'Western medicine suggests...', 'Chinese medicine recommends...', or 'Ayurveda suggests...'. Be specific (e.g., 'Chinese medicine suggests a 5-minute tai-chi routine' for muscle tension). Match weather/symptoms. Use tentative language. If LOW, leave empty.",
+    "comfort_tip": "REQUIRED if MODERATE/HIGH. Up to 20 words. MUST include medical source: 'Western medicine suggests...', 'Chinese medicine recommends...', or 'Ayurveda suggests...'. Be specific. Match weather/symptoms. If LOW, leave empty.",
     "sign_off": "One calm sign-off sentence"
   }}
 }}
@@ -794,7 +790,7 @@ DO NOT: Use numbers/percentages. Mention pain/flare-ups. Add extra sections."""
                 {"role": "user", "content": prompt}
             ],
             temperature=0.3,  # Lower temperature for faster, more consistent responses
-            max_tokens=400,  # Further reduced for faster generation
+            max_tokens=300,  # Reduced further for faster generation (critical for UX)
             response_format={"type": "json_object"}
         )
         response_text = completion.choices[0].message.content.strip()

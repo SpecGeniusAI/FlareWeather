@@ -572,8 +572,17 @@ struct HomeView: View {
     }
     
     private var scrollViewWithModifiers: some View {
-        scrollViewContent
-            .background(backgroundView)
+        ZStack {
+            scrollViewContent
+                .background(backgroundView)
+            
+            // Prominent loading overlay when insights are processing
+            if aiService.isLoading && !aiService.hasValidInsights {
+                LoadingOverlayView()
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: 0.3), value: aiService.isLoading)
+            }
+        }
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     LogoWordmarkView()
@@ -750,7 +759,68 @@ struct HomeView: View {
     }
 }
 
-private struct LogoWordmarkView: View {
+private // Prominent loading overlay for insights processing
+struct LoadingOverlayView: View {
+    @State private var rotation: Double = 0
+    @State private var scale: CGFloat = 1.0
+    
+    var body: some View {
+        ZStack {
+            // Semi-transparent background
+            Color.black.opacity(0.3)
+                .ignoresSafeArea()
+            
+            // Loading card
+            VStack(spacing: 20) {
+                // Animated weather icon
+                ZStack {
+                    Circle()
+                        .fill(Color(hex: "#888779").opacity(0.1))
+                        .frame(width: 80, height: 80)
+                    
+                    Image(systemName: "cloud.sun.fill")
+                        .font(.system(size: 40))
+                        .foregroundColor(Color(hex: "#888779"))
+                        .rotationEffect(.degrees(rotation))
+                        .scaleEffect(scale)
+                }
+                
+                // Loading text
+                VStack(spacing: 8) {
+                    Text("Analyzing Weather Patterns")
+                        .font(.interTitle2)
+                        .foregroundColor(Color.adaptiveText)
+                    
+                    Text("This will just take a moment...")
+                        .font(.interBody)
+                        .foregroundColor(Color.adaptiveMuted)
+                }
+                
+                // Progress indicator
+                ProgressView()
+                    .tint(Color(hex: "#888779"))
+                    .scaleEffect(1.2)
+            }
+            .padding(32)
+            .background(Color.adaptiveBackground)
+            .cornerRadius(20)
+            .shadow(color: Color.black.opacity(0.2), radius: 20, x: 0, y: 10)
+            .padding(.horizontal, 40)
+        }
+        .onAppear {
+            // Animate rotation
+            withAnimation(.linear(duration: 3).repeatForever(autoreverses: false)) {
+                rotation = 360
+            }
+            // Animate scale pulse
+            withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
+                scale = 1.1
+            }
+        }
+    }
+}
+
+struct LogoWordmarkView: View {
     var body: some View {
         HStack(spacing: 8) {
             Image("AppLogo")
