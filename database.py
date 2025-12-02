@@ -216,7 +216,12 @@ def init_db():
             print("🔄 Migrating database: Adding papers_updated_at column...")
             try:
                 with engine.connect() as conn:
-                    conn.execute(text("ALTER TABLE users ADD COLUMN papers_updated_at DATETIME"))
+                    # Use TIMESTAMP for PostgreSQL, DATETIME for SQLite
+                    db_type = engine.dialect.name
+                    if db_type == 'postgresql':
+                        conn.execute(text("ALTER TABLE users ADD COLUMN papers_updated_at TIMESTAMP"))
+                    else:
+                        conn.execute(text("ALTER TABLE users ADD COLUMN papers_updated_at DATETIME"))
                     conn.commit()
                 print("✅ Migration complete: papers_updated_at column added")
             except Exception as e:
