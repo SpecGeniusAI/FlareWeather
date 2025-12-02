@@ -120,25 +120,25 @@ ALLOWED_COMFORT_TIPS = [
 
 FORECAST_VARIANTS = {
     "LOW": [
-        "No major shifts expected—take a deep breath and enjoy the calm.",
-        "Conditions appear stable—today might offer you a little space.",
-        "Weather looks gentle—move at your pace and consider light routines.",
-        "The skies are steady for now—energy permitting, this may be a good window.",
-        "Today's forecast holds quiet trends—you might find a soft rhythm to settle into."
+        "Seize the day — low flare risk as weather patterns have stabilized.",
+        "Take advantage — conditions are steady and may support your plans today.",
+        "Good window ahead — low risk means you can plan with more confidence.",
+        "Stable conditions — this may be a day to tackle what matters most.",
+        "Low flare risk — weather has settled into a gentler pattern for you."
     ],
     "MODERATE": [
-        "Weather nudges are on the way—ease into the day and keep buffers open.",
-        "You may feel the atmosphere shifting—pacing plans can keep things manageable.",
-        "Conditions are wobbling—gently layering rest and light movement could help.",
-        "Forecast changes are brewing—consider lighter commitments where you can.",
-        "Weather signals are mixed—moving thoughtfully may soften any symptom echoes."
+        "Plan ahead — moderate risk with pressure shifts expected today.",
+        "Stay flexible — weather changes may require adjusting your pace.",
+        "Moderate flare risk — consider lighter activities and comfort measures.",
+        "Weather shifts ahead — pacing yourself may help manage any discomfort.",
+        "Moderate conditions — keep plans adaptable as patterns change."
     ],
     "HIGH": [
-        "Significant weather swings are lining up—consider scaling back and creating calm pockets.",
-        "Rapid shifts are likely—prioritize rest, hydration, and essentials only.",
-        "The atmosphere is in flux—many people cushion the day with extra pacing.",
-        "Sharp changes are ahead—front-load care and keep the schedule flexible.",
-        "Big swings usually call for gentle planning—give yourself room to adapt."
+        "Prioritize rest — high flare risk with significant weather shifts expected.",
+        "Scale back plans — high risk means focusing on essentials today.",
+        "High flare risk — rapid weather changes may trigger symptoms.",
+        "Take it easy — high risk conditions call for extra self-care.",
+        "High risk ahead — consider rescheduling non-essential activities."
     ]
 }
 
@@ -709,7 +709,7 @@ def generate_flare_risk_assessment(
         )
         return (
             "MODERATE",
-            "Weather looks gentle today.",
+            "Plan ahead — moderate risk with weather shifts expected today.",
             "Soft shifts keep things gentler on sensitive bodies.",
             fallback_message,
             [],
@@ -759,7 +759,7 @@ STYLE: Grade 12 vocab. No numbers/units. Tentative language (may, might). Short 
 OUTPUT JSON:
 {{
   "risk": "LOW | MODERATE | HIGH",
-  "forecast": "Short headline, no numbers",
+  "forecast": "Actionable headline with value (e.g., 'Seize the day — low flare risk as weather patterns have stabilized' or 'Plan ahead — moderate risk with pressure shifts expected'). Include risk context and actionable guidance. No numbers.",
   "why": "Brief why bodies may notice",
   "sources": ["Optional: 'Title (Journal, Year)'"],
   "support_note": "Optional guidance",
@@ -831,14 +831,16 @@ DO NOT: Use numbers/percentages. Mention pain/flare-ups. Add extra sections."""
         traceback.print_exc()
         if pressure_trend and "drop" in (pressure_trend or "").lower():
             risk = "HIGH"
+            forecast_from_model = "Prioritize rest — high flare risk with significant weather shifts expected."
             why_from_model = "Quick shifts may leave sensitive bodies feeling more reactive."
         elif pressure < 1005:
             risk = "MODERATE"
+            forecast_from_model = "Plan ahead — moderate risk with pressure shifts expected today."
             why_from_model = "Soft swings may feel a little less steady."
         else:
             risk = "LOW"
+            forecast_from_model = "Seize the day — low flare risk as weather patterns have stabilized."
             why_from_model = "Steadier cues often feel gentler on sensitive bodies."
-        forecast_from_model = None
         daily_summary = None
         daily_why_line = None
         daily_comfort_tip = ""
