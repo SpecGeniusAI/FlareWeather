@@ -1,0 +1,14 @@
+{
+  "name": "flareweather-web",
+  "version": "1.0.0",
+  "description": "FlareWeather Web Frontend with Tailwind CSS",
+  "type": "module",
+  "scripts": {
+    "dev": "python3 -m http.server 3000",
+    "serve": "npx http-server -p 3000"
+  },
+  "keywords": ["flareweather", "tailwind", "health", "weather"],
+  "author": "",
+  "license": "MIT"
+}
+

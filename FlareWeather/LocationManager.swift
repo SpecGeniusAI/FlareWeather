@@ -68,9 +68,16 @@ class LocationManager: NSObject, ObservableObject {
                     if distance > 100 {
                         print("📍 LocationManager: Manual location changed significantly, updating...")
                         self.location = newLocation
+                        // Detect country and set temperature unit for manual location
+                        updateTemperatureUnitForLocation(newLocation)
+                    } else {
+                        // Even if location is close, still update temperature unit (country might be different)
+                        updateTemperatureUnitForLocation(newLocation)
                     }
                 } else {
                     self.location = newLocation
+                    // Detect country and set temperature unit for manual location
+                    updateTemperatureUnitForLocation(newLocation)
                 }
                 print("✅ LocationManager: Loaded manual location: \(lat), \(lon)")
             } else {
@@ -100,6 +107,19 @@ class LocationManager: NSObject, ObservableObject {
                 if name.isEmpty {
                     name = placemark.name ?? ""
                 }
+                
+                // Automatically determine temperature unit based on country code
+                if let countryCode = placemark.isoCountryCode {
+                    let usesFahrenheit = self.countryUsesFahrenheit(countryCode: countryCode)
+                    DispatchQueue.main.async {
+                        UserDefaults.standard.set(usesFahrenheit, forKey: "useFahrenheit")
+                        print("🌡️ LocationManager: Auto-set temperature unit for \(countryCode): \(usesFahrenheit ? "Fahrenheit" : "Celsius")")
+                    }
+                } else {
+                    // If country code not available, still try to detect from location
+                    updateTemperatureUnitForLocation(location)
+                }
+                
                 DispatchQueue.main.async {
                     let finalName = name.isEmpty ? nil : name
                     self.deviceLocationName = finalName
@@ -115,6 +135,28 @@ class LocationManager: NSObject, ObservableObject {
                 DispatchQueue.main.async {
                     self.deviceLocationName = nil
                     UserDefaults.standard.removeObject(forKey: "deviceLocationName")
+                }
+            }
+        }
+    }
+    
+    // Determine if country uses Fahrenheit based on ISO country code
+    // Countries using Fahrenheit: US, Palau, Micronesia, Marshall Islands, Liberia, Cayman Islands, Belize
+    private func countryUsesFahrenheit(countryCode: String) -> Bool {
+        let fahrenheitCountries: Set<String> = ["US", "PW", "FM", "MH", "LR", "KY", "BZ"]
+        return fahrenheitCountries.contains(countryCode.uppercased())
+    }
+    
+    // Helper function to detect country and update temperature unit from location
+    private func updateTemperatureUnitForLocation(_ location: CLLocation) {
+        geocoder.reverseGeocodeLocation(location) { [weak self] placemarks, error in
+            guard let self = self else { return }
+            if let placemark = placemarks?.first,
+               let countryCode = placemark.isoCountryCode {
+                let usesFahrenheit = self.countryUsesFahrenheit(countryCode: countryCode)
+                DispatchQueue.main.async {
+                    UserDefaults.standard.set(usesFahrenheit, forKey: "useFahrenheit")
+                    print("🌡️ LocationManager: Auto-set temperature unit for \(countryCode): \(usesFahrenheit ? "Fahrenheit" : "Celsius")")
                 }
             }
         }

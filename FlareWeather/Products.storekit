@@ -11,11 +11,11 @@
   },
   "subscriptionGroups" : [
     {
-      "id" : "21482904",
+      "id" : "8C8E3DC5",
       "localizations" : [
 
       ],
-      "name" : "FlareWeather Subscription",
+      "name" : "The standard set of packages",
       "subscriptions" : [
         {
           "adHocOffers" : [
@@ -27,14 +27,7 @@
           "displayPrice" : "2.99",
           "familyShareable" : false,
           "groupNumber" : 1,
-          "internalID" : "6752999588",
-          "introductoryOffer" : {
-            "displayPrice" : "0.00",
-            "internalID" : "6752999589",
-            "numberOfPeriods" : 1,
-            "paymentMode" : "free",
-            "subscriptionPeriod" : "P1W"
-          },
+          "internalID" : "F212D02C",
           "localizations" : [
             {
               "description" : "Monthly subscription to FlareWeather Plus",
@@ -44,9 +37,16 @@
           ],
           "productID" : "fw_plus_monthly",
           "recurringSubscriptionPeriod" : "P1M",
-          "referenceName" : "FlareWeather Plus Monthly",
-          "subscriptionGroupID" : "21482904",
-          "type" : "RecurringSubscription"
+          "referenceName" : "monthly",
+          "subscriptionGroupID" : "8C8E3DC5",
+          "type" : "RecurringSubscription",
+          "introductoryOffer" : {
+            "displayPrice" : "0.00",
+            "internalID" : "INTRO_MONTHLY",
+            "numberOfPeriods" : 1,
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1W"
+          }
         },
         {
           "adHocOffers" : [
@@ -57,8 +57,8 @@
           ],
           "displayPrice" : "19.99",
           "familyShareable" : false,
-          "groupNumber" : 2,
-          "internalID" : "6752999590",
+          "groupNumber" : 1,
+          "internalID" : "5E9622FD",
           "localizations" : [
             {
               "description" : "Yearly subscription to FlareWeather Plus",
@@ -68,8 +68,8 @@
           ],
           "productID" : "fw_plus_yearly",
           "recurringSubscriptionPeriod" : "P1Y",
-          "referenceName" : "FlareWeather Plus Yearly",
-          "subscriptionGroupID" : "21482904",
+          "referenceName" : "Yearly",
+          "subscriptionGroupID" : "8C8E3DC5",
           "type" : "RecurringSubscription"
         }
       ]
@@ -80,4 +80,3 @@
     "minor" : 0
   }
 }
-

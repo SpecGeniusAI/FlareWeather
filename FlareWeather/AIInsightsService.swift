@@ -46,14 +46,16 @@ struct CorrelationRequest: Codable {
     let weekly_forecast: [WeatherSnapshotPayload]?
     let user_id: String?
     let diagnoses: [String]?
+    let sensitivities: [String]?
     
-    init(symptoms: [SymptomEntryPayload], weather: [WeatherSnapshotPayload], hourly_forecast: [WeatherSnapshotPayload]? = nil, weekly_forecast: [WeatherSnapshotPayload]? = nil, user_id: String? = nil, diagnoses: [String]? = nil) {
+    init(symptoms: [SymptomEntryPayload], weather: [WeatherSnapshotPayload], hourly_forecast: [WeatherSnapshotPayload]? = nil, weekly_forecast: [WeatherSnapshotPayload]? = nil, user_id: String? = nil, diagnoses: [String]? = nil, sensitivities: [String]? = nil) {
         self.symptoms = symptoms
         self.weather = weather
         self.hourly_forecast = hourly_forecast
         self.weekly_forecast = weekly_forecast
         self.user_id = user_id
         self.diagnoses = diagnoses
+        self.sensitivities = sensitivities
     }
 }
 
@@ -102,24 +104,130 @@ struct FeedbackResponsePayload: Codable {
 
 @MainActor
 final class AIInsightsService: ObservableObject {
-    @Published var insightMessage: String = "Analyzing your week…"
+    private let userDefaults = UserDefaults.standard
+    private let insightMessageKey = "aiInsightMessage"
+    private let riskKey = "aiRisk"
+    private let forecastKey = "aiForecast"
+    private let whyKey = "aiWhy"
+    private let weeklySummaryKey = "aiWeeklySummary"
+    private let weeklyDaysKey = "aiWeeklyDays"
+    private let citationsKey = "aiCitations"
+    private let supportNoteKey = "aiSupportNote"
+    private let lastAnalysisTimeKey = "aiLastAnalysisTime"
+    
+    @Published var insightMessage: String = "Analyzing your week…" {
+        didSet {
+            if insightMessage != "Analyzing your week…" && 
+               insightMessage != "Analyzing weather patterns…" && 
+               insightMessage != "Updating analysis…" {
+                userDefaults.set(insightMessage, forKey: insightMessageKey)
+            }
+        }
+    }
     @Published var isLoading = false
     @Published var errorMessage: String? = nil
-    @Published var citations: [String] = []
-    @Published var lastAnalysisTime: Date? = nil
-    @Published var risk: String? = nil  // LOW, MODERATE, or HIGH
-    @Published var forecast: String? = nil  // 1-sentence forecast
-    @Published var why: String? = nil  // Explanation
-    @Published var weeklyForecastInsight: String? = nil  // Weekly forecast preview
-    @Published var weeklyInsightSources: [String] = []  // Weekly insight references
-    @Published var weeklyInsightSummary: String? = nil
-    @Published var weeklyInsightDays: [WeeklyInsightDay] = []
-    @Published var supportNote: String? = nil  // Emotional encouragement when risk elevated
-    @Published var pressureAlert: PressureAlertPayload? = nil  // Short-term pressure alert payload
-    @Published var alertSeverity: String? = nil  // Severity tag from backend
-    @Published var personalizationScore: Int? = nil  // Personalization score 1-5
+    @Published var citations: [String] = [] {
+        didSet {
+            userDefaults.set(citations, forKey: citationsKey)
+        }
+    }
+    @Published var lastAnalysisTime: Date? = nil {
+        didSet {
+            if let time = lastAnalysisTime {
+                userDefaults.set(time, forKey: lastAnalysisTimeKey)
+            }
+        }
+    }
+    @Published var risk: String? = nil {
+        didSet {
+            userDefaults.set(risk, forKey: riskKey)
+        }
+    }
+    @Published var forecast: String? = nil {
+        didSet {
+            userDefaults.set(forecast, forKey: forecastKey)
+        }
+    }
+    @Published var why: String? = nil {
+        didSet {
+            userDefaults.set(why, forKey: whyKey)
+        }
+    }
+    @Published var weeklyForecastInsight: String? = nil
+    @Published var weeklyInsightSources: [String] = []
+    @Published var weeklyInsightSummary: String? = nil {
+        didSet {
+            userDefaults.set(weeklyInsightSummary, forKey: weeklySummaryKey)
+        }
+    }
+    @Published var weeklyInsightDays: [WeeklyInsightDay] = [] {
+        didSet {
+            // Persist weekly days as array of dictionaries
+            let daysData = weeklyInsightDays.map { ["label": $0.label, "detail": $0.detail] }
+            if let encoded = try? JSONEncoder().encode(daysData) {
+                userDefaults.set(encoded, forKey: weeklyDaysKey)
+            }
+        }
+    }
+    @Published var supportNote: String? = nil {
+        didSet {
+            userDefaults.set(supportNote, forKey: supportNoteKey)
+        }
+    }
+    @Published var pressureAlert: PressureAlertPayload? = nil
+    @Published var alertSeverity: String? = nil
+    @Published var personalizationScore: Int? = nil
     @Published var personalAnecdote: String? = nil
     @Published var behaviorPrompt: String? = nil
+    
+    // MARK: - Initialization
+    init() {
+        // Restore persisted insights on initialization
+        restorePersistedInsights()
+    }
+    
+    private func restorePersistedInsights() {
+        // Restore insight message
+        if let saved = userDefaults.string(forKey: insightMessageKey),
+           saved != "Analyzing your week…" && 
+           saved != "Analyzing weather patterns…" && 
+           saved != "Updating analysis…" {
+            insightMessage = saved
+        }
+        
+        // Restore risk
+        risk = userDefaults.string(forKey: riskKey)
+        
+        // Restore forecast
+        forecast = userDefaults.string(forKey: forecastKey)
+        
+        // Restore why
+        why = userDefaults.string(forKey: whyKey)
+        
+        // Restore weekly summary
+        weeklyInsightSummary = userDefaults.string(forKey: weeklySummaryKey)
+        
+        // Restore weekly days
+        if let data = userDefaults.data(forKey: weeklyDaysKey),
+           let decoded = try? JSONDecoder().decode([[String: String]].self, from: data) {
+            weeklyInsightDays = decoded.map { WeeklyInsightDay(label: $0["label"] ?? "", detail: $0["detail"] ?? "") }
+        }
+        
+        // Restore citations
+        if let saved = userDefaults.array(forKey: citationsKey) as? [String] {
+            citations = saved
+        }
+        
+        // Restore support note
+        supportNote = userDefaults.string(forKey: supportNoteKey)
+        
+        // Restore last analysis time
+        if let time = userDefaults.object(forKey: lastAnalysisTimeKey) as? Date {
+            lastAnalysisTime = time
+        }
+        
+        print("📦 AIInsightsService: Restored persisted insights - message: \(insightMessage.prefix(50)), risk: \(risk ?? "nil"), weekly days: \(weeklyInsightDays.count)")
+    }
     
     // MARK: - Formatting Helpers
     // Sanitize insight text to strictly follow UI rules:
@@ -453,9 +561,19 @@ final class AIInsightsService: ObservableObject {
         // Forbidden vague phrases - comprehensive list
         let vaguePhrases = [
             // Forbidden from user spec
+            "a bit more",
+            "a bit",
+            "bit more",
+            "more",
+            "a bit easier",
+            "a bit achy",
+            "bit achy",
             "supportive",
             "gentle",
             "gentler",
+            "lighter",  // Only allowed if tied to muscles/joints (checked separately)
+            "moody",
+            "unusual",
             "conditions remain stable",
             "keeps things steady",
             "may feel different",
@@ -484,6 +602,15 @@ final class AIInsightsService: ObservableObject {
             "may impact",
             "could affect",
             "might impact",
+            // Medical/helpful language (forbidden)
+            "might help",
+            "may help",
+            "could help",
+            "help with",
+            "helps with",
+            "might help with",
+            "may help with",
+            "could help with",
             // Check for weather "feeling" - only body should feel
             "pressure feels",
             "humid feels",
@@ -500,12 +627,19 @@ final class AIInsightsService: ObservableObject {
             }
         }
         
-        // Check for "lighter" unless tied to muscles/joints
+        // Check for "lighter" - completely forbidden per user spec
         if lowerText.contains("lighter") {
-            let lighterInContext = lowerText.contains("muscles") || lowerText.contains("joints") || lowerText.contains("tightness")
-            if !lighterInContext {
-                return true // "lighter" without muscle/joint context is forbidden
-            }
+            return true // "lighter" is always forbidden
+        }
+        
+        // Check for "moody" - completely forbidden
+        if lowerText.contains("moody") {
+            return true
+        }
+        
+        // Check for "unusual" - completely forbidden
+        if lowerText.contains("unusual") {
+            return true
         }
         
         return false
@@ -677,13 +811,13 @@ final class AIInsightsService: ObservableObject {
             // Uses SPECIFIC body-sensation language (no vague phrases)
             // STRICT: Weather never "feels" - only body does
             return """
-Weather feels gentle and steady today.
+Cooler air and steady pressure may make today feel easier on the body.
 
 Why: Stable pressure can ease tension in sensitive joints.
 
-Comfort tip: Keep your day flexible.
+Comfort tip: Take short pauses through the day.
 
-Move at a pace that feels kind to you.
+Move at the pace that feels right.
 """
         }
         
@@ -709,7 +843,7 @@ Move at a pace that feels kind to you.
             }
             
             let summaryText = (sanitizeInsightText(filterAppMessages(summary)) ?? summary)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                ?? "Weather feels gentle and steady today."
+                ?? "Cooler air and steady pressure may make today feel easier on the body."
             
             // Prioritize whyField (from top-level InsightResponse.why) - this is the weather explanation
             // Fall back to whyLine from JSON if whyField not available
@@ -757,8 +891,30 @@ Move at a pace that feels kind to you.
             }
             
             var comfortText = (sanitizeInsightText(filterAppMessages(comfortTip)) ?? comfortTip)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            var signOffText = (sanitizeInsightText(filterAppMessages(signOff)) ?? signOff)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                ?? "Move at a pace that feels kind to you."
+            
+            // Validate comfort tip: allow up to 20 words and check for medical tradition source
+            if !comfortText.isEmpty {
+                let wordCount = comfortText.components(separatedBy: .whitespaces).filter { !$0.isEmpty }.count
+                let hasMedicalSource = comfortText.lowercased().contains("western medicine") ||
+                                      comfortText.lowercased().contains("chinese medicine") ||
+                                      comfortText.lowercased().contains("tcm") ||
+                                      comfortText.lowercased().contains("ayurveda") ||
+                                      comfortText.lowercased().contains("traditional chinese") ||
+                                      comfortText.lowercased().contains("traditional medicine") ||
+                                      comfortText.lowercased().contains("suggests") ||
+                                      comfortText.lowercased().contains("recommends")
+                
+                // If it has a medical source and is within word limit, keep it (even if it has some vague language)
+                // Only replace if it's too long OR doesn't have a medical source AND has vague language
+                if wordCount > 20 || (!hasMedicalSource && containsVagueLanguage(comfortText)) {
+                    comfortText = getApprovedComfortTip()
+                }
+            } else {
+                comfortText = getApprovedComfortTip()
+            }
+            
+            let signOffText = (sanitizeInsightText(filterAppMessages(signOff)) ?? signOff)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                ?? getApprovedSignOff()
             
             // Clean text for comparison (remove punctuation, trim whitespace)
             let cleanComfort = comfortText.lowercased()
@@ -862,7 +1018,7 @@ Move at a pace that feels kind to you.
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         
-        let summaryText = (parts.first ?? "Weather feels gentle and steady today.") + "."
+        let summaryText = (parts.first ?? "Cooler air and steady pressure may make today feel easier on the body.") + "."
         
         // CRITICAL: Detect weather factor for rewriting logic
         let lowerSummary = summaryText.lowercased()
@@ -916,7 +1072,7 @@ Move at a pace that feels kind to you.
         
         // For legacy text we skip comfort tip and keep a soft, fixed sign-off.
         // But only if it's different from the summary
-        let defaultSignOff = "Move at a pace that feels kind to you."
+        let defaultSignOff = getApprovedSignOff()
         let signOffText = defaultSignOff
         
         // Build formatted message following exact template:
@@ -1069,9 +1225,22 @@ Move at a pace that feels kind to you.
     /// - Strip all markdown, bullets, HTML, numbers, technical terms
     private func applyWeeklyInsight(_ insight: String?) {
         guard let insight = insight, !insight.isEmpty else {
-            weeklyInsightSummary = nil
-            weeklyInsightDays = []
-            weeklyForecastInsight = nil
+            // If no insight provided, create default fallback data so card still shows
+            let defaultSummary = "A mostly steady week ahead with consistent conditions."
+            let weekdayLabels = getNextSevenWeekdays()
+            var defaultDays: [WeeklyInsightDay] = []
+            
+            for weekday in weekdayLabels {
+                defaultDays.append(WeeklyInsightDay(
+                    label: weekday,
+                    detail: "low flare risk"
+                ))
+            }
+            
+            weeklyInsightSummary = defaultSummary
+            weeklyInsightDays = defaultDays
+            weeklyForecastInsight = defaultSummary
+            print("📅 Weekly insight: Using default fallback (no insight provided)")
             return
         }
         
@@ -1088,15 +1257,33 @@ Move at a pace that feels kind to you.
             let fixedSummary = fixBrokenWeeklySummaryTemplate(summaryWithoutSources) ?? summaryWithoutSources
             let sanitizedSummary = sanitizeInsightText(fixedSummary) ?? fixedSummary ?? ""
             
-            // Ensure summary is a single SHORT paragraph (first sentence only, no truncation)
-            var finalSummary = sanitizedSummary
+            // Parse preparation tip if available
+            let preparationTipRaw = json["preparation_tip"] as? String
+            let preparationTip = filterAppMessages(preparationTipRaw) ?? preparationTipRaw
+            let sanitizedTip = sanitizeInsightText(preparationTip) ?? preparationTip ?? ""
+            
+            // Ensure summary is complete sentences (don't truncate mid-sentence)
+            var finalSummary = sanitizedSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            // Split by sentence endings, but preserve the full text
             let sentences = finalSummary.components(separatedBy: CharacterSet(charactersIn: ".!?"))
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
             
             if !sentences.isEmpty {
-                // Use first sentence only for brevity - show the complete sentence, no truncation
-                finalSummary = sentences.first! + "."
+                // Join ALL complete sentences - don't truncate the summary
+                // The backend provides complete summaries, we should show them fully
+                finalSummary = sentences.joined(separator: ". ") + "."
+            } else {
+                // If no sentence endings found, ensure it ends with punctuation
+                if !finalSummary.hasSuffix(".") && !finalSummary.hasSuffix("!") && !finalSummary.hasSuffix("?") {
+                    finalSummary = finalSummary + "."
+                }
+            }
+            
+            // Append preparation tip to summary if available (adds actionable value)
+            if !sanitizedTip.isEmpty {
+                finalSummary = finalSummary + " " + sanitizedTip
             }
             
             weeklyInsightSummary = finalSummary.isEmpty ? nil : finalSummary
@@ -1113,14 +1300,54 @@ Move at a pace that feels kind to you.
                     
                     let label = item["label"] as? String ?? (index < weekdayLabels.count ? weekdayLabels[index] : "")
                     let detailRaw = item["insight"] as? String ?? ""
+                    
+                    // Debug: Log what we receive from backend
+                    print("📅 Weekly insight day \(index): label='\(label)', detailRaw='\(detailRaw)'")
+                    
                     let filteredDetail = filterAppMessages(detailRaw) ?? detailRaw
-                    let sanitizedDetail = sanitizeInsightText(filteredDetail) ?? filteredDetail
+                    // CRITICAL: Don't use sanitizeInsightText on weekly day details - it's too aggressive
+                    // The backend already provides properly formatted text like "Low flare risk — steady pressure"
+                    // sanitizeInsightText removes forbidden terms which might remove the descriptor
+                    // So we'll only do minimal sanitization (remove numbers/units) for new format
+                    let sanitizedDetail: String
+                    if filteredDetail.contains(" — ") || filteredDetail.contains(" – ") || filteredDetail.contains(" - ") {
+                        // Has dash - likely new format, minimal sanitization (just remove numbers)
+                        sanitizedDetail = filteredDetail
+                            .replacingOccurrences(of: "\\d+\\s*(hpa|mb|%|°c|°f)", with: "", options: [.regularExpression, .caseInsensitive])
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                    } else {
+                        // Old format - use full sanitization
+                        sanitizedDetail = sanitizeInsightText(filteredDetail) ?? filteredDetail
+                    }
+                    
+                    // CRITICAL: Clean the label - remove "Low" prefix or other prefixes that might have leaked in
+                    var cleanLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
+                    
+                    // Remove "Low" prefix (case-insensitive) - check if it's standalone or part of a phrase
+                    if cleanLabel.lowercased().hasPrefix("low ") && !cleanLabel.lowercased().hasPrefix("low pressure") {
+                        cleanLabel = cleanLabel.replacingOccurrences(of: "^[Ll]ow\\s+", with: "", options: .regularExpression)
+                    } else if cleanLabel.lowercased() == "low" {
+                        // If label is just "Low", use default weekday label instead of skipping
+                        cleanLabel = index < weekdayLabels.count ? weekdayLabels[index] : label
+                    }
+                    
+                    // Remove any punctuation from label (like "Tue." should be "Tue")
+                    cleanLabel = cleanLabel.replacingOccurrences(of: "\\.$", with: "", options: .regularExpression)
+                    
+                    // If label is empty after cleaning, use default weekday label
+                    if cleanLabel.isEmpty {
+                        cleanLabel = index < weekdayLabels.count ? weekdayLabels[index] : "Day \(index + 1)"
+                    }
                     
                     // Ensure format is exactly: <weather> — <body feel> (two em-dashes)
                     let formattedDetail = formatWeeklyDayDetail(sanitizedDetail)
                     
-                    if !label.isEmpty && !formattedDetail.isEmpty {
-                        parsedDays.append(WeeklyInsightDay(label: label, detail: formattedDetail))
+                    // Debug: Log what formatWeeklyDayDetail returns
+                    print("📅 Weekly insight day \(index): formattedDetail='\(formattedDetail)'")
+                    
+                    // Always add the day, even if detail is "low flare risk" (that's valid)
+                    if !cleanLabel.isEmpty {
+                        parsedDays.append(WeeklyInsightDay(label: cleanLabel, detail: formattedDetail.isEmpty ? "low flare risk" : formattedDetail))
                     }
                 }
             } else if let dict = json["daily_breakdown"] as? [String: Any] {
@@ -1131,8 +1358,22 @@ Move at a pace that feels kind to you.
                         let sanitizedDetail = sanitizeInsightText(filteredDetail) ?? filteredDetail
                         let formattedDetail = formatWeeklyDayDetail(sanitizedDetail)
                         
+                        // CRITICAL: Clean the label - remove "Low" prefix or other prefixes that might have leaked in
+                        var cleanLabel = weekdayLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+                        
+                        // Remove "Low" prefix (case-insensitive) - check if it's standalone or part of a phrase
+                        if cleanLabel.lowercased().hasPrefix("low ") && !cleanLabel.lowercased().hasPrefix("low pressure") {
+                            cleanLabel = cleanLabel.replacingOccurrences(of: "^[Ll]ow\\s+", with: "", options: .regularExpression)
+                        } else if cleanLabel.lowercased() == "low" {
+                            // If label is just "Low", keep the weekday label as-is
+                            cleanLabel = weekdayLabel
+                        }
+                        
+                        // Remove any punctuation from label
+                        cleanLabel = cleanLabel.replacingOccurrences(of: "\\.$", with: "", options: .regularExpression)
+                        
                         if !formattedDetail.isEmpty {
-                            parsedDays.append(WeeklyInsightDay(label: weekdayLabel, detail: formattedDetail))
+                            parsedDays.append(WeeklyInsightDay(label: cleanLabel, detail: formattedDetail))
                         }
                     }
                 }
@@ -1151,14 +1392,55 @@ Move at a pace that feels kind to you.
                 }
             }
             
-            weeklyInsightDays = Array(parsedDays.prefix(7))
+            // CRITICAL: Don't combine days - show each day individually for clarity
+            // Users need to see each day's unique descriptor, even if similar
+            let combinedDays = parsedDays // Show all days individually, no combining
+            
+            // Ensure we always have at least 7 days
+            var finalDays = Array(combinedDays.prefix(7))
+            if finalDays.isEmpty {
+                // If no days parsed, create default days
+                let weekdayLabels = getNextSevenWeekdays()
+                for weekday in weekdayLabels {
+                    finalDays.append(WeeklyInsightDay(
+                        label: weekday,
+                        detail: "low flare risk"
+                    ))
+                }
+            } else if finalDays.count < 7 {
+                // Add missing days with default values
+                let weekdayLabels = getNextSevenWeekdays()
+                while finalDays.count < 7 {
+                    let index = finalDays.count
+                    if index < weekdayLabels.count {
+                        finalDays.append(WeeklyInsightDay(
+                            label: weekdayLabels[index],
+                            detail: "low flare risk"
+                        ))
+                    } else {
+                        break
+                    }
+                }
+            }
+            
+            // Ensure summary is never completely empty
+            if finalSummary.isEmpty {
+                finalSummary = "A mostly steady week ahead with consistent conditions."
+            }
+            
+            weeklyInsightSummary = finalSummary
+            weeklyInsightDays = finalDays
+            weeklyForecastInsight = finalSummary
+            
+            // Debug logging
+            print("📅 Weekly insight parsed (JSON): summary=\(finalSummary), days=\(finalDays.count)")
             return
         }
         
         // Legacy string format: extract summary and generate weekday bullets
         let filtered = filterAppMessages(insight) ?? insight
         // Remove source citations from summary - sources are displayed separately at the bottom
-        let filteredWithoutSources = removeSourceCitations(filtered) ?? filtered ?? ""
+        let filteredWithoutSources = removeSourceCitations(filtered) ?? filtered
         // Fix broken templates caused by missing/null values (e.g., "temps ranging from to")
         let fixedSummary = fixBrokenWeeklySummaryTemplate(filteredWithoutSources) ?? filteredWithoutSources
         let sanitized = sanitizeInsightText(fixedSummary) ?? fixedSummary
@@ -1187,14 +1469,31 @@ Move at a pace that feels kind to you.
                     .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 
                 if parts.count >= 2 {
-                    let label = parts[0]
+                    var label = parts[0]
                     let detail = parts.dropFirst().joined(separator: " — ")
+                    
+                    // CRITICAL: Clean the label - remove "Low" prefix or other prefixes that might have leaked in
+                    // Remove "Low" prefix (case-insensitive) - check if it's standalone or part of a phrase
+                    if label.lowercased().hasPrefix("low ") && !label.lowercased().hasPrefix("low pressure") {
+                        label = label.replacingOccurrences(of: "^[Ll]ow\\s+", with: "", options: .regularExpression)
+                    } else if label.lowercased() == "low" {
+                        // If label is just "Low", use default weekday label instead of skipping
+                        label = dayIndex < weekdayLabels.count ? weekdayLabels[dayIndex] : "Day \(dayIndex + 1)"
+                    }
+                    
+                    // Remove any punctuation from label (like "Tue." should be "Tue")
+                    label = label.replacingOccurrences(of: "\\.$", with: "", options: .regularExpression)
+                    
+                    // If label is empty after cleaning, use default weekday label
+                    if label.isEmpty {
+                        label = dayIndex < weekdayLabels.count ? weekdayLabels[dayIndex] : "Day \(dayIndex + 1)"
+                    }
+                    
                     let formattedDetail = formatWeeklyDayDetail(detail)
                     
-                    if !label.isEmpty && !formattedDetail.isEmpty {
-                        bulletDays.append(WeeklyInsightDay(label: label, detail: formattedDetail))
-                        dayIndex += 1
-                    }
+                    // Always add the day - formatWeeklyDayDetail never returns empty
+                    bulletDays.append(WeeklyInsightDay(label: label, detail: formattedDetail))
+                    dayIndex += 1
                 }
             }
         } else {
@@ -1225,20 +1524,20 @@ Move at a pace that feels kind to you.
                     .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                     .filter { !$0.isEmpty }
                 
-                // Use varied body-feel phrases for different days
+                // Use varied body-feel phrases for different days (APPROVED VOCABULARY ONLY)
                 let bodyFeelVariants = [
-                    "may feel easier on the body",
-                    "can feel steadier",
-                    "may feel lighter",
-                    "could feel more comfortable",
-                    "often feels gentler",
-                    "may feel more balanced",
-                    "can feel supportive"
+                    "generally low flare risk",
+                    "often easier on the body",
+                    "typically low sensitivity",
+                    "generally low sensitivity",
+                    "often low flare risk",
+                    "typically easier on the body",
+                    "generally easier on the body"
                 ]
                 
                 // Distribute sentences across days, or use pattern-based assignment
                 for (index, weekday) in weekdayLabels.enumerated() {
-                    var weatherPattern = "steady pattern"
+                    var weatherPattern = "steady conditions"
                     let bodyFeel = bodyFeelVariants[index % bodyFeelVariants.count]
                     
                     // Try to extract day-specific mentions from text
@@ -1258,31 +1557,35 @@ Move at a pace that feels kind to you.
                             let contextEnd = lowerText.index(min(lowerText.endIndex, dayRange.upperBound), offsetBy: 100, limitedBy: lowerText.endIndex) ?? lowerText.endIndex
                             let context = String(lowerText[contextStart..<contextEnd])
                             
-                            // Extract weather patterns from context
+                            // Extract weather patterns from context (APPROVED VOCABULARY ONLY)
                             if context.contains("cooler") || context.contains("cool") {
                                 weatherPattern = "cooler air"
                             } else if context.contains("warmer") || context.contains("warm") {
-                                weatherPattern = "warmer air"
+                                weatherPattern = "warming trend"
                             } else if context.contains("humid") {
                                 weatherPattern = "rising humidity"
                             } else if context.contains("pressure") || context.contains("shift") {
-                                weatherPattern = "pressure shift"
+                                weatherPattern = "quick pressure dip"
                             } else if context.contains("calm") || context.contains("stable") {
-                                weatherPattern = "calm pattern"
+                                weatherPattern = "steady conditions"
+                            } else if context.contains("cloud") {
+                                weatherPattern = "cloudy stretch"
+                            } else if context.contains("clear") {
+                                weatherPattern = "clear skies"
                             }
                         }
                     }
                     
                     // Create descriptive text that may include em-dash or be plain
-                    // Vary the patterns more - don't use the same "gentle and mild air" for every day
+                    // Vary the patterns more - use approved vocabulary only
                     var variedPattern = weatherPattern
                     
-                    // Vary patterns based on day index to avoid repetition
+                    // Vary patterns based on day index to avoid repetition (APPROVED VOCABULARY ONLY)
                     let patternVariants = [
-                        (0...1): ["cooler air", "mild air", "gentle air"],
-                        (2...3): ["steady pressure", "calm conditions", "stable pattern"],
-                        (4...5): ["light humidity", "gentle breeze", "mild warmth"],
-                        (6...6): ["calm pattern", "steady trend", "stable conditions"]
+                        (0...1): ["cooler air", "steady conditions", "stable air"],
+                        (2...3): ["steady conditions", "calm pattern", "stable air"],
+                        (4...5): ["rising humidity", "warming trend", "steady conditions"],
+                        (6...6): ["calm pattern", "steady conditions", "stable air"]
                     ]
                     
                     for (range, variants) in patternVariants {
@@ -1295,22 +1598,22 @@ Move at a pace that feels kind to you.
                         }
                     }
                     
-                    if variedPattern == "steady pattern" || weatherPattern == "steady pattern" {
-                        dayPatterns.append("Stable conditions \(bodyFeel).")
+                    if variedPattern == "steady conditions" || weatherPattern == "steady conditions" {
+                        dayPatterns.append("Steady conditions — \(bodyFeel)")
                     } else {
-                        dayPatterns.append("\(capitalizeFirstLetter(variedPattern)) — \(bodyFeel).")
+                        dayPatterns.append("\(capitalizeFirstLetter(variedPattern)) — \(bodyFeel)")
                     }
                 }
             } else {
-                // No remaining text - use varied default descriptive patterns
+                // No remaining text - use varied default descriptive patterns (APPROVED VOCABULARY ONLY)
                 let defaultDescriptions = [
-                    "Stable morning pressure keeps things moderate.",
-                    "Humidity rises slightly — watch for light stiffness.",
-                    "Calm conditions often feel easier on the body.",
-                    "Warmer air may feel lighter.",
-                    "Gentle shifts may feel more comfortable.",
-                    "Steady pattern keeps things balanced.",
-                    "Stable trend feels supportive."
+                    "Steady conditions — generally low flare risk",
+                    "Stable air — typically easier on the body",
+                    "Calm pattern — often low flare risk",
+                    "Cooler air — generally low sensitivity",
+                    "Rising humidity — may increase sensitivity",
+                    "Steady conditions — typically easier on the body",
+                    "Stable pattern — generally low flare risk"
                 ]
                 
                 for (index, _) in weekdayLabels.enumerated() {
@@ -1322,7 +1625,7 @@ Move at a pace that feels kind to you.
             // Create weekday bullets with varied patterns
             // Apply formatting to convert low-risk days to "low flare risk"
             for (index, weekday) in weekdayLabels.enumerated() {
-                let rawDetail = index < dayPatterns.count ? dayPatterns[index] : "Stable conditions may feel easier on the body."
+                let rawDetail = index < dayPatterns.count ? dayPatterns[index] : "Steady conditions — generally low flare risk"
                 let formattedDetail = formatWeeklyDayDetail(rawDetail)
                 bulletDays.append(WeeklyInsightDay(label: weekday, detail: formattedDetail))
             }
@@ -1333,15 +1636,15 @@ Move at a pace that feels kind to you.
         while bulletDays.count < 7 {
             let index = bulletDays.count
             if index < weekdayLabels.count {
-                // These are all low-risk defaults, so they'll be formatted to "low flare risk"
+                // These are all low-risk defaults, so they'll be formatted to "low flare risk" (APPROVED VOCABULARY ONLY)
                 let defaultDescriptions = [
-                    "Stable conditions may feel easier on the body.",
-                    "Calm conditions can feel steadier.",
-                    "Steady pattern may feel lighter.",
-                    "Stable trend could feel more comfortable.",
-                    "Calm pressure often feels gentler.",
-                    "Steady conditions may feel more balanced.",
-                    "Stable pattern can feel supportive."
+                    "Steady conditions — generally low flare risk",
+                    "Stable air — typically easier on the body",
+                    "Calm pattern — often low flare risk",
+                    "Steady conditions — generally low sensitivity",
+                    "Stable pattern — typically easier on the body",
+                    "Calm conditions — generally low flare risk",
+                    "Steady conditions — often easier on the body"
                 ]
                 let description = defaultDescriptions[index % defaultDescriptions.count]
                 let formattedDetail = formatWeeklyDayDetail(description)
@@ -1354,9 +1657,135 @@ Move at a pace that feels kind to you.
             }
         }
         
-        weeklyInsightSummary = summaryLine.isEmpty ? nil : summaryLine
-        weeklyInsightDays = Array(bulletDays.prefix(7))
-        weeklyForecastInsight = summaryLine.isEmpty ? nil : summaryLine
+        // CRITICAL: Don't combine days - show each day individually for clarity
+        let combinedDays = bulletDays // Show all days individually, no combining
+        
+        // Ensure we always have at least some data to display
+        // If summary is empty but we have days, generate a default summary
+        var finalSummary = summaryLine
+        if finalSummary.isEmpty && !combinedDays.isEmpty {
+            finalSummary = "A mostly steady week ahead with consistent conditions."
+        }
+        
+        // Ensure we always have 7 days (add defaults if needed)
+        var finalDays = Array(combinedDays.prefix(7))
+        if finalDays.isEmpty {
+            // If no days parsed at all, create default days
+            let weekdayLabels = getNextSevenWeekdays()
+            for weekday in weekdayLabels {
+                finalDays.append(WeeklyInsightDay(
+                    label: weekday,
+                    detail: "low flare risk"
+                ))
+            }
+        } else if finalDays.count < 7 {
+            // Add missing days with default values
+            let weekdayLabels = getNextSevenWeekdays()
+            while finalDays.count < 7 {
+                let index = finalDays.count
+                if index < weekdayLabels.count {
+                    finalDays.append(WeeklyInsightDay(
+                        label: weekdayLabels[index],
+                        detail: "low flare risk"
+                    ))
+                } else {
+                    break
+                }
+            }
+        }
+        
+        weeklyInsightSummary = finalSummary.isEmpty ? nil : finalSummary
+        weeklyInsightDays = finalDays
+        weeklyForecastInsight = finalSummary.isEmpty ? nil : finalSummary
+        
+        // Debug logging
+        print("📅 Weekly insight parsed: summary=\(finalSummary.isEmpty ? "nil" : "'\(finalSummary)'"), days=\(finalDays.count)")
+    }
+    
+    /// Combine consecutive days with identical details into a range (e.g., "Tue–Thu — ...")
+    /// This prevents repetitive "AI-ish" output and makes the weekly view cleaner
+    /// Limits combinations to avoid confusing wrap-around ranges
+    private func combineConsecutiveDays(_ days: [WeeklyInsightDay]) -> [WeeklyInsightDay] {
+        guard days.count > 1 else { return days }
+        
+        // If ALL days have the same detail, don't combine - show individually
+        let allSame = days.allSatisfy { $0.detail == days[0].detail }
+        if allSame {
+            return days
+        }
+        
+        var combined: [WeeklyInsightDay] = []
+        var i = 0
+        
+        while i < days.count {
+            let currentDay = days[i]
+            var rangeEnd = i
+            
+            // Look ahead to find consecutive days with identical details
+            var j = i + 1
+            while j < days.count && days[j].detail == currentDay.detail {
+                rangeEnd = j
+                j += 1
+            }
+            
+            // Only combine if we have 2-4 consecutive days (avoid combining too many)
+            let rangeLength = rangeEnd - i + 1
+            if rangeEnd > i && rangeLength <= 4 {
+                // Multiple consecutive days with same detail - combine them
+                let startLabel = currentDay.label
+                let endLabel = days[rangeEnd].label
+                let combinedLabel = "\(startLabel)–\(endLabel)"
+                combined.append(WeeklyInsightDay(label: combinedLabel, detail: currentDay.detail))
+                i = rangeEnd + 1
+            } else {
+                // Single day or too many to combine - keep as-is
+                combined.append(currentDay)
+                i += 1
+            }
+        }
+        
+        return combined
+    }
+    
+    /// Get an approved comfort tip (up to 20 words, includes Western/Eastern medicine sources, immediately doable, not medical)
+    private func getApprovedComfortTip() -> String {
+        let approvedTips = [
+            // Western medicine tips
+            "Western medicine suggests gentle stretching to ease muscle tension.",
+            "Western medicine recommends staying warm and hydrated during weather shifts.",
+            "Western medicine suggests taking short breaks throughout the day.",
+            
+            // Chinese medicine (TCM) tips
+            "Chinese medicine suggests a 5-minute tai-chi routine to ease muscle tension.",
+            "Chinese medicine recommends acupressure on the LI4 point for headache relief.",
+            "Chinese medicine suggests warm ginger tea to support circulation during cold shifts.",
+            "Chinese medicine recommends gentle qigong movements to ease joint stiffness.",
+            
+            // Ayurveda tips
+            "Ayurveda suggests warm oil massage to support joint mobility.",
+            "Ayurveda recommends gentle yoga stretches to ease muscle tension.",
+            "Ayurveda suggests staying warm with layers during temperature drops.",
+            
+            // Combined approaches
+            "Western medicine suggests gentle movement; Chinese medicine recommends tai-chi for muscle tension.",
+            "For joint stiffness, Western medicine suggests stretching; Ayurveda recommends warm oil massage.",
+            
+            // General fallbacks (if no specific tradition fits)
+            "Take short pauses through the day when your body needs them.",
+            "Move gently at your own pace and listen to your body.",
+            "Stay warm and keep hydrated to support your body through shifts."
+        ]
+        return approvedTips.randomElement() ?? approvedTips[0]
+    }
+    
+    /// Get an approved sign-off (soft, supportive, consistent tone)
+    private func getApprovedSignOff() -> String {
+        let approvedSignOffs = [
+            "Move at the pace that feels right.",
+            "Take things one moment at a time.",
+            "Wishing you a steadier day ahead."
+        ]
+        return approvedSignOffs.randomElement() ?? approvedSignOffs[0]
     }
     
     /// Check if a day detail indicates low flare risk
@@ -1416,34 +1845,19 @@ Move at a pace that feels kind to you.
             }
         }
         
-        // Check for simple positive/low-risk phrases that indicate low risk
+        // Check for simple positive/low-risk phrases that indicate low risk (APPROVED VOCABULARY ONLY)
         let positiveLowRiskPhrases = [
             "easier on the body",
-            "may feel easier",
-            "can feel steadier",
-            "may feel lighter",
-            "feels supportive",
-            "feels balanced",
-            "keeps things balanced",
-            "keeps things moderate",
-            "gentle"
+            "low flare risk",
+            "low sensitivity",
+            "low risk",
+            "generally low",
+            "typically low",
+            "often easier"
         ]
-        
-        // Check for "gentle and mild" patterns - these are low risk even with weather detail
-        if lowerText.contains("gentle and mild") || (lowerText.contains("gentle") && lowerText.contains("mild")) {
-            // If it's just gentle/mild with positive body-feel descriptions, it's low risk
-            let hasRiskIndicators = lowerText.contains("moderate") || lowerText.contains("high") || 
-                                    lowerText.contains("stiff") || lowerText.contains("tiring") || 
-                                    lowerText.contains("draining") || lowerText.contains("heavy") ||
-                                    lowerText.contains("tense") || lowerText.contains("effortful")
-            if !hasRiskIndicators {
-                return true
-            }
-        }
         
         // Only return true for low risk if the text is SIMPLE and POSITIVE
         // Complex descriptions with weather details suggest moderate/high risk
-        // BUT: gentle/mild patterns are OK even with weather detail (handled above)
         let hasWeatherDetail = lowerText.contains("—") || lowerText.contains("-") || lowerText.contains("humidity") || lowerText.contains("temperature") || lowerText.contains("pressure")
         
         for phrase in positiveLowRiskPhrases {
@@ -1457,6 +1871,9 @@ Move at a pace that feels kind to you.
     }
     
     /// Format a weekly day detail - show "low flare risk" for low risk days, descriptive blurbs for moderate/high risk
+    /// Format must be: <weather pattern> — <body impact>
+    /// Must be short, use approved vocabulary only, and follow strict formatting rules
+    /// NEVER returns empty string - always returns at least "low flare risk"
     private func formatWeeklyDayDetail(_ detail: String) -> String {
         var text = detail.trimmingCharacters(in: .whitespacesAndNewlines)
         
@@ -1468,13 +1885,344 @@ Move at a pace that feels kind to you.
             return "low flare risk"
         }
         
-        // Check if this indicates low flare risk
+        // Safety check: if text is too short or just whitespace, return fallback
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "low flare risk"
+        }
+        
+        // NEW FORMAT: Check if this is the new format "Low flare risk — descriptor" or "Moderate risk — descriptor" or "High risk — descriptor"
+        // If so, preserve it as-is (don't over-sanitize or truncate)
+        let newFormatPattern = #"^(Low flare risk|Moderate risk|High risk)\s*[—–-]\s*(.+)$"#
+        if let regex = try? NSRegularExpression(pattern: newFormatPattern, options: .caseInsensitive),
+           let match = regex.firstMatch(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count)) {
+            let riskPart = (text as NSString).substring(with: match.range(at: 1))
+            let descriptorPart = (text as NSString).substring(with: match.range(at: 2)).trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            // If descriptor part exists and is meaningful, return the full format (preserve as-is)
+            if !descriptorPart.isEmpty && descriptorPart.count >= 2 {
+                // Only do minimal sanitization on descriptor - remove numbers/units but preserve the text
+                // Don't truncate - the backend already provides short descriptors (3-6 words)
+                // IMPORTANT: Preserve the full descriptor text - do not truncate or cut off
+                let cleanedDescriptor = descriptorPart
+                    .replacingOccurrences(of: "\\d+\\s*(hpa|mb|%|°c|°f|percent|degrees)", with: "", options: [.regularExpression, .caseInsensitive])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression) // Normalize spaces
+                
+                // Return full format with cleaned descriptor (only if descriptor still exists after cleaning)
+                if !cleanedDescriptor.isEmpty {
+                    // CRITICAL: Check for vague phrases before returning
+                    let lowerDescriptor = cleanedDescriptor.lowercased()
+                    let vaguePhrases = ["a bit more", "a bit", "bit more", " more ", "a bit easier", "a bit achy", "bit achy"]
+                    for phrase in vaguePhrases {
+                        if lowerDescriptor.contains(phrase) {
+                            // Contains vague phrase - reject it
+                            print("⚠️ formatWeeklyDayDetail: Rejected vague phrase '\(phrase)' in descriptor: '\(cleanedDescriptor)'")
+                            return "low flare risk"
+                        }
+                    }
+                    // CRITICAL: Preserve the FULL descriptor - never truncate it
+                    // The backend sends complete descriptors, so we must preserve them entirely
+                    let fullText = "\(riskPart) — \(cleanedDescriptor)"
+                    print("📅 formatWeeklyDayDetail: Preserving full new format text: '\(fullText)'")
+                    return fullText
+                } else {
+                    // Descriptor was removed by cleaning - return just risk level
+                    print("⚠️ formatWeeklyDayDetail: Descriptor was removed by cleaning, returning just risk level")
+                    return riskPart
+                }
+            }
+        }
+        
+        // OLD FORMAT: Handle legacy format "weather pattern — body impact" (for backward compatibility)
+        // Only process if it doesn't match the new format above
+        let initialParts = text.components(separatedBy: CharacterSet(charactersIn: "—–-"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        
+        if initialParts.count >= 2 {
+            // Has dash format - but check if it's actually the new format that didn't match regex
+            let firstPart = initialParts[0].lowercased()
+            if firstPart.contains("low flare risk") || firstPart.contains("moderate risk") || firstPart.contains("high risk") {
+                // This is actually the new format but regex didn't match - try to fix it
+                let riskPart = initialParts[0]
+                let descriptorPart = initialParts[1]
+                if !descriptorPart.isEmpty {
+                    // Minimal cleaning only
+                    let cleaned = descriptorPart
+                        .replacingOccurrences(of: "\\d+\\s*(hpa|mb|%|°c|°f)", with: "", options: [.regularExpression, .caseInsensitive])
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !cleaned.isEmpty {
+                        return "\(riskPart) — \(cleaned)"
+                    }
+                }
+            }
+            
+            // Legacy format - sanitize each part (but be less aggressive)
+            let weatherPattern = sanitizeWeeklyDayText(initialParts[0])
+            let bodyImpact = sanitizeWeeklyDayText(initialParts[1])
+            
+            if !weatherPattern.isEmpty && !bodyImpact.isEmpty {
+                text = "\(weatherPattern) — \(bodyImpact)"
+                // Re-check for forbidden words after sanitization
+                if containsVagueLanguage(text) {
+                    // Still has forbidden words after sanitization - treat as low risk
+                    return "low flare risk"
+                }
+            } else {
+                // If sanitization removed too much, treat as low risk
+                return "low flare risk"
+            }
+        } else {
+            // No proper format - sanitize the whole text
+            let sanitized = sanitizeWeeklyDayText(text)
+            if sanitized.isEmpty || containsVagueLanguage(sanitized) || sanitized.count < 3 {
+                // Empty, has forbidden words, or too short after sanitization
+                return "low flare risk"
+            }
+            text = sanitized
+        }
+        
+        // Check if this indicates low flare risk (after sanitization)
         if isLowFlareRisk(text) {
             return "low flare risk"
         }
         
-        // For moderate/high risk days, return the descriptive text as-is
-        return text
+        // Validate format: should be "weather pattern — body impact" (OLD FORMAT ONLY)
+        // Check if this is actually the new format that slipped through - if so, don't truncate
+        let lowerText = text.lowercased()
+        let isNewFormat = lowerText.hasPrefix("low flare risk") || 
+                          lowerText.hasPrefix("moderate risk") || 
+                          lowerText.hasPrefix("high risk")
+        
+        if isNewFormat {
+            // This is the new format - return as-is without truncation
+            // The backend already provides short descriptors (3-6 words)
+            return text
+        }
+        
+        // OLD FORMAT: Apply truncation logic
+        let parts = text.components(separatedBy: CharacterSet(charactersIn: "—–-"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        
+        if parts.count >= 2 {
+            // Has dash format - ensure both parts are present and short
+            let weatherPattern = parts[0]
+            let bodyImpact = parts[1]
+            
+            // Truncate if too long (max 6 words per part for old format)
+            // Also handle comma-separated clauses - take only the first clause
+            var weatherPatternClean = weatherPattern
+            var bodyImpactClean = bodyImpact
+            
+            // Remove comma-separated clauses (take only first clause)
+            if let firstComma = weatherPatternClean.firstIndex(of: ",") {
+                weatherPatternClean = String(weatherPatternClean[..<firstComma]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            if let firstComma = bodyImpactClean.firstIndex(of: ",") {
+                bodyImpactClean = String(bodyImpactClean[..<firstComma]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            
+            let weatherWords = weatherPatternClean.components(separatedBy: CharacterSet.whitespaces).filter { !$0.isEmpty }
+            let bodyWords = bodyImpactClean.components(separatedBy: CharacterSet.whitespaces).filter { !$0.isEmpty }
+            
+            // Limit to 6 words max per part (old format only)
+            var truncatedWeather = weatherWords.prefix(6).joined(separator: " ")
+            var truncatedBody = bodyWords.prefix(6).joined(separator: " ")
+            
+            // CRITICAL: Detect and remove incomplete phrases
+            // Check if body impact starts with incomplete conjunctions/modals
+            let incompletePhraseStarters = [
+                "but", "but could", "but may", "but might", "but will",
+                "could also", "may also", "might also", "will also",
+                "but could also", "but may also", "but might also",
+                "could also experience", "may also experience", "might also experience",
+                "but could also experience", "but may also experience"
+            ]
+            
+            for starter in incompletePhraseStarters {
+                if truncatedBody.lowercased().hasPrefix(starter.lowercased()) {
+                    // Remove incomplete phrase starter
+                    truncatedBody = truncatedBody.replacingOccurrences(
+                        of: "^\(starter)\\s+",
+                        with: "",
+                        options: [.regularExpression, .caseInsensitive]
+                    ).trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
+            
+            // Check if body impact ends with incomplete verb phrases (e.g., "could also experience" without object)
+            let incompleteEndings = [
+                "could also", "may also", "might also", "will also",
+                "could experience", "may experience", "might experience", "will experience",
+                "could also experience", "may also experience", "might also experience"
+            ]
+            
+            let bodyLower = truncatedBody.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            for ending in incompleteEndings {
+                if bodyLower == ending || bodyLower.hasSuffix(" " + ending) {
+                    // Ends with incomplete phrase - treat as low risk
+                    return "low flare risk"
+                }
+            }
+            
+            // Validate that both parts are meaningful (not empty, not just conjunctions)
+            if truncatedWeather.isEmpty || truncatedBody.isEmpty {
+                return "low flare risk"
+            }
+            
+            // Check if weather pattern starts with "Low" (label leakage)
+            if truncatedWeather.lowercased().hasPrefix("low ") && !truncatedWeather.lowercased().hasPrefix("low pressure") {
+                truncatedWeather = truncatedWeather.replacingOccurrences(
+                    of: "^[Ll]ow\\s+",
+                    with: "",
+                    options: .regularExpression
+                ).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            
+            if truncatedWeather.isEmpty {
+                return "low flare risk"
+            }
+            
+            // Ensure body impact is a complete thought (has a subject or verb-object pattern)
+            let bodyWordsFinal = truncatedBody.components(separatedBy: CharacterSet.whitespaces).filter { !$0.isEmpty }
+            if bodyWordsFinal.count < 2 {
+                // Too short to be a complete phrase
+                return "low flare risk"
+            }
+            
+            // Final check - ensure it doesn't contain forbidden words
+            let finalText = "\(truncatedWeather) — \(truncatedBody)"
+            if containsVagueLanguage(finalText) {
+                return "low flare risk"
+            }
+            
+            return finalText
+        } else {
+            // No proper format - if it's a long sentence or contains commas, likely malformed
+            if text.contains(",") && text.count > 50 {
+                // Too long or has multiple clauses - treat as low risk
+                return "low flare risk"
+            }
+            
+            // Simple text without em-dash - check if it's a valid short phrase
+            let words = text.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+            if words.count > 6 {
+                // Too long - treat as low risk
+                return "low flare risk"
+            }
+            
+            // Return as-is if short and simple (might be just "low flare risk" or similar)
+            // Final safety check: never return empty
+            let finalText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if finalText.isEmpty {
+                return "low flare risk"
+            }
+            return finalText
+        }
+    }
+    
+    /// Sanitize weekly day text to remove forbidden words and ensure approved vocabulary only
+    private func sanitizeWeeklyDayText(_ text: String) -> String {
+        var sanitized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        if sanitized.isEmpty {
+            return ""
+        }
+        
+        // Remove "Low" prefix that might have leaked from label (but preserve "low pressure")
+        if !sanitized.lowercased().hasPrefix("low pressure") && !sanitized.lowercased().hasPrefix("low humidity") {
+            sanitized = sanitized.replacingOccurrences(of: "^[Ll]ow\\s+", with: "", options: .regularExpression)
+        }
+        
+        // Remove "No changes expected" or similar phrases
+        sanitized = sanitized.replacingOccurrences(of: "(?i)no changes expected", with: "", options: .regularExpression)
+        
+        // Remove incomplete phrases that start with conjunctions without context
+        let incompleteStarters = [
+            "^but\\s+could\\s+also",
+            "^but\\s+may\\s+also",
+            "^but\\s+might\\s+also",
+            "^but\\s+could\\s+also\\s+experience",
+            "^but\\s+may\\s+also\\s+experience",
+            "^but\\s+might\\s+also\\s+experience"
+        ]
+        
+        for pattern in incompleteStarters {
+            sanitized = sanitized.replacingOccurrences(of: pattern, with: "", options: [.regularExpression, .caseInsensitive])
+        }
+        
+        // Remove forbidden words/phrases (comprehensive list)
+        let forbiddenReplacements: [(String, String)] = [
+            ("a bit more", ""),
+            ("a bit", ""),
+            ("bit more", ""),
+            ("more", ""),
+            ("a bit easier", ""),
+            ("a bit achy", ""),
+            ("bit achy", ""),
+            ("gentle", ""),
+            ("gentler", ""),
+            ("lighter", ""),
+            ("supportive", ""),
+            ("moody", ""),
+            ("unusual", ""),
+            ("relaxed", ""),
+            ("relaxing", ""),
+            ("may feel relaxed", ""),
+            ("might notice gentle", ""),
+            ("may sense slight chill", ""),
+            ("might experience mild", ""),
+            ("may feel grounded", ""),
+            ("might experience", ""),
+            ("may sense", ""),
+            ("might notice", ""),
+            ("may feel", ""),
+            // Medical/helpful language (forbidden - no claims about helping)
+            ("might help", ""),
+            ("may help", ""),
+            ("could help", ""),
+            ("help with", ""),
+            ("helps with", ""),
+            ("might help with", ""),
+            ("may help with", ""),
+            ("could help with", ""),
+            ("cool air", "cooler air"),  // Normalize to approved form
+            ("steady pressure", "steady conditions")  // Normalize
+        ]
+        
+        for (forbidden, replacement) in forbiddenReplacements {
+            sanitized = sanitized.replacingOccurrences(of: forbidden, with: replacement, options: [.caseInsensitive])
+        }
+        
+        // Remove any remaining phrases with multiple clauses (comma-separated)
+        // Split by comma and take only the first meaningful clause
+        if sanitized.contains(",") {
+            let clauses = sanitized.components(separatedBy: ",")
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            
+            // Take first clause only if we have multiple
+            if clauses.count > 1 {
+                // Try to find a clause without forbidden words
+                for clause in clauses {
+                    let cleaned = clause.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !cleaned.isEmpty && !containsVagueLanguage(cleaned) {
+                        sanitized = cleaned
+                        break
+                    }
+                }
+                // If all clauses are bad, use first and let further sanitization handle it
+                if sanitized.contains(",") {
+                    sanitized = clauses[0]
+                }
+            }
+        }
+        
+        // Clean up extra spaces and punctuation
+        sanitized = sanitized.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: ".,;:"))
+        
+        return sanitized
     }
     
     // Backend URL - configurable via environment variable or Info.plist
@@ -1505,6 +2253,18 @@ Move at a pace that feels kind to you.
     
     // Session caching - track analysis inputs to avoid redundant API calls
     private var lastAnalysisInputs: String? = nil
+    // Check if we have valid insights (persists across view recreations)
+    // Make this public so HomeView can check it
+    var hasValidInsights: Bool {
+        // Consider insights valid if we have either daily or weekly insights
+        return (insightMessage != "Analyzing your week…" && 
+                insightMessage != "Analyzing weather patterns…" && 
+                insightMessage != "Updating analysis…" && 
+                !insightMessage.isEmpty) ||
+               (weeklyInsightSummary != nil && !weeklyInsightSummary!.isEmpty) ||
+               (risk != nil)
+    }
+    
     private var hasAnalysisInSession = false
     private var lastAnalysisId: String? = nil
     private var lastDiagnoses: [String]? = nil
@@ -1515,7 +2275,7 @@ Move at a pace that feels kind to you.
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
     }
     
-    func analyze(symptoms: [SymptomEntryPayload], weather: [WeatherSnapshotPayload], hourlyForecast: [WeatherSnapshotPayload]? = nil, weeklyForecast: [WeatherSnapshotPayload]? = nil, diagnoses: [String]? = nil) async {
+    func analyze(symptoms: [SymptomEntryPayload], weather: [WeatherSnapshotPayload], hourlyForecast: [WeatherSnapshotPayload]? = nil, weeklyForecast: [WeatherSnapshotPayload]? = nil, diagnoses: [String]? = nil, sensitivities: [String]? = nil) async {
         // Cancel any existing request
         task?.cancel()
         
@@ -1525,14 +2285,57 @@ Move at a pace that feels kind to you.
         lastAnalysisId = nil
         lastDiagnoses = diagnoses
         
+        // OPTIMIZATION: Two-phase response - calculate quick risk/forecast immediately
+        // Phase 1: Show quick risk/forecast from weather patterns (instant, no AI)
+        // Phase 2: Enhance with full AI insight when it arrives (8-12 seconds)
+        
+        // Calculate quick risk/forecast from weather patterns (no AI needed)
+        if let firstWeather = weather.first {
+            let pressure = firstWeather.pressure
+            let quickRisk: String
+            let quickForecast: String
+            let quickWhy: String
+            
+            // Quick assessment based on pressure patterns
+            if pressure < 1005 {
+                quickRisk = "MODERATE"
+                quickForecast = "Lower pressure today may feel noticeable."
+                quickWhy = "Lower pressure can affect sensitive bodies."
+            } else if pressure > 1020 {
+                quickRisk = "LOW"
+                quickForecast = "Higher pressure today may feel steadier."
+                quickWhy = "Higher pressure often feels more stable."
+            } else {
+                quickRisk = "LOW"
+                quickForecast = "Pressure looks steady today."
+                quickWhy = "Stable pressure often feels gentler."
+            }
+            
+            // Show quick risk/forecast immediately if we don't have insights yet
+            if !hasValidInsights {
+                print("⚡ Showing quick risk assessment immediately: \(quickRisk)")
+                await MainActor.run {
+                    risk = quickRisk
+                    forecast = quickForecast
+                    why = quickWhy
+                    insightMessage = "Analyzing weather patterns…"
+                }
+            }
+        }
+        
         // Set loading state (but don't clear previous data yet - keep it visible while loading)
+        // CRITICAL: Always preserve existing insights - never clear them until new ones arrive
+        // This ensures users see cached insights immediately while new analysis loads
         isLoading = true
-        // Only clear data if we don't have cached results
-        if !hasAnalysisInSession {
-            risk = nil
-            forecast = nil
-            why = nil
-            insightMessage = "Analyzing weather patterns…"
+        
+        // NEVER clear existing insights - always keep them visible
+        // Only show "Updating..." message if we have existing insights, otherwise keep current message
+        if hasValidInsights {
+            // We have valid insights - keep them visible, just show subtle "Updating..." indicator
+            // Don't change insightMessage - keep the existing one visible
+            print("📦 Keeping existing insights visible during new analysis")
+        } else if !hasAnalysisInSession {
+            // First time - no insights yet, quick risk/forecast already set above
             supportNote = nil
             pressureAlert = nil
             alertSeverity = nil
@@ -1541,10 +2344,9 @@ Move at a pace that feels kind to you.
             behaviorPrompt = nil
             weeklyInsightSources = []
             lastSuccessfulInsightMessage = nil
-        } else {
-            // Keep existing data visible while new analysis loads
-            insightMessage = "Updating analysis…"
+            // Don't clear weeklyInsightDays or weeklyInsightSummary - preserve them
         }
+        // If we have insights, don't touch them - keep everything as-is
         errorMessage = nil
         
         guard let url = URL(string: "\(baseURL)/analyze") else {
@@ -1559,7 +2361,8 @@ Move at a pace that feels kind to you.
             hourly_forecast: hourlyForecast,
             weekly_forecast: weeklyForecast,
             user_id: nil,
-            diagnoses: diagnoses
+            diagnoses: diagnoses,
+            sensitivities: sensitivities
         )
         guard let jsonData = try? JSONEncoder().encode(requestBody) else {
             print("❌ Failed to encode request body")
@@ -1802,7 +2605,8 @@ Move at a pace that feels kind to you.
     }
     
     // New function for weather-only analysis (no symptoms)
-    func analyzeWithWeatherOnly(weatherService: WeatherService? = nil, userProfile: UserProfile? = nil, force: Bool = false) async {
+    // includeWeeklyForecast: Set to false for fast daily insight, true for weekly insights
+    func analyzeWithWeatherOnly(weatherService: WeatherService? = nil, userProfile: UserProfile? = nil, force: Bool = false, includeWeeklyForecast: Bool = false) async {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         
@@ -1854,8 +2658,12 @@ Move at a pace that feels kind to you.
         }
         
         // Get weekly forecast data if available
+        // NOTE: For fast daily insight, we skip weekly forecast in the initial call
+        // Weekly forecast will be included in a follow-up call for weekly insights
         var weeklyForecast: [WeatherSnapshotPayload] = []
-        if let weatherService = weatherService {
+        // Only include weekly forecast if explicitly requested (for weekly insight generation)
+        // For daily insight, we want to skip this to make the API call faster
+        if includeWeeklyForecast, let weatherService = weatherService {
             let weeklyForecastData = weatherService.weeklyForecast
             for dayForecast in weeklyForecastData {
                 weeklyForecast.append(WeatherSnapshotPayload(
@@ -1867,6 +2675,8 @@ Move at a pace that feels kind to you.
                 ))
             }
             print("📊 Prepared \(weeklyForecast.count) daily forecast points for weekly insight")
+        } else {
+            print("⏭️ Skipping weekly forecast for faster daily insight")
         }
         
         // Get user diagnoses if available
@@ -1878,25 +2688,82 @@ Move at a pace that feels kind to you.
         }()
         lastDiagnoses = diagnoses
         
+        // Get user sensitivities/triggers if available
+        let sensitivities: [String]? = {
+            // Try JSON format first
+            if let jsonString = UserDefaults.standard.string(forKey: "weatherSensitivitiesJSON"),
+               let jsonData = jsonString.data(using: .utf8),
+               let decoded = try? JSONDecoder().decode([String].self, from: jsonData),
+               !decoded.isEmpty {
+                return decoded
+            }
+            // Fallback to array format
+            if let array = UserDefaults.standard.stringArray(forKey: "weatherSensitivities"),
+               !array.isEmpty {
+                return array
+            }
+            return nil
+        }()
+        
+        if let sensitivities = sensitivities, !sensitivities.isEmpty {
+            print("🎯 Including sensitivities: \(sensitivities.joined(separator: ", "))")
+        }
+        
         // Create a hash of the analysis inputs to detect changes
         let analysisInputsHash = createAnalysisInputsHash(
             weather: currentWeatherData,
             hourlyForecast: forecastData,
             weeklyForecast: weatherService?.weeklyForecast ?? [],
-            diagnoses: diagnoses
+            diagnoses: diagnoses,
+            sensitivities: sensitivities
         )
         
-        // Check if inputs have changed or if this is the first analysis in the session
-        if !force, let lastHash = lastAnalysisInputs, lastHash == analysisInputsHash, hasAnalysisInSession {
-            print("⏭️  Analysis inputs unchanged, skipping API call")
-            print("   Last hash: \(lastHash)")
-            print("   Current hash: \(analysisInputsHash)")
-            return
+        // OPTIMIZATION: Time-based caching - skip analysis if done within last hour
+        // This prevents unnecessary API calls when user refreshes or navigates back
+        // IMPORTANT: Manual refresh (force=true) bypasses all caching
+        if !force {
+            // Check if we have recent analysis (within last hour)
+            if let lastTime = lastAnalysisTime {
+                let timeSinceLastAnalysis = Date().timeIntervalSince(lastTime)
+                let oneHourInSeconds: TimeInterval = 3600
+                
+                // If analysis was done within last hour and inputs haven't changed, skip
+                if timeSinceLastAnalysis < oneHourInSeconds {
+                    if let lastHash = lastAnalysisInputs, lastHash == analysisInputsHash {
+                        print("⏭️  Recent analysis exists (within last hour) and inputs unchanged, skipping API call")
+                        print("   Time since last analysis: \(Int(timeSinceLastAnalysis))s")
+                        print("   Last hash: \(lastHash)")
+                        print("   💡 Tip: Use manual refresh to bypass this cache")
+                        hasAnalysisInSession = true
+                        return
+                    }
+                }
+            }
+            
+            // First check: if we have valid insights, mark session and skip unless inputs changed significantly
+            if hasValidInsights {
+                hasAnalysisInSession = true
+                // If inputs haven't changed, definitely skip
+                if let lastHash = lastAnalysisInputs, lastHash == analysisInputsHash {
+                    print("⏭️  Analysis inputs unchanged and insights exist, skipping API call")
+                    print("   Last hash: \(lastHash)")
+                    print("   Current hash: \(analysisInputsHash)")
+                    print("   Has valid insights: \(hasValidInsights)")
+                    print("   💡 Tip: Use manual refresh to bypass this cache")
+                    return
+                }
+                // If inputs changed but we have valid insights, still skip (preserve existing insights)
+                print("⏭️  Have valid insights, preserving them (inputs changed but not forcing refresh)")
+                return
+            }
+        } else {
+            print("🔄 Force refresh requested - bypassing all caches (time-based and input hash)")
         }
         
         print("🔄 Analysis inputs changed or first analysis, triggering new analysis")
         print("   Last hash: \(lastAnalysisInputs ?? "none")")
         print("   Current hash: \(analysisInputsHash)")
+        print("   Has valid insights: \(hasValidInsights)")
         lastAnalysisInputs = analysisInputsHash
         hasAnalysisInSession = true
         
@@ -1906,23 +2773,31 @@ Move at a pace that feels kind to you.
             weather: weather,
             hourlyForecast: hourlyForecast.isEmpty ? nil : hourlyForecast,
             weeklyForecast: weeklyForecast.isEmpty ? nil : weeklyForecast,
-            diagnoses: diagnoses
+            diagnoses: diagnoses,
+            sensitivities: sensitivities
         )
         lastAnalysisTime = Date()
     }
     
     // Create a hash of analysis inputs to detect changes
-    private func createAnalysisInputsHash(weather: WeatherData?, hourlyForecast: [HourlyForecast], weeklyForecast: [DailyForecast], diagnoses: [String]?) -> String {
+    // OPTIMIZATION: More aggressive rounding to avoid unnecessary re-analysis
+    // Only trigger new analysis if weather changes significantly (not tiny fluctuations)
+    private func createAnalysisInputsHash(weather: WeatherData?, hourlyForecast: [HourlyForecast], weeklyForecast: [DailyForecast], diagnoses: [String]?, sensitivities: [String]? = nil) -> String {
         var components: [String] = []
         
         // Add current weather data (rounded to detect meaningful changes)
-        // Use more aggressive rounding to avoid tiny fluctuations triggering new analysis
+        // OPTIMIZATION: Use more aggressive rounding - only trigger on significant changes
+        // This prevents re-analysis on tiny weather fluctuations
         if let weather = weather {
-            // Round to whole numbers to avoid tiny decimal differences
-            let temp = round(weather.temperature)
-            let humidity = round(weather.humidity)
-            let pressure = round(weather.pressure)
-            let wind = round(weather.windSpeed)
+            // Round to larger increments to avoid tiny changes triggering analysis:
+            // - Temperature: round to nearest 2°C (was 1°C)
+            // - Pressure: round to nearest 3 hPa (was 1 hPa) - pressure changes of 1-2 hPa are usually not significant
+            // - Humidity: round to nearest 5% (was 1%)
+            // - Wind: round to nearest 3 km/h (was 1 km/h)
+            let temp = round(weather.temperature / 2.0) * 2.0
+            let humidity = round(weather.humidity / 5.0) * 5.0
+            let pressure = round(weather.pressure / 3.0) * 3.0
+            let wind = round(weather.windSpeed / 3.0) * 3.0
             components.append("W:\(String(format: "%.0f", temp))_\(String(format: "%.0f", humidity))_\(String(format: "%.0f", pressure))_\(String(format: "%.0f", wind))")
         } else {
             components.append("W:none")
@@ -1930,12 +2805,13 @@ Move at a pace that feels kind to you.
         
         // Add hourly forecast summary (first 8 hours for key changes)
         // Track pressure changes which are most relevant for symptom triggers
+        // OPTIMIZATION: Round pressure to larger increments (3 hPa instead of 1 hPa)
         if hourlyForecast.count > 0 {
             let keyHours = Array(hourlyForecast.prefix(8))
             var forecastString = "F:"
             for hour in keyHours {
-                // Round pressure to whole numbers
-                let roundedPressure = round(hour.pressure)
+                // Round pressure to nearest 3 hPa to avoid tiny fluctuations
+                let roundedPressure = round(hour.pressure / 3.0) * 3.0
                 forecastString += "\(String(format: "%.0f", roundedPressure))_"
             }
             components.append(forecastString)
@@ -1944,12 +2820,13 @@ Move at a pace that feels kind to you.
         }
         
         // Add weekly forecast summary (first 3 days for key changes)
+        // OPTIMIZATION: Round pressure to larger increments
         if weeklyForecast.count > 0 {
             let keyDays = Array(weeklyForecast.prefix(3))
             var weeklyString = "WK:"
             for day in keyDays {
-                // Round pressure to whole numbers
-                let roundedPressure = round(day.pressure)
+                // Round pressure to nearest 3 hPa
+                let roundedPressure = round(day.pressure / 3.0) * 3.0
                 weeklyString += "\(String(format: "%.0f", roundedPressure))_"
             }
             components.append(weeklyString)
@@ -1962,6 +2839,13 @@ Move at a pace that feels kind to you.
             components.append("D:\(diagnoses.sorted().joined(separator: ","))")
         } else {
             components.append("D:none")
+        }
+        
+        // Add sensitivities (sorted for consistent hash)
+        if let sensitivities = sensitivities, !sensitivities.isEmpty {
+            components.append("S:\(sensitivities.sorted().joined(separator: ","))")
+        } else {
+            components.append("S:none")
         }
         
         return components.joined(separator: "|")

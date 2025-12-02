@@ -23,6 +23,9 @@ extension Double {
 
 struct HomeView: View {
     @Environment(\.managedObjectContext) private var viewContext
+    @Environment(\.scenePhase) private var scenePhase
+    @EnvironmentObject var authManager: AuthManager
+    @EnvironmentObject var subscriptionManager: SubscriptionManager
     @StateObject private var weatherService = WeatherService()
     @StateObject private var locationManager = LocationManager()
     @StateObject private var aiService = AIInsightsService()
@@ -31,15 +34,20 @@ struct HomeView: View {
     @State private var aiFeedback: Bool? = nil
     @State private var hasInitialAnalysis = false
     @State private var isManualInsightRefresh = false
+    @State private var lastDiagnosesHash: String? = nil
+    @State private var lastSensitivitiesHash: String? = nil
+    @State private var shouldLoadWeeklyData = false // Lazy loading flag for weekly forecast and insights
+    @State private var lastForegroundDate: Date? = nil
     @AppStorage("useFahrenheit") private var useFahrenheit = false
     @AppStorage("hasGeneratedDailyInsightSession") private var hasGeneratedDailyInsightSession = false
+    @AppStorage("lastInsightDate") private var lastInsightDateString: String = ""
     
     // Helper function to refresh analysis
-    private func refreshAnalysis(force: Bool = false) async {
+    private func refreshAnalysis(force: Bool = false, includeWeeklyForecast: Bool = false) async {
         // The AIInsightsService now handles caching based on input changes
         // So we can call it more freely - it will only analyze if inputs changed
         
-        print("🔄 HomeView: Refreshing analysis...")
+        print("🔄 HomeView: Refreshing analysis (includeWeeklyForecast: \(includeWeeklyForecast))...")
         
         // Fetch user profile for diagnoses
         let userRequest: NSFetchRequest<UserProfile> = UserProfile.fetchRequest()
@@ -49,7 +57,8 @@ struct HomeView: View {
         await aiService.analyzeWithWeatherOnly(
             weatherService: weatherService,
             userProfile: userProfile,
-            force: force
+            force: force,
+            includeWeeklyForecast: includeWeeklyForecast
         )
         
         lastRefreshTime = Date()
@@ -61,42 +70,97 @@ struct HomeView: View {
         print("📍 HomeView: Location auth status: \(locationManager.authorizationStatus.rawValue)")
         print("📍 HomeView: useDeviceLocation: \(locationManager.useDeviceLocation)")
         print("🧠 HomeView: Has initial analysis: \(hasInitialAnalysis)")
+        print("🧠 HomeView: hasGeneratedDailyInsightSession: \(hasGeneratedDailyInsightSession)")
         
         // Request location (will use manual if set)
         locationManager.requestLocation()
         
-        // Only fetch weather if we don't have data yet or if this is the first appear
-        // This prevents refiring when navigating back from Settings
-        if !hasInitialAnalysis || weatherService.weatherData == nil {
-            print("🌤️ HomeView: No weather data or first appear, fetching weather...")
+        // OPTIMIZATION: Background pre-fetching - start analysis in background if we have weather data
+        // This makes insights appear faster when user opens the app
+        if weatherService.weatherData != nil && !hasInitialAnalysis && !hasGeneratedDailyInsightSession {
+            print("🚀 Starting background pre-fetch of insights...")
             Task {
-                try? await Task.sleep(nanoseconds: 50_000_000) // 0.05 seconds
-                
+                // Small delay to let UI render first, then start analysis
+                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                if getEffectiveLocation() != nil {
+                    // Fetch user profile for diagnoses
+                    let userRequest: NSFetchRequest<UserProfile> = UserProfile.fetchRequest()
+                    userRequest.sortDescriptors = [NSSortDescriptor(keyPath: \UserProfile.createdAt, ascending: false)]
+                    let userProfile = try? viewContext.fetch(userRequest).first
+                    
+                    await aiService.analyzeWithWeatherOnly(
+                        weatherService: weatherService,
+                        userProfile: userProfile,
+                        force: false,
+                        includeWeeklyForecast: false
+                    )
+                }
+            }
+        }
+        
+        // Initialize profile hashes on first appear
+        if lastDiagnosesHash == nil {
+            lastDiagnosesHash = getUserProfileHash()
+            lastSensitivitiesHash = getUserProfileHash() // Same hash includes both
+        }
+        
+        // Check if aiService already has valid insights (persists across navigation)
+        let hasExistingInsights = (aiService.insightMessage != "Analyzing your week…" && 
+                                  aiService.insightMessage != "Analyzing weather patterns…" && 
+                                  aiService.insightMessage != "Updating analysis…" && 
+                                  !aiService.insightMessage.isEmpty) ||
+                                 (aiService.weeklyInsightSummary != nil && !aiService.weeklyInsightSummary!.isEmpty) ||
+                                 (aiService.risk != nil)
+        
+        // STRICT: Always fetch weather if we don't have weather data
+        // Insights can persist, but weather data is still needed for display
+        if weatherService.weatherData == nil {
+            print("🌤️ HomeView: No weather data, fetching...")
+            Task {
+                // No artificial delay - start immediately
                 if let location = getEffectiveLocation() {
                     print("📍 HomeView: Current location: \(location.coordinate.latitude), \(location.coordinate.longitude)")
-                    // Only force refresh if we don't have data
+                    // Fetch current weather - handleWeatherDataChange will trigger analysis IMMEDIATELY when data arrives
                     await weatherService.fetchWeatherData(for: location, forceRefresh: !hasInitialAnalysis)
-                    await weatherService.fetchWeeklyForecast(for: location)
-                    await weatherService.fetchHourlyForecast(for: location)
+                    
+                    // Fetch hourly forecast in background (don't block analysis)
+                    // Weekly forecast will be lazy loaded after daily insight is shown
+                    Task.detached(priority: .background) {
+                        await weatherService.fetchHourlyForecast(for: location)
+                    }
                 } else {
                     print("⚠️ HomeView: No location available yet")
                 }
             }
         } else {
-            print("⏭️ HomeView: Already have weather data and analysis, skipping refresh")
+            // Have weather data - check if we need to trigger analysis
+            if (!hasInitialAnalysis && !hasGeneratedDailyInsightSession) && !hasExistingInsights {
+                print("🌤️ HomeView: Have weather data but no insights, will trigger analysis when weather change detected")
+            } else {
+                print("⏭️ HomeView: Already have weather data and insights, skipping fetching")
+                // If we already have insights, enable weekly data loading
+                if hasExistingInsights {
+                    shouldLoadWeeklyData = true
+                }
+            }
         }
     }
     
     // Handle location change
     private func handleLocationChange(_ new: CLLocation?) {
         guard let location = new else { return }
+        
+        // Don't trigger if we already have analysis (prevents retrigger on login/navigation)
+        guard !hasInitialAnalysis && !hasGeneratedDailyInsightSession else {
+            print("⏭️ HomeView: Already have analysis, skipping location change handler")
+            return
+        }
+        
         print("🌤️ HomeView: Location changed to \(location.coordinate.latitude), \(location.coordinate.longitude), fetching weather...")
         Task {
             // Force refresh when location changes to ensure we get fresh data
             await weatherService.fetchWeatherData(for: location, forceRefresh: true)
-            await weatherService.fetchWeeklyForecast(for: location)
-            await weatherService.fetchHourlyForecast(for: location)
-            await refreshAnalysis()
+            // Analysis will be triggered by handleWeatherDataChange when weather arrives
         }
     }
     
@@ -108,34 +172,113 @@ struct HomeView: View {
     // Handle weather data change
     private func handleWeatherDataChange(_ newData: WeatherData?) {
         guard let location = getEffectiveLocation() else { return }
-        print("🌤️ HomeView: Weather data updated, fetching forecast...")
+        
+        // CRITICAL: Don't trigger analysis if we already have it (prevents retrigger on navigation back)
+        // Also check if aiService has valid insights (persists across navigation)
+        let hasExistingInsights = (aiService.insightMessage != "Analyzing your week…" && 
+                                  aiService.insightMessage != "Analyzing weather patterns…" && 
+                                  aiService.insightMessage != "Updating analysis…" && 
+                                  !aiService.insightMessage.isEmpty) ||
+                                 (aiService.weeklyInsightSummary != nil && !aiService.weeklyInsightSummary!.isEmpty) ||
+                                 (aiService.risk != nil)
+        
+        guard !hasInitialAnalysis && !hasGeneratedDailyInsightSession && !hasExistingInsights else {
+            print("⏭️ HomeView: Already have analysis or existing insights, skipping weather data change handler")
+            if hasExistingInsights {
+                // Sync flags if we have existing insights
+                hasInitialAnalysis = true
+                hasGeneratedDailyInsightSession = true
+            }
+            return
+        }
+        
+        print("🌤️ HomeView: Weather data updated")
         print("🧠 HomeView: Has initial analysis: \(hasInitialAnalysis)")
         
+        // Start AI analysis IMMEDIATELY with current weather (don't wait for weekly forecast)
+        // This is the key optimization - daily insight starts as soon as weather data is available
+        // We explicitly exclude weekly forecast to make the API call faster
+        print("🚀 HomeView: Starting daily insight analysis IMMEDIATELY with current weather (excluding weekly forecast for speed)...")
         Task {
-            // Fetch forecast when weather data becomes available
-            await weatherService.fetchWeeklyForecast(for: location)
-            await weatherService.fetchHourlyForecast(for: location)
-            
-            // Only refresh analysis if we don't have initial analysis yet
-            // The caching in AIInsightsService will prevent redundant calls if inputs haven't changed
-            if !hasInitialAnalysis {
-                print("🔄 HomeView: No initial analysis yet, triggering analysis...")
-                await refreshAnalysis()
-            } else {
-                print("⏭️ HomeView: Already have initial analysis, skipping analysis refresh")
+            // Trigger analysis right away WITHOUT weekly forecast - this is the fast path for daily insight
+            await refreshAnalysis(includeWeeklyForecast: false)
+            // Mark as complete after analysis finishes
+            await MainActor.run {
+                hasInitialAnalysis = true
+                hasGeneratedDailyInsightSession = true
+                // Update insight date
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyyy-MM-dd"
+                lastInsightDateString = formatter.string(from: Date())
+                print("✅ HomeView: Daily insight analysis complete, flags set")
+                
+                // After daily insight is complete, trigger lazy loading of weekly data
+                // Small delay to ensure daily insight is displayed first
+                Task {
+                    try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 second delay
+                    await MainActor.run {
+                        shouldLoadWeeklyData = true
+                        print("🔄 HomeView: Triggering lazy load of weekly forecast and insights")
+                    }
+                }
             }
+        }
+        
+        // Fetch hourly forecast in background (for hourly forecast card)
+        // Don't fetch weekly forecast yet - it will be lazy loaded
+        Task.detached(priority: .background) {
+            await weatherService.fetchHourlyForecast(for: location)
         }
     }
     
-    // Check if weather data values actually changed
+    // Check if weather data values changed in a noteworthy way (significant differences only)
+    // This prevents retriggering on tiny fluctuations
     private func weatherDataValuesChanged(old: WeatherData?, new: WeatherData?) -> Bool {
         guard let old = old, let new = new else {
             return new != nil // New data if old is nil but new exists
         }
-        return old.temperature != new.temperature ||
-               old.pressure != new.pressure ||
-               old.humidity != new.humidity ||
-               old.windSpeed != new.windSpeed
+        
+        // Define thresholds for "noteworthy" changes
+        let tempThreshold: Double = 2.0 // 2°C change
+        let pressureThreshold: Double = 5.0 // 5 hPa change (significant for symptoms)
+        let humidityThreshold: Double = 10.0 // 10% change
+        let windThreshold: Double = 5.0 // 5 km/h change
+        
+        let tempChanged = abs(old.temperature - new.temperature) >= tempThreshold
+        let pressureChanged = abs(old.pressure - new.pressure) >= pressureThreshold
+        let humidityChanged = abs(old.humidity - new.humidity) >= humidityThreshold
+        let windChanged = abs(old.windSpeed - new.windSpeed) >= windThreshold
+        
+        // Only return true if there's a noteworthy change
+        return tempChanged || pressureChanged || humidityChanged || windChanged
+    }
+    
+    // Get hash of user profile (diagnoses and sensitivities) to detect changes
+    private func getUserProfileHash() -> String {
+        let userRequest: NSFetchRequest<UserProfile> = UserProfile.fetchRequest()
+        userRequest.sortDescriptors = [NSSortDescriptor(keyPath: \UserProfile.createdAt, ascending: false)]
+        guard let userProfile = try? viewContext.fetch(userRequest).first else {
+            return "none"
+        }
+        
+        var components: [String] = []
+        
+        // Add diagnoses
+        if let diagnosesArray = userProfile.value(forKey: "diagnoses") as? NSArray,
+           let diagnoses = diagnosesArray as? [String], !diagnoses.isEmpty {
+            components.append("D:\(diagnoses.sorted().joined(separator: ","))")
+        } else {
+            components.append("D:none")
+        }
+        
+        // Add sensitivities (stored in UserDefaults)
+        if let sensitivities = UserDefaults.standard.array(forKey: "selectedSensitivities") as? [String], !sensitivities.isEmpty {
+            components.append("S:\(sensitivities.sorted().joined(separator: ","))")
+        } else {
+            components.append("S:none")
+        }
+        
+        return components.joined(separator: "|")
     }
     
     // Handle location preference change
@@ -147,9 +290,19 @@ struct HomeView: View {
             if let location = getEffectiveLocation() {
                 print("🌤️ HomeView: Refreshing weather for new location preference...")
                 await weatherService.fetchWeatherData(for: location, forceRefresh: true)
-                await weatherService.fetchWeeklyForecast(for: location)
+                // Fetch hourly forecast immediately, weekly will be lazy loaded
                 await weatherService.fetchHourlyForecast(for: location)
-                await refreshAnalysis()
+                await refreshAnalysis(includeWeeklyForecast: false)
+                // Reset lazy loading flag to trigger weekly data load after daily insight
+                await MainActor.run {
+                    shouldLoadWeeklyData = false
+                    Task {
+                        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 second delay
+                        await MainActor.run {
+                            shouldLoadWeeklyData = true
+                        }
+                    }
+                }
             }
         }
     }
@@ -161,6 +314,81 @@ struct HomeView: View {
             print("✅ HomeView: Authorized, requesting location...")
             locationManager.requestLocation()
         }
+    }
+    
+    // Handle scene phase changes (app going to background/foreground)
+    private func handleScenePhaseChange(oldPhase: ScenePhase, newPhase: ScenePhase) {
+        if newPhase == .active && oldPhase != .active {
+            // App came to foreground
+            print("🔄 HomeView: App came to foreground")
+            handleForegroundRefresh()
+        } else if newPhase == .background {
+            // App went to background - save current insight date
+            if let insightDate = aiService.insightMessage.isEmpty ? nil : Date() {
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyyy-MM-dd"
+                lastInsightDateString = formatter.string(from: insightDate)
+            }
+        }
+    }
+    
+    // Check if we need to refresh when app comes to foreground
+    private func handleForegroundRefresh() {
+        let now = Date()
+        
+        // Check if weather data is stale (older than 30 minutes)
+        let weatherIsStale: Bool
+        if let weatherData = weatherService.weatherData {
+            let age = now.timeIntervalSince(weatherData.timestamp)
+            weatherIsStale = age > 30 * 60 // 30 minutes
+            print("🌤️ HomeView: Weather data age: \(Int(age / 60)) minutes - Stale: \(weatherIsStale)")
+        } else {
+            weatherIsStale = true // No weather data
+            print("🌤️ HomeView: No weather data - needs refresh")
+        }
+        
+        // Check if insights are stale (different day)
+        let insightsAreStale: Bool
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let todayString = formatter.string(from: now)
+        insightsAreStale = lastInsightDateString != todayString
+        print("🧠 HomeView: Last insight date: \(lastInsightDateString.isEmpty ? "never" : lastInsightDateString), Today: \(todayString) - Stale: \(insightsAreStale)")
+        
+        // Refresh if data is stale
+        if weatherIsStale || insightsAreStale {
+            print("🔄 HomeView: Data is stale, refreshing...")
+            Task {
+                if let location = getEffectiveLocation() {
+                    // Refresh weather
+                    if weatherIsStale {
+                        print("🌤️ HomeView: Refreshing stale weather data...")
+                        await weatherService.fetchWeatherData(for: location, forceRefresh: true)
+                        await weatherService.fetchHourlyForecast(for: location)
+                    }
+                    
+                    // Refresh insights if stale (new day)
+                    if insightsAreStale {
+                        print("🧠 HomeView: Refreshing insights for new day...")
+                        // Reset flags to allow refresh
+                        await MainActor.run {
+                            hasInitialAnalysis = false
+                            hasGeneratedDailyInsightSession = false
+                        }
+                        await refreshAnalysis(force: true, includeWeeklyForecast: false)
+                        // Update insight date
+                        lastInsightDateString = todayString
+                    }
+                } else {
+                    // Request location first
+                    locationManager.requestLocation()
+                }
+            }
+        } else {
+            print("✅ HomeView: Data is fresh, no refresh needed")
+        }
+        
+        lastForegroundDate = now
     }
     
     // Background - using design system color with dark mode support
@@ -183,11 +411,22 @@ struct HomeView: View {
     // Main content view with staggered animations
     private var contentView: some View {
         VStack(spacing: 16) {
+            // Sign-up prompt banner (only shown when not authenticated)
+            if !authManager.isAuthenticated {
+                SignUpPromptBanner(onSignUp: {
+                    showingOnboarding = true
+                })
+                .padding(.horizontal)
+                .cardEnterAnimation(delay: -0.1)
+            }
+            
             // Flare Risk Card
+            // Only show loading if we don't have risk data yet (first load)
+            // If we have cached risk, keep it visible while updating in background
             FlareRiskCardView(
                 risk: aiService.risk,
                 forecast: aiService.forecast,
-                isLoading: aiService.isLoading
+                isLoading: aiService.isLoading && aiService.risk == nil
             )
             .padding(.horizontal)
             .cardEnterAnimation(delay: 0.0)
@@ -221,24 +460,46 @@ struct HomeView: View {
             .padding(.horizontal)
             .cardEnterAnimation(delay: 0.3)
             
-            // Weekly Forecast Card
-            WeeklyForecastCardView(
-                forecasts: weatherService.weeklyForecast,
-                isLoading: weatherService.isLoadingForecast
-            )
-            .padding(.horizontal)
-            .cardEnterAnimation(delay: 0.4)
-            
-            // Weekly Forecast Insight Card
+            // Weekly Forecast Insight Card (lazy loaded - only show when weekly data is ready)
             let weeklySummary = aiService.weeklyInsightSummary ?? aiService.weeklyForecastInsight
-            if (weeklySummary != nil && !(weeklySummary ?? "").isEmpty) || !aiService.weeklyInsightDays.isEmpty {
+            if shouldLoadWeeklyData && ((weeklySummary != nil && !(weeklySummary ?? "").isEmpty) || !aiService.weeklyInsightDays.isEmpty) {
                 WeeklyForecastInsightCardView(
                     summary: weeklySummary ?? "",
                     days: aiService.weeklyInsightDays,
                     sources: aiService.weeklyInsightSources
                 )
-                    .cardEnterAnimation(delay: 0.5)
+                    .cardEnterAnimation(delay: 0.4)
             }
+            
+            // Weekly Forecast Card (lazy loaded - always shown, but data loads lazily)
+            WeeklyForecastCardView(
+                forecasts: weatherService.weeklyForecast,
+                isLoading: weatherService.isLoadingForecast
+            )
+            .padding(.horizontal)
+            .cardEnterAnimation(delay: 0.5)
+            .onAppear {
+                // Trigger weekly forecast fetch when card appears (lazy loading)
+                if shouldLoadWeeklyData && weatherService.weeklyForecast.isEmpty && !weatherService.isLoadingForecast {
+                    Task {
+                        if let location = getEffectiveLocation() {
+                            print("🔄 HomeView: Lazy loading weekly forecast...")
+                            await weatherService.fetchWeeklyForecast(for: location)
+                            // After weekly forecast loads, trigger weekly insight analysis WITH weekly forecast
+                            if !weatherService.weeklyForecast.isEmpty {
+                                print("🔄 HomeView: Weekly forecast loaded, triggering weekly insight analysis...")
+                                await refreshAnalysis(force: true, includeWeeklyForecast: true)
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Apple Weather Attribution (required by App Store Guideline 5.2.5)
+            AppleWeatherAttributionView()
+                .padding(.horizontal)
+                .padding(.top, 8)
+                .cardEnterAnimation(delay: 0.6)
         }
         .padding(.vertical)
     }
@@ -246,23 +507,28 @@ struct HomeView: View {
     private var aiInsightsCard: some View {
         DailyInsightCardView(
             title: "Daily AI Insight",
-            subtitle: "Today's Health Analysis",
+            subtitle: authManager.isAuthenticated ? "Today's Health Analysis" : "General Weather Insights",
             icon: "lightbulb.fill",
             message: aiService.insightMessage.isEmpty ? "Analyzing weather patterns…" : aiService.insightMessage,
-            supportNote: aiService.supportNote,
-            personalAnecdote: aiService.personalAnecdote,
-            behaviorPrompt: aiService.behaviorPrompt,
+            supportNote: authManager.isAuthenticated ? aiService.supportNote : nil, // Only show support note when authenticated
+            personalAnecdote: authManager.isAuthenticated ? aiService.personalAnecdote : nil, // Only show personal anecdote when authenticated
+            behaviorPrompt: authManager.isAuthenticated ? aiService.behaviorPrompt : nil, // Only show behavior prompt when authenticated
             citations: aiService.citations,
             disclaimerText: "Flare isn't a substitute for medical professionals, just a weather-aware wellness guide.",
-            isLoading: aiService.isLoading,
+            // Only show loading spinner if we don't have any insights yet (first load)
+            // If we have cached insights, show them and update in background without blocking UI
+            isLoading: aiService.isLoading && !aiService.hasValidInsights,
             isRefreshing: isManualInsightRefresh,
             showRefreshButton: true,
-            showFeedbackPrompt: true,
+            showFeedbackPrompt: authManager.isAuthenticated, // Only show feedback prompt when authenticated
             onRefresh: {
                 guard !isManualInsightRefresh else { return }
                 isManualInsightRefresh = true
                 Task {
-                    await refreshAnalysis(force: true)
+                    print("🔄 Manual insight refresh triggered from card button")
+                    // Manual refresh should bypass all caches and get fresh data
+                    // Include weekly forecast for complete refresh
+                    await refreshAnalysis(force: true, includeWeeklyForecast: true)
                     await MainActor.run {
                         isManualInsightRefresh = false
                     }
@@ -281,6 +547,22 @@ struct HomeView: View {
             }
         )
         .padding(.horizontal)
+        .overlay(alignment: .bottomTrailing) {
+            // Show a subtle badge when not authenticated
+            if !authManager.isAuthenticated && !aiService.insightMessage.isEmpty {
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("Sign up for personalized insights")
+                        .font(.interCaption)
+                        .foregroundColor(Color.adaptiveMuted)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.adaptiveCardBackground.opacity(0.9))
+                        .cornerRadius(8)
+                        .padding(.trailing, 16)
+                        .padding(.bottom, 12)
+                }
+            }
+        }
     }
     
     var body: some View {
@@ -321,13 +603,47 @@ struct HomeView: View {
             .onChange(of: aiService.insightMessage) { old, new in
                 if old != new { aiFeedback = nil }
             }
+            .onChange(of: scenePhase) { oldPhase, newPhase in
+                handleScenePhaseChange(oldPhase: oldPhase, newPhase: newPhase)
+            }
+            .onAppear {
+                // Check for profile changes when view appears (e.g., returning from Settings)
+                // This ensures we catch changes made in SettingsView
+                // Only check if we already have initial analysis (prevents duplicate check on first load)
+                // Also check flags to ensure we don't trigger analysis unnecessarily
+                if (hasInitialAnalysis || hasGeneratedDailyInsightSession) && lastDiagnosesHash != nil {
+                    handleUserProfileChange()
+                }
+            }
+            .fullScreenCover(isPresented: $showingOnboarding) {
+                OnboardingFlowView()
+                    .environmentObject(authManager)
+                    .environmentObject(subscriptionManager)
+            }
     }
     
     private func handleRefresh() async {
+        print("🔄 Manual refresh triggered - bypassing all caches")
+        
+        // Manual refresh should bypass all optimizations and get fresh data
         if let location = getEffectiveLocation() {
+            // Force refresh weather data
             await weatherService.refreshWeatherData(for: location)
+            // Fetch all forecasts (user explicitly wants fresh data)
+            await weatherService.fetchHourlyForecast(for: location)
+            await weatherService.fetchWeeklyForecast(for: location)
         }
-        await refreshAnalysis(force: true)
+        
+        // Force refresh analysis with all data (bypasses time-based caching and input hash checks)
+        // This ensures user gets completely fresh insights when they manually refresh
+        await refreshAnalysis(force: true, includeWeeklyForecast: true)
+        
+        // Ensure weekly data is enabled after refresh
+        await MainActor.run {
+            shouldLoadWeeklyData = true
+        }
+        
+        print("✅ Manual refresh complete")
     }
     
     private var scrollViewContent: some View {
@@ -337,25 +653,99 @@ struct HomeView: View {
     }
     
     private func handleViewAppearAction() {
-        hasInitialAnalysis = hasGeneratedDailyInsightSession
-        handleViewAppear()
-        if !hasGeneratedDailyInsightSession {
-            Task {
-                await refreshAnalysis()
-                hasInitialAnalysis = true
-                hasGeneratedDailyInsightSession = true
-            }
+        // Check if aiService already has valid insights (persists across navigation)
+        let hasExistingInsights = (aiService.insightMessage != "Analyzing your week…" && 
+                                  aiService.insightMessage != "Analyzing weather patterns…" && 
+                                  aiService.insightMessage != "Updating analysis…" && 
+                                  !aiService.insightMessage.isEmpty) ||
+                                 (aiService.weeklyInsightSummary != nil && !aiService.weeklyInsightSummary!.isEmpty) ||
+                                 (aiService.risk != nil)
+        
+        // Sync the state flags - if we have existing insights, restore the flags
+        if hasExistingInsights {
+            hasInitialAnalysis = true
+            hasGeneratedDailyInsightSession = true
+            shouldLoadWeeklyData = true // Enable weekly data loading if we already have insights
+            print("✅ HomeView: Found existing insights, restored flags")
         } else {
-            print("⏭️ HomeView: Already have initial analysis, skipping onAppear refresh")
+            hasInitialAnalysis = hasGeneratedDailyInsightSession
+        }
+        
+        print("🏠 HomeView: View appeared")
+        print("🧠 HomeView: hasInitialAnalysis: \(hasInitialAnalysis)")
+        print("🧠 HomeView: hasGeneratedDailyInsightSession: \(hasGeneratedDailyInsightSession)")
+        print("🧠 HomeView: hasExistingInsights: \(hasExistingInsights)")
+        
+        handleViewAppear()
+        
+        // Don't trigger analysis here - let handleWeatherDataChange do it when weather arrives
+        // This prevents duplicate calls and ensures analysis only starts when weather is ready
+        if hasGeneratedDailyInsightSession || hasExistingInsights {
+            print("⏭️ HomeView: Already have initial analysis or existing insights, skipping onAppear refresh")
+        } else {
+            print("🔄 HomeView: Will trigger analysis when weather data arrives")
         }
     }
     
     private func handleWeatherDataChangeWithCheck(old: WeatherData?, new: WeatherData?) {
+        // Check if we have existing insights (persists across navigation)
+        let hasExistingInsights = (aiService.insightMessage != "Analyzing your week…" && 
+                                  aiService.insightMessage != "Analyzing weather patterns…" && 
+                                  aiService.insightMessage != "Updating analysis…" && 
+                                  !aiService.insightMessage.isEmpty) ||
+                                 (aiService.weeklyInsightSummary != nil && !aiService.weeklyInsightSummary!.isEmpty) ||
+                                 (aiService.risk != nil)
+        
+        // STRICT: Don't process at all if we already have analysis or existing insights (prevents retrigger on navigation)
+        if hasInitialAnalysis || hasGeneratedDailyInsightSession || hasExistingInsights {
+            if hasExistingInsights {
+                // Sync flags if we have existing insights
+                hasInitialAnalysis = true
+                hasGeneratedDailyInsightSession = true
+            }
+            print("⏭️ HomeView: Already have analysis or existing insights, skipping weather change check completely")
+            return
+        }
+        
+        // Only process if values actually changed in a noteworthy way
         if weatherDataValuesChanged(old: old, new: new) {
-            print("🌤️ HomeView: Weather data values actually changed")
+            print("🌤️ HomeView: Weather data values actually changed (noteworthy change)")
+            handleWeatherDataChange(new)
+        } else if new != nil && old == nil {
+            // First time we get weather data - start analysis immediately
+            print("🌤️ HomeView: Weather data available for first time, starting analysis...")
             handleWeatherDataChange(new)
         } else {
+            // Values didn't change and we already had data - skip
             print("⏭️ HomeView: Weather data instance changed but values are the same, skipping")
+        }
+    }
+    
+    // Handle user profile changes (diagnoses or sensitivities)
+    private func handleUserProfileChange() {
+        let currentHash = getUserProfileHash()
+        
+        // Skip on first check (when lastDiagnosesHash is nil) - this is just initialization
+        guard let lastHash = lastDiagnosesHash else {
+            lastDiagnosesHash = currentHash
+            lastSensitivitiesHash = currentHash
+            return
+        }
+        
+        // Only trigger if profile actually changed
+        if currentHash != lastHash {
+            print("🔄 HomeView: User profile changed (diagnoses or sensitivities), refreshing analysis...")
+            print("   Old hash: \(lastHash)")
+            print("   New hash: \(currentHash)")
+            lastDiagnosesHash = currentHash
+            lastSensitivitiesHash = currentHash
+            
+            Task {
+                // Profile change should include weekly forecast for complete refresh
+                await refreshAnalysis(force: true, includeWeeklyForecast: true)
+            }
+        } else {
+            print("⏭️ HomeView: User profile unchanged, skipping refresh")
         }
     }
 }
@@ -709,7 +1099,7 @@ struct DailyInsightCardView: View {
                             Divider()
                                 .background(Color.adaptiveMuted.opacity(0.15))
                             HStack(spacing: 8) {
-                                Image(systemName: "pencil.and.list")
+                                Image(systemName: "square.and.pencil")
                                     .font(.interCaption)
                                     .foregroundColor(Color.adaptiveText)
                                 Text(behaviorPrompt)
@@ -740,10 +1130,22 @@ struct DailyInsightCardView: View {
                     Divider()
                         .background(Color.adaptiveMuted.opacity(0.3))
                     
-                    Text("Sources")
-                        .font(.interCaption)
-                        .fontWeight(.semibold)
-                        .foregroundColor(Color.adaptiveMuted)
+                    HStack(spacing: 4) {
+                        Text("Sources")
+                            .font(.interCaption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(Color.adaptiveMuted)
+                        
+                        if citations.count > 1 {
+                            Text("(\(citations.count) peer-reviewed studies)")
+                                .font(.interCaption)
+                                .foregroundColor(Color.adaptiveMuted.opacity(0.8))
+                        } else {
+                            Text("(peer-reviewed research)")
+                                .font(.interCaption)
+                                .foregroundColor(Color.adaptiveMuted.opacity(0.8))
+                        }
+                    }
                     
                     ForEach(citations, id: \.self) { citation in
                         HStack(alignment: .top, spacing: 6) {
@@ -1408,6 +1810,7 @@ struct HourlyForecastRow: View {
 }
 
 struct WeeklyForecastInsightCardView: View {
+    @Environment(\.colorScheme) var colorScheme
     let summary: String
     let days: [WeeklyInsightDay]
     let sources: [String]
@@ -1421,6 +1824,109 @@ struct WeeklyForecastInsightCardView: View {
         }
         // Already formatted or longer name
         return label
+    }
+    
+    // Helper to extract risk level from detail text (Low, Moderate, High)
+    private func extractRiskLevel(_ detail: String) -> String {
+        let lowerDetail = detail.lowercased()
+        
+        // Check for explicit risk indicators
+        if lowerDetail.contains("high") || lowerDetail.contains("elevated") || lowerDetail.contains("severe") || lowerDetail.contains("sharp") {
+            return "High"
+        } else if lowerDetail.contains("moderate") || lowerDetail.contains("moderate risk") {
+            return "Moderate"
+        } else if lowerDetail.contains("low") || lowerDetail.contains("steady") || lowerDetail.contains("calm") || lowerDetail.contains("gentle") || lowerDetail.contains("mild") || lowerDetail.contains("stable") {
+            return "Low"
+        }
+        
+        // Default to Low if no clear indicator
+        return "Low"
+    }
+    
+    // Helper to remove risk level from detail text (to avoid duplication)
+    // New format: "Low flare risk — steady pressure" -> "steady pressure"
+    // IMPORTANT: Preserve the FULL descriptor text - do not truncate
+    private func removeRiskLevelFromDetail(_ detail: String) -> String {
+        var cleaned = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Check if it follows the new format: "Risk Level — descriptor"
+        // Try all dash types: em-dash (—), en-dash (–), regular dash (-)
+        let dashPatterns = [" — ", " – ", " - ", "—", "–", "-"]
+        
+        for dashPattern in dashPatterns {
+            if let dashRange = cleaned.range(of: dashPattern) {
+                // Format: "Low flare risk — steady pressure"
+                let beforeDash = String(cleaned[..<dashRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+                let afterDash = String(cleaned[dashRange.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                
+                // Check if before dash contains risk level keywords
+                let beforeLower = beforeDash.lowercased()
+                if beforeLower.contains("low") || beforeLower.contains("moderate") || beforeLower.contains("high") || beforeLower.contains("risk") {
+                    // This is the new format - return the descriptor after the dash
+                    if !afterDash.isEmpty {
+                        return afterDash
+                    }
+                }
+            }
+        }
+        
+        // Also try regex pattern to catch variations in spacing
+        // Match: "Low flare risk" or "Moderate risk" or "High risk" followed by dash and descriptor
+        let dashRegexPattern = #"(?i)(low\s+flare\s+risk|moderate\s+risk|high\s+risk)\s*[—–-]\s*(.+)$"#
+        if let regex = try? NSRegularExpression(pattern: dashRegexPattern, options: []),
+           let match = regex.firstMatch(in: cleaned, options: [], range: NSRange(location: 0, length: cleaned.utf16.count)),
+           match.numberOfRanges > 2 {
+            let descriptorRange = match.range(at: 2)
+            if descriptorRange.location != NSNotFound {
+                let descriptor = (cleaned as NSString).substring(with: descriptorRange).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !descriptor.isEmpty {
+                    return descriptor
+                }
+            }
+        }
+        
+        // Fallback: Remove explicit risk phrases but preserve descriptor content
+        let riskPhrases = [
+            "low flare risk",
+            "low risk",
+            "moderate risk",
+            "high risk",
+            "elevated risk",
+            "generally low flare risk",
+            "often low flare risk",
+            "typically low flare risk"
+        ]
+        
+        for phrase in riskPhrases {
+            // Remove phrase at the start followed by dash or space
+            let pattern = "^\(phrase)\\s*[—–-]?\\s*"
+            cleaned = cleaned.replacingOccurrences(
+                of: pattern,
+                with: "",
+                options: [.regularExpression, .caseInsensitive]
+            )
+            cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        
+        // Remove standalone "Low" at the start (but preserve "low pressure", "low humidity", etc.)
+        cleaned = cleaned.replacingOccurrences(
+            of: "^[Ll]ow\\s+(?!pressure|humidity|temperature|wind|flare)",
+            with: "",
+            options: .regularExpression
+        )
+        cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Clean up any double spaces
+        cleaned = cleaned.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // If we have a meaningful descriptor, return it; otherwise return a default
+        if cleaned.isEmpty || cleaned.lowercased() == "low" || cleaned.lowercased() == "flare risk" {
+            // No descriptor found - this shouldn't happen, but return empty so UI shows just the risk badge
+            return ""
+        }
+        
+        return cleaned
     }
     
     var body: some View {
@@ -1476,24 +1982,86 @@ struct WeeklyForecastInsightCardView: View {
                 Divider()
                     .background(Color.adaptiveMuted.opacity(0.15))
                 
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
                     ForEach(days) { day in
                         HStack(alignment: .top, spacing: 12) {
                             // Weekday label: bold, fixed width for alignment (e.g., "Mon.", "Tues.")
-                            // Increased width to prevent wrapping of detail text
                             Text(formatWeekdayLabel(day.label))
                                 .font(.interBody)
                                 .fontWeight(.bold)
                                 .foregroundColor(Color.adaptiveText)
-                                .frame(width: 48, alignment: .leading) // Increased from 36 to 48 for more room
+                                .frame(width: 48, alignment: .leading)
                             
-                            // Detail text: regular, lighter gray, left-aligned
-                            Text(day.detail)
-                                .font(.interBody)
-                                .foregroundColor(Color.adaptiveMuted)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .multilineTextAlignment(.leading)
-                                .frame(maxWidth: .infinity, alignment: .leading) // Ensure left alignment
+                            // Detail text with risk level prefix
+                            // CRITICAL: Allow this HStack to expand to fill available width
+                            HStack(alignment: .top, spacing: 6) {
+                                // Risk level: bold, colored with box background
+                                let riskLevel = extractRiskLevel(day.detail)
+                                let riskColor: Color = {
+                                    switch riskLevel {
+                                    case "High": 
+                                        // Brighter red for dark mode, darker red for light mode for better contrast
+                                        return colorScheme == .dark ? Color(hex: "#FF4444") : Color(hex: "#CC0000")
+                                    case "Moderate": 
+                                        // Brighter orange for dark mode, darker orange for light mode
+                                        return colorScheme == .dark ? Color(hex: "#FF9500") : Color(hex: "#E67E00")
+                                    default: 
+                                        // Low - brighter green for dark mode, maintain brand green for light mode
+                                        return colorScheme == .dark ? Color(hex: "#4ECDC4") : Color(hex: "#888779")
+                                    }
+                                }()
+                                
+                                let backgroundColor: Color = {
+                                    switch riskLevel {
+                                    case "High": 
+                                        // Colored box for both light and dark mode
+                                        return colorScheme == .dark ? Color(hex: "#FF4444").opacity(0.2) : Color(hex: "#CC0000").opacity(0.15)
+                                    case "Moderate": 
+                                        // Colored box for both light and dark mode
+                                        return colorScheme == .dark ? Color(hex: "#FF9500").opacity(0.2) : Color(hex: "#E67E00").opacity(0.15)
+                                    default: 
+                                        // Colored box for both light and dark mode
+                                        return colorScheme == .dark ? Color(hex: "#4ECDC4").opacity(0.2) : Color(hex: "#888779").opacity(0.15)
+                                    }
+                                }()
+                                
+                                // Risk level with colored box
+                                Text(riskLevel)
+                                    .font(.interCaption)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(riskColor)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(backgroundColor)
+                                    .cornerRadius(6)
+                                
+                                // Detail text: regular, lighter gray, left-aligned
+                                // IMPORTANT: Use fixedSize to prevent truncation - allow text to wrap fully
+                                let cleanedDetail = removeRiskLevelFromDetail(day.detail)
+                                if !cleanedDetail.isEmpty {
+                                    Text(cleanedDetail)
+                                        .font(.interBody)
+                                        .foregroundColor(Color.adaptiveMuted)
+                                        .fixedSize(horizontal: false, vertical: true) // Allow wrapping to prevent truncation
+                                } else {
+                                    // If no descriptor found, show a default based on risk level
+                                    let defaultDescriptor: String = {
+                                        switch riskLevel {
+                                        case "High": return "challenging conditions"
+                                        case "Moderate": return "noticeable shifts"
+                                        default: return "steady conditions"
+                                        }
+                                    }()
+                                    Text(defaultDescriptor)
+                                        .font(.interBody)
+                                        .foregroundColor(Color.adaptiveMuted)
+                                        .fixedSize(horizontal: false, vertical: true) // Allow wrapping
+                                }
+                                
+                                // Spacer to push content to the left and allow text to expand
+                                Spacer(minLength: 0)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading) // Expand to fill available width
                         }
                     }
                 }
@@ -1529,6 +2097,75 @@ struct WeeklyForecastInsightCardView: View {
         }
         .cardStyle()
         .padding(.horizontal)
+    }
+}
+
+// Sign-up prompt banner (shown when not authenticated)
+private struct SignUpPromptBanner: View {
+    @Environment(\.colorScheme) var colorScheme
+    let onSignUp: () -> Void
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Get Personalized Insights")
+                    .font(.interBody.weight(.semibold))
+                    .foregroundColor(Color.adaptiveText)
+                
+                Text("Sign up to receive insights tailored to your conditions")
+                    .font(.interCaption)
+                    .foregroundColor(Color.adaptiveMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            
+            Spacer()
+            
+            Button(action: onSignUp) {
+                Text("Sign Up")
+                    .font(.interBody.weight(.semibold))
+                    .foregroundColor(colorScheme == .dark ? .black : .white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(colorScheme == .dark ? Color(hex: "#4ECDC4") : Color(hex: "#888779"))
+                    .cornerRadius(10)
+            }
+        }
+        .padding(16)
+        .background(Color.adaptiveCardBackground)
+        .cornerRadius(16)
+        .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 4)
+    }
+}
+
+// Apple Weather Attribution View (required by App Store Guideline 5.2.5)
+private struct AppleWeatherAttributionView: View {
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        VStack(spacing: 4) {
+            // Apple Weather trademark - display Apple logo symbol and "Weather"
+            HStack(spacing: 2) {
+                Text("Weather data provided by")
+                    .font(.interSmall)
+                    .foregroundColor(Color.adaptiveMuted)
+                // Use SF Symbol for Apple logo if available, otherwise use text
+                Image(systemName: "applelogo")
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundColor(Color.adaptiveMuted)
+                Text("Weather")
+                    .font(.interSmall)
+                    .foregroundColor(Color.adaptiveMuted)
+            }
+            
+            // Legal attribution link
+            Link("Legal Attribution", destination: URL(string: "https://weatherkit.apple.com/legal-attribution.html")!)
+                .font(.interSmall)
+                .foregroundColor(colorScheme == .dark ? Color(hex: "#4ECDC4") : Color(hex: "#888779"))
+                .underline()
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity)
     }
 }
 

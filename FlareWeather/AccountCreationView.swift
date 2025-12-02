@@ -1,8 +1,9 @@
 import SwiftUI
+import AuthenticationServices
 
 struct AccountCreationView: View {
     @EnvironmentObject var authManager: AuthManager
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) var colorScheme
     
     @State private var email = ""
     @State private var password = ""
@@ -54,6 +55,37 @@ struct AccountCreationView: View {
                     .buttonStyle(PrimaryButtonStyle())
                     .disabled(isLoading || email.isEmpty || password.isEmpty)
                     .opacity(isLoading || email.isEmpty || password.isEmpty ? 0.6 : 1)
+                    
+                    // Divider
+                    HStack {
+                        Rectangle()
+                            .fill(Color.adaptiveMuted.opacity(0.3))
+                            .frame(height: 1)
+                        Text("or")
+                            .font(.interCaption)
+                            .foregroundColor(Color.adaptiveMuted)
+                            .padding(.horizontal, 12)
+                        Rectangle()
+                            .fill(Color.adaptiveMuted.opacity(0.3))
+                            .frame(height: 1)
+                    }
+                    .padding(.vertical, 8)
+                    
+                    // Sign in with Apple Button
+                    SignInWithAppleButton(
+                        onRequest: { request in
+                            request.requestedScopes = [.fullName, .email]
+                        },
+                        onCompletion: { result in
+                            Task { @MainActor in
+                                await handleAppleSignIn(result)
+                            }
+                        }
+                    )
+                    .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
+                    .frame(height: 50)
+                    .cornerRadius(12)
+                    .disabled(isLoading)
                 }
                 .padding(20)
                 .cardStyle()
@@ -63,6 +95,7 @@ struct AccountCreationView: View {
         .background(Color.adaptiveBackground.ignoresSafeArea())
         .navigationTitle("Account Setup")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true) // Hide back button to prevent going back to paywall
     }
     
     private func inputField(title: String, placeholder: String, text: Binding<String>, contentType: UITextContentType, keyboardType: UIKeyboardType = .default) -> some View {
@@ -126,12 +159,88 @@ struct AccountCreationView: View {
             do {
                 try await authManager.signup(email: email, password: password, name: name.isEmpty ? nil : name)
                 let resolvedName = name.isEmpty ? "User" : name
+                // Call onSignupSuccess which will navigate to paywall
+                // This must happen immediately to prevent ContentView from switching views
                 onSignupSuccess(resolvedName)
-                dismiss()
             } catch {
                 errorMessage = (error as? AuthError)?.localizedDescription ?? error.localizedDescription
             }
             isLoading = false
+        }
+    }
+    
+    @MainActor
+    private func handleAppleSignIn(_ result: Result<ASAuthorization, Error>) async {
+        errorMessage = nil
+        isLoading = true
+        
+        defer {
+            isLoading = false
+        }
+        
+        switch result {
+        case .success(let authorization):
+            guard let appleIDCredential = authorization.credential as? ASAuthorizationAppleIDCredential else {
+                errorMessage = "Invalid Apple Sign In credential"
+                return
+            }
+            
+            // Get user identifier
+            let userIdentifier = appleIDCredential.user
+            
+            // Get identity token (JWT)
+            guard let identityTokenData = appleIDCredential.identityToken,
+                  let identityToken = String(data: identityTokenData, encoding: .utf8) else {
+                errorMessage = "Failed to get identity token"
+                return
+            }
+            
+            // Get authorization code (optional, for server verification)
+            let authorizationCode = appleIDCredential.authorizationCode.flatMap { String(data: $0, encoding: .utf8) }
+            
+            // Get user info (only available on first sign in)
+            let email = appleIDCredential.email
+            let fullName = appleIDCredential.fullName
+            let name = fullName.flatMap { personNameComponents in
+                let formatter = PersonNameComponentsFormatter()
+                return formatter.string(from: personNameComponents)
+            }
+            
+            print("🍎 Apple Sign In successful (account creation):")
+            print("   User ID: \(userIdentifier)")
+            print("   Email: \(email ?? "not provided")")
+            print("   Name: \(name ?? "not provided")")
+            
+            // Send to backend
+            do {
+                try await authManager.signInWithApple(
+                    userIdentifier: userIdentifier,
+                    identityToken: identityToken,
+                    authorizationCode: authorizationCode,
+                    email: email,
+                    name: name
+                )
+                print("✅ Apple Sign In completed successfully (account creation)")
+                let resolvedName = name ?? "User"
+                onSignupSuccess(resolvedName)
+            } catch {
+                print("❌ Apple Sign In error: \(error.localizedDescription)")
+                errorMessage = (error as? AuthError)?.localizedDescription ?? error.localizedDescription
+            }
+            
+        case .failure(let error):
+            print("❌ Apple Sign In failed: \(error.localizedDescription)")
+            if let authError = error as? ASAuthorizationError {
+                switch authError.code {
+                case .canceled:
+                    // User canceled, don't show error
+                    break
+                default:
+                    errorMessage = "Apple Sign In failed: \(authError.localizedDescription)"
+                }
+            } else {
+                errorMessage = "Apple Sign In failed: \(error.localizedDescription)"
+            }
         }
     }
 }

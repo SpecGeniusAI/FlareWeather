@@ -24,8 +24,10 @@ var isTestFlightOrDebug: Bool {
         return cached
     }
     
-    // Use receipt URL to detect TestFlight (more reliable than StoreKit 2 environment)
-    // TestFlight builds have sandboxReceipt in the path
+    // Use receipt URL to detect TestFlight
+    // Note: appStoreReceiptURL is deprecated in iOS 18.0, but AppTransaction.shared is async
+    // and this computed property needs to return synchronously. Using receipt URL as fallback.
+    // TODO: Consider refactoring to async function to use AppTransaction.shared
     if let receiptURL = Bundle.main.appStoreReceiptURL {
         let isTestFlight = receiptURL.path.contains("sandboxReceipt")
         cachedIsTestFlight = isTestFlight
@@ -55,6 +57,9 @@ var isProductionBuild: Bool {
     }
     
     // Use receipt URL to detect App Store production
+    // Note: appStoreReceiptURL is deprecated in iOS 18.0, but AppTransaction.shared is async
+    // and this computed property needs to return synchronously. Using receipt URL as fallback.
+    // TODO: Consider refactoring to async function to use AppTransaction.shared
     // Production App Store builds have a receipt but not sandboxReceipt
     if let receiptURL = Bundle.main.appStoreReceiptURL {
         let isProduction = !receiptURL.path.contains("sandboxReceipt")

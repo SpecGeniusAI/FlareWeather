@@ -3,6 +3,10 @@ import CoreData
 import CoreLocation
 import MapKit
 import Combine
+#if canImport(RevenueCat)
+import RevenueCat
+import RevenueCatUI
+#endif
 
 // Location search manager for autocomplete
 class LocationSearchManager: NSObject, ObservableObject {
@@ -1058,8 +1062,6 @@ struct ProfileEditView: View {
         "Asthma",
         "COPD",
         "Allergies",
-        "Depression",
-        "Anxiety",
         "Multiple Sclerosis",
         "Lupus",
         "Other"
@@ -1161,9 +1163,11 @@ struct ProfileEditView: View {
                                                     RoundedRectangle(cornerRadius: 4)
                                                         .stroke(selectedDiagnoses.contains(diagnosis) ? Color.adaptiveCardBackground : Color.adaptiveMuted, lineWidth: 2)
                                                 )
-                                            Image(systemName: selectedDiagnoses.contains(diagnosis) ? "checkmark" : "")
-                                                .font(.system(size: 12, weight: .semibold))
-                                                .foregroundColor(selectedDiagnoses.contains(diagnosis) ? Color.adaptiveText : Color.clear)
+                                            if selectedDiagnoses.contains(diagnosis) {
+                                                Image(systemName: "checkmark")
+                                                    .font(.system(size: 12, weight: .semibold))
+                                                    .foregroundColor(Color.adaptiveText)
+                                            }
                                         }
                                         Text(diagnosis)
                                             .foregroundColor(Color.adaptiveText)
@@ -1193,9 +1197,11 @@ struct ProfileEditView: View {
                                                 RoundedRectangle(cornerRadius: 4)
                                                     .stroke(selectedDiagnoses.contains("Other") ? Color.adaptiveCardBackground : Color.adaptiveMuted, lineWidth: 2)
                                             )
-                                        Image(systemName: selectedDiagnoses.contains("Other") ? "checkmark" : "")
-                                            .font(.system(size: 12, weight: .semibold))
-                                            .foregroundColor(selectedDiagnoses.contains("Other") ? Color.adaptiveText : Color.clear)
+                                        if selectedDiagnoses.contains("Other") {
+                                            Image(systemName: "checkmark")
+                                                .font(.system(size: 12, weight: .semibold))
+                                                .foregroundColor(Color.adaptiveText)
+                                        }
                                     }
                                     Text("Other")
                                         .foregroundColor(Color.adaptiveText)
@@ -1337,7 +1343,7 @@ struct ProfileEditView: View {
 struct SubscriptionPlanSection: View {
     @EnvironmentObject var subscriptionManager: SubscriptionManager
     @State private var showingPaywall = false
-    @State private var isUpgrading = false
+    @State private var showManage = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -1353,12 +1359,12 @@ struct SubscriptionPlanSection: View {
                 Spacer()
             }
             
-            if subscriptionManager.isSubscribed {
+            if subscriptionManager.isProUser {
                 // Subscribed state
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("FlareWeather Plus")
+                            Text("Flare Pro")
                                 .font(.interHeadline)
                                 .foregroundColor(Color.adaptiveText)
                             
@@ -1382,42 +1388,15 @@ struct SubscriptionPlanSection: View {
                     Divider()
                         .background(Color.adaptiveMuted.opacity(0.3))
                     
-                    // Upgrade to Yearly button (if monthly)
-                    if subscriptionManager.currentPlan == .monthly {
-                        Button(action: {
-                            Task {
-                                isUpgrading = true
-                                let success = await subscriptionManager.upgradeToYearly()
-                                isUpgrading = false
-                                if !success, let error = subscriptionManager.errorMessage {
-                                    print("❌ Upgrade error: \(error)")
-                                }
-                            }
-                        }) {
-                            HStack {
-                                if isUpgrading {
-                                    ProgressView()
-                                        .tint(Color.adaptiveText)
-                                } else {
-                                    Text("Upgrade to Yearly ($19.99/year)")
-                                        .font(.interBody)
-                                }
-                            }
+                    // Manage Subscription button
+                    Button(action: {
+                        showManage = true
+                    }) {
+                        Text("Manage Subscription")
+                            .font(.interBody)
                             .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(PrimaryButtonStyle())
-                        .disabled(isUpgrading)
-                    } else {
-                        // Manage Subscription button (if yearly)
-                        Button(action: {
-                            openSubscriptionManagement()
-                        }) {
-                            Text("Manage Subscription")
-                                .font(.interBody)
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
                     }
+                    .buttonStyle(SecondaryButtonStyle())
                     
                     // Restore Purchases
                     Button(action: {
@@ -1440,7 +1419,7 @@ struct SubscriptionPlanSection: View {
                     Button(action: {
                         showingPaywall = true
                     }) {
-                        Text("Upgrade to FlareWeather Plus")
+                        Text("Upgrade to Flare Pro")
                             .font(.interBody)
                             .frame(maxWidth: .infinity)
                     }
@@ -1476,18 +1455,76 @@ struct SubscriptionPlanSection: View {
                 .environmentObject(subscriptionManager)
             }
         }
+        .sheet(isPresented: $showManage) {
+            #if canImport(RevenueCatUI)
+            NavigationView {
+                CustomerCenterView()
+                    .navigationTitle("Manage Subscription")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button("Done") {
+                                showManage = false
+                            }
+                        }
+                    }
+            }
+            #elseif canImport(RevenueCat)
+            NavigationView {
+                VStack(spacing: 16) {
+                    Image(systemName: "info.circle")
+                        .font(.largeTitle)
+                        .foregroundColor(.blue)
+                    
+                    Text("Subscription Management")
+                        .font(.interHeadline)
+                    
+                    Text("RevenueCat is added, but RevenueCatUI is missing.\n\nPlease add the RevenueCatUI product to your target in Xcode.")
+                        .font(.interBody)
+                        .foregroundColor(.muted)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                    
+                    Button("Done") {
+                        showManage = false
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                }
+                .padding()
+                .navigationTitle("Manage Subscription")
+                .navigationBarTitleDisplayMode(.inline)
+            }
+            #else
+            NavigationView {
+                VStack(spacing: 16) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.largeTitle)
+                        .foregroundColor(.orange)
+                    
+                    Text("Subscription Management")
+                        .font(.interHeadline)
+                    
+                    Text("Please add RevenueCat package to enable subscription management.")
+                        .font(.interBody)
+                        .foregroundColor(.muted)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                    
+                    Button("Done") {
+                        showManage = false
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                }
+                .padding()
+                .navigationTitle("Manage Subscription")
+                .navigationBarTitleDisplayMode(.inline)
+            }
+            #endif
+        }
         .task {
             // Refresh subscription status when view appears
             await subscriptionManager.checkEntitlements()
         }
-    }
-    
-    /// Open App Store subscription management page
-    private func openSubscriptionManagement() {
-        guard let url = URL(string: "https://apps.apple.com/account/subscriptions") else {
-            return
-        }
-        UIApplication.shared.open(url)
     }
 }
 

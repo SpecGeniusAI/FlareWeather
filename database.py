@@ -66,6 +66,9 @@ class User(Base):
     name = Column(String, nullable=True)
     apple_user_id = Column(String, unique=True, index=True, nullable=True)  # Apple Sign In identifier
     original_transaction_id = Column(String, unique=True, index=True, nullable=True)
+    diagnoses = Column(Text, nullable=True)  # JSON array of user diagnoses
+    stored_papers = Column(Text, nullable=True)  # JSON array of papers searched for user's diagnoses
+    papers_updated_at = Column(DateTime, nullable=True)  # When papers were last updated
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -185,6 +188,37 @@ def init_db():
                     conn.execute(text("ALTER TABLE users ADD COLUMN original_transaction_id VARCHAR"))
                     conn.commit()
                 print("✅ Migration complete: original_transaction_id column added")
+            except Exception as e:
+                print(f"⚠️  Migration note: {e}")
+        
+        # Add diagnoses, stored_papers, and papers_updated_at columns if they don't exist
+        if 'diagnoses' not in columns:
+            print("🔄 Migrating database: Adding diagnoses column...")
+            try:
+                with engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN diagnoses TEXT"))
+                    conn.commit()
+                print("✅ Migration complete: diagnoses column added")
+            except Exception as e:
+                print(f"⚠️  Migration note: {e}")
+        
+        if 'stored_papers' not in columns:
+            print("🔄 Migrating database: Adding stored_papers column...")
+            try:
+                with engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN stored_papers TEXT"))
+                    conn.commit()
+                print("✅ Migration complete: stored_papers column added")
+            except Exception as e:
+                print(f"⚠️  Migration note: {e}")
+        
+        if 'papers_updated_at' not in columns:
+            print("🔄 Migrating database: Adding papers_updated_at column...")
+            try:
+                with engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN papers_updated_at DATETIME"))
+                    conn.commit()
+                print("✅ Migration complete: papers_updated_at column added")
             except Exception as e:
                 print(f"⚠️  Migration note: {e}")
                 

@@ -6,6 +6,7 @@ final class AuthManager: ObservableObject {
     @Published var isAuthenticated = false
     @Published var currentUser: UserResponse? = nil
     @Published var accessToken: String? = nil
+    @Published var isOnboardingInProgress = false  // Track if user is in onboarding flow
     
     private let authService = AuthService()
     private let tokenKey = "flareweather_access_token"

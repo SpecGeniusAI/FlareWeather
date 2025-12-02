@@ -79,8 +79,6 @@ struct OnboardingView: View {
         "Asthma",
         "COPD",
         "Allergies",
-        "Depression",
-        "Anxiety",
         "Multiple Sclerosis",
         "Lupus",
         "Other"
@@ -150,6 +148,7 @@ struct OnboardingView: View {
                 Button("Back") {
                     changeStep(to: currentStep - 1, movingForward: false)
                 }
+                .foregroundColor(Color.adaptiveText)
             }
             
             Spacer()
@@ -158,7 +157,7 @@ struct OnboardingView: View {
                 Button("Next") {
                     changeStep(to: currentStep + 1, movingForward: true)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(PrimaryButtonStyle())
                 .scaleEffect(1.05)
                 .animation(.spring(response: 0.4, dampingFraction: 0.6), value: currentStep)
             } else {
@@ -166,7 +165,7 @@ struct OnboardingView: View {
                     createUserProfile()
                     dismiss()
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(PrimaryButtonStyle())
                 .scaleEffect(1.05)
                 .animation(.spring(response: 0.4, dampingFraction: 0.6), value: currentStep)
             }
@@ -207,19 +206,24 @@ struct OnboardingView: View {
 
 struct AnimatedGradientBackground: View {
     @Binding var isAnimating: Bool
+    @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
         GeometryReader { proxy in
             let size = proxy.size
+            let gradientColors: [Color] = colorScheme == .dark 
+                ? [Color(hex: "#1A1A1A"), Color(hex: "#2A2A2A"), Color(hex: "#1E1E1E")]
+                : [Color(hex: "#E7D6CA"), Color(hex: "#F1F1EF"), Color(hex: "#DEE7F5")]
+            
             LinearGradient(
-                gradient: Gradient(colors: [Color(hex: "#E7D6CA"), Color(hex: "#F1F1EF"), Color(hex: "#DEE7F5")]),
+                gradient: Gradient(colors: gradientColors),
                 startPoint: isAnimating ? .topLeading : .bottomTrailing,
                 endPoint: isAnimating ? .bottomTrailing : .topLeading
             )
             .animation(.easeInOut(duration: 5).repeatForever(autoreverses: true), value: isAnimating)
             .overlay(
                 Circle()
-                    .fill(Color.white.opacity(0.12))
+                    .fill((colorScheme == .dark ? Color.white : Color.white).opacity(colorScheme == .dark ? 0.05 : 0.12))
                     .frame(width: size.width * 0.9)
                     .offset(x: isAnimating ? size.width * 0.15 : -size.width * 0.25, y: isAnimating ? -size.height * 0.2 : size.height * 0.25)
                     .blur(radius: 45)
@@ -236,20 +240,20 @@ struct WelcomeStepView: View {
                 .resizable()
                 .scaledToFit()
                 .frame(width: 90, height: 90)
-                .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 6)
+                .shadow(color: Color.adaptiveText.opacity(0.08), radius: 8, x: 0, y: 6)
                 .padding(.top, 8)
             
             Text("Welcome to FlareWeather")
                 .font(.largeTitle)
                 .fontWeight(.bold)
                 .multilineTextAlignment(.center)
-                .foregroundColor(.black)
+                .foregroundColor(Color.adaptiveText)
                 .transition(.opacity.combined(with: .scale))
             
             Text("Discover how weather patterns affect your health with AI-powered insights.")
                 .font(.body)
                 .multilineTextAlignment(.center)
-                .foregroundColor(.black.opacity(0.7))
+                .foregroundColor(Color.adaptiveMuted)
             
             VStack(alignment: .leading, spacing: 12) {
                 FeatureRow(icon: "cloud.sun.fill", title: "Weather Tracking", description: "Real-time weather data")
@@ -278,34 +282,37 @@ struct ProfileStepView: View {
                 Text("Tell us about yourself")
                     .font(.title2)
                     .fontWeight(.semibold)
+                    .foregroundColor(Color.adaptiveText)
                 
                 VStack(spacing: 16) {
                     TextField("Your name", text: $name)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .foregroundColor(.primary)
-                        .tint(.primary)
+                        .foregroundColor(Color.adaptiveText)
+                        .tint(Color.adaptiveText)
                     
                     VStack(alignment: .leading) {
                         Text("Age: \(age)")
+                            .foregroundColor(Color.adaptiveText)
                         Slider(value: Binding(
                             get: { Double(age) },
                             set: { age = Int($0) }
                         ), in: 18...100, step: 1)
+                        .tint(Color.adaptiveCardBackground)
                     }
                     
                     TextField("Location", text: $location)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .foregroundColor(.primary)
-                        .tint(.primary)
+                        .foregroundColor(Color.adaptiveText)
+                        .tint(Color.adaptiveText)
                     
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Health Conditions (Optional)")
                             .font(.headline)
-                            .foregroundColor(.primary)
+                            .foregroundColor(Color.adaptiveText)
                         
                         Text("Select all that apply to receive personalized insights")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(Color.adaptiveMuted)
                         
                         // Multiple selection checkboxes
                         ForEach(commonDiagnoses.filter { $0 != "Other" }, id: \.self) { diagnosis in
@@ -326,12 +333,14 @@ struct ProfileStepView: View {
                                                 RoundedRectangle(cornerRadius: 4)
                                                     .stroke(selectedDiagnoses.contains(diagnosis) ? Color.adaptiveCardBackground : Color.adaptiveMuted, lineWidth: 2)
                                             )
-                                        Image(systemName: selectedDiagnoses.contains(diagnosis) ? "checkmark" : "")
-                                            .font(.system(size: 12, weight: .semibold))
-                                            .foregroundColor(selectedDiagnoses.contains(diagnosis) ? Color.adaptiveText : Color.clear)
+                                        if selectedDiagnoses.contains(diagnosis) {
+                                            Image(systemName: "checkmark")
+                                                .font(.system(size: 12, weight: .semibold))
+                                                .foregroundColor(Color.adaptiveText)
+                                        }
                                     }
                                     Text(diagnosis)
-                                        .foregroundColor(.primary)
+                                        .foregroundColor(Color.adaptiveText)
                                     Spacer()
                                 }
                                 .padding(.vertical, 8)
@@ -359,12 +368,14 @@ struct ProfileStepView: View {
                                                 RoundedRectangle(cornerRadius: 4)
                                                     .stroke(selectedDiagnoses.contains("Other") ? Color.adaptiveCardBackground : Color.adaptiveMuted, lineWidth: 2)
                                             )
-                                        Image(systemName: selectedDiagnoses.contains("Other") ? "checkmark" : "")
-                                            .font(.system(size: 12, weight: .semibold))
-                                            .foregroundColor(selectedDiagnoses.contains("Other") ? Color.adaptiveText : Color.clear)
+                                        if selectedDiagnoses.contains("Other") {
+                                            Image(systemName: "checkmark")
+                                                .font(.system(size: 12, weight: .semibold))
+                                                .foregroundColor(Color.adaptiveText)
+                                        }
                                     }
                                     Text("Other")
-                                        .foregroundColor(.primary)
+                                        .foregroundColor(Color.adaptiveText)
                                     Spacer()
                                 }
                                 .padding(.vertical, 8)
@@ -374,8 +385,8 @@ struct ProfileStepView: View {
                             if selectedDiagnoses.contains("Other") {
                                 TextField("Enter your condition", text: $otherDiagnosis)
                                     .textFieldStyle(RoundedBorderTextFieldStyle())
-                                    .foregroundColor(.primary)
-                                    .tint(.primary)
+                                    .foregroundColor(Color.adaptiveText)
+                                    .tint(Color.adaptiveText)
                                     .onChange(of: otherDiagnosis) { _, newValue in
                                         if !newValue.isEmpty {
                                             selectedDiagnoses.remove("Other")
@@ -406,11 +417,12 @@ struct PermissionsStepView: View {
             Text("Enable Permissions")
                 .font(.title2)
                 .fontWeight(.semibold)
+                .foregroundColor(Color.adaptiveText)
             
             Text("FlareWeather needs access to your location to provide accurate weather data and personalized health insights.")
                 .font(.body)
                 .multilineTextAlignment(.center)
-                .foregroundColor(.secondary)
+                .foregroundColor(Color.adaptiveMuted)
             
             VStack(alignment: .leading, spacing: 16) {
                 PermissionRow(icon: "location.fill", title: "Location Access", description: "For weather data")
@@ -423,7 +435,7 @@ struct PermissionsStepView: View {
                 Text("We'll only send notifications when weather changes might impact your symptoms. You can skip for now and enable them later in Settings.")
                     .font(.caption)
                     .multilineTextAlignment(.center)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(Color.adaptiveMuted)
                     .fixedSize(horizontal: false, vertical: true)
                 
                 if notificationManager.authorizationStatus == .notDetermined {
@@ -435,7 +447,7 @@ struct PermissionsStepView: View {
                             Text("Turn On Notifications")
                         }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(PrimaryButtonStyle())
                 } else if notificationManager.authorizationStatus == .denied {
                     Button("Open Notification Settings") {
                         notificationManager.openSystemSettings()
@@ -443,12 +455,12 @@ struct PermissionsStepView: View {
                     .buttonStyle(.bordered)
                     Text("Notifications are currently disabled. You can re-enable them in Settings later.")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(Color.adaptiveMuted)
                         .multilineTextAlignment(.center)
                 } else {
                     Text("Notifications are enabled—you're all set for gentle pressure alerts.")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(Color.adaptiveMuted)
                 }
             }
         }
@@ -474,10 +486,10 @@ struct FeatureRow: View {
             VStack(alignment: .leading) {
                 Text(title)
                     .font(.headline)
-                    .foregroundColor(.black)
+                    .foregroundColor(Color.adaptiveText)
                 Text(description)
                     .font(.caption)
-                    .foregroundColor(.black.opacity(0.7))
+                    .foregroundColor(Color.adaptiveMuted)
             }
             
             Spacer()
@@ -500,10 +512,10 @@ struct PermissionRow: View {
             VStack(alignment: .leading) {
                 Text(title)
                     .font(.headline)
-                    .foregroundColor(.black)
+                    .foregroundColor(Color.adaptiveText)
                 Text(description)
                     .font(.caption)
-                    .foregroundColor(.black.opacity(0.7))
+                    .foregroundColor(Color.adaptiveMuted)
             }
             
             Spacer()

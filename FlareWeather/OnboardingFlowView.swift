@@ -23,6 +23,8 @@ struct OnboardingFlowView: View {
     var body: some View {
         NavigationStack(path: $path) {
             OnboardingHeroView {
+                // Mark onboarding as in progress when starting
+                authManager.isOnboardingInProgress = true
                 navigate(to: .valueStack)
             }
             .navigationDestination(for: Step.self) { step in
@@ -59,32 +61,50 @@ struct OnboardingFlowView: View {
                         diagnoses: Array(selectedDiagnoses),
                         sensitivities: Array(selectedSensitivities),
                         onContinue: {
-                            navigate(to: .paywall)
-                        }
-                    )
-                case .paywall:
-                    PaywallPlaceholderView(
-                        onStartFreeWeek: {
                             navigate(to: .account)
                         }
                     )
-                    .environmentObject(subscriptionManager)
                 case .account:
                     AccountCreationView { name in
+                        print("📝 OnboardingFlowView: Account created, navigating to paywall...")
                         saveUserProfile(name: name)
                         UserDefaults.standard.set(Array(selectedSensitivities), forKey: "weatherSensitivities")
-                        dismiss()
+                        // Ensure onboarding flag is set to prevent ContentView from switching
+                        authManager.isOnboardingInProgress = true
+                        // Navigate to paywall immediately - must happen synchronously
+                        print("📝 OnboardingFlowView: Current path before navigation: \(path)")
+                        navigate(to: .paywall)
+                        print("📝 OnboardingFlowView: Path after navigation: \(path)")
                     }
                     .environmentObject(authManager)
+                    .onAppear {
+                        // Ensure onboarding flag is set when account view appears
+                        authManager.isOnboardingInProgress = true
+                    }
+                case .paywall:
+                    PaywallPlaceholderView(
+                        onStartFreeWeek: {
+                            // Mark onboarding as complete after purchase
+                            authManager.isOnboardingInProgress = false
+                            dismiss()
+                        }
+                    )
+                    .environmentObject(subscriptionManager)
                 }
             }
             .navigationBarHidden(true)
             .background(Color.adaptiveBackground.ignoresSafeArea())
+            .onDisappear {
+                // Reset onboarding flag if flow is dismissed early
+                authManager.isOnboardingInProgress = false
+            }
         }
     }
     
     private func navigate(to step: Step) {
+        print("🧭 OnboardingFlowView: Navigating to step: \(step)")
         path.append(step)
+        print("🧭 OnboardingFlowView: Path is now: \(path)")
     }
     
     private func saveUserProfile(name: String) {

@@ -107,8 +107,16 @@ struct PrimaryButtonStyle: ButtonStyle {
         configuration.label
             .padding(.horizontal, 24)
             .padding(.vertical, 12)
-            .background(colorScheme == .dark ? Color.darkCardBackground : Color.adaptiveCardBackground)
-            .foregroundColor(colorScheme == .dark ? .white : .black) // White in dark mode, black in light mode
+            .background(
+                colorScheme == .dark 
+                    ? Color(hex: "#4ECDC4") // Bright teal/green for dark mode (better contrast)
+                    : Color(hex: "#888779") // Brand green in light mode
+            )
+            .foregroundColor(
+                colorScheme == .dark 
+                    ? .black // Black text on bright teal in dark mode
+                    : .white // White text on brand green in light mode
+            )
             .font(.interBody.weight(.medium))
             .cornerRadius(12)
             .scaleEffect(configuration.isPressed ? 0.96 : 1.0)

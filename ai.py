@@ -94,35 +94,26 @@ def _format_daily_message(
 
 
 ALLOWED_COMFORT_TIPS = [
-    "Keep your day flexible.",
-    "Move at a pace that feels kind to you.",
-    "Small pauses can help you stay grounded.",
-    "Take breaks when your body asks for them.",
-    "Listen to what your body needs today.",
-    "Gentle movement may help you feel steadier.",
-    "Rest when you need it—there's no rush.",
-    "Stay warm and keep yourself comfortable.",
-    "Hydration can support your body through shifts.",
-    "Plan lighter activities if possible.",
-    "Give yourself permission to adjust as needed.",
-    "Warm layers may help your body adapt.",
-    "Pace yourself and take things slowly.",
-    "Find moments of calm throughout the day.",
-    "Your body knows what it needs—trust it.",
-    "Gentle stretches might ease any tension.",
-    "Stay cozy and keep comfort close.",
-    "Take things one moment at a time.",
-    "Restorative moments can make a difference.",
-    "Be kind to yourself as conditions shift.",
-    "Light movement and rest can balance well.",
-    "Keep essentials within easy reach.",
-    "Comfort and care are your priorities today.",
-    "Small adjustments can help you feel better.",
-    "Listen closely to how you're feeling.",
-    "Warm drinks and soft spaces may help.",
-    "There's no need to push through today.",
-    "Gentle pacing can help your body adapt.",
-    "Comfort and rest are perfectly valid choices.",
+    # Western medicine tips
+    "Western medicine suggests gentle stretching to ease muscle tension.",
+    "Western medicine recommends staying warm and hydrated during weather shifts.",
+    "Western medicine suggests taking short breaks throughout the day.",
+    # Chinese medicine (TCM) tips
+    "Chinese medicine suggests a 5-minute tai-chi routine to ease muscle tension.",
+    "Chinese medicine recommends acupressure on the LI4 point for headache relief.",
+    "Chinese medicine suggests warm ginger tea to support circulation during cold shifts.",
+    "Chinese medicine recommends gentle qigong movements to ease joint stiffness.",
+    # Ayurveda tips
+    "Ayurveda suggests warm oil massage to support joint mobility.",
+    "Ayurveda recommends gentle yoga stretches to ease muscle tension.",
+    "Ayurveda suggests staying warm with layers during temperature drops.",
+    # Combined approaches
+    "Western medicine suggests gentle movement; Chinese medicine recommends tai-chi for muscle tension.",
+    "For joint stiffness, Western medicine suggests stretching; Ayurveda recommends warm oil massage.",
+    # General fallbacks (if no specific tradition fits)
+    "Take short pauses through the day when your body needs them.",
+    "Move gently at your own pace and listen to your body.",
+    "Stay warm and keep hydrated to support your body through shifts.",
     "Your well-being comes first today."
 ]
 
@@ -755,52 +746,34 @@ def generate_flare_risk_assessment(
     diagnoses_str = ", ".join(user_diagnoses) if user_diagnoses else "general weather sensitivity"
     sensitivities_str = ", ".join(user_sensitivities) if user_sensitivities else None
     location_str = f"around {location}" if location else "in your area"
-    comfort_clause = ", ".join([f'"{tip}"' for tip in ALLOWED_COMFORT_TIPS])
-    papers_text = format_papers_for_prompt(papers) if papers else "Reference trusted health organizations only if needed."
     
     # Build sensitivities context for prompt
     sensitivities_context = ""
     if sensitivities_str:
-        sensitivities_context = f"\n- Known weather triggers: {sensitivities_str} (prioritize these factors in your analysis)"
+        sensitivities_context = f"\n- Triggers: {sensitivities_str}"
 
-    prompt = f"""You are the FlareWeather Forecasting Assistant.
+    prompt = f"""FlareWeather Assistant. Location: {location_str}. Weather: {weather_descriptor}. Hourly: {hourly_note}. User: {diagnoses_str}{sensitivities_context}
 
-CONTEXT:
-- Location: {location_str}
-- Weather mood: {weather_descriptor}.
-- Hourly cue: {hourly_note}
-- Diagnoses in mind: {diagnoses_str}{sensitivities_context}
-- Comfort tips you may use exactly (VARY your selection - don't repeat the same tips): {comfort_clause}
-- Optional research notes: {papers_text}
+STYLE: Grade 12 vocab. No numbers/units. Tentative language (may, might). Short sentences. Reference user conditions when relevant.
 
-STYLE RULES:
-- Grade 12 vocabulary only. No numbers, units, technical terms, or medical advice.
-- Use tentative language (may, might). Never promise outcomes.
-- Keep sentences short and calm.
-- Reference user's conditions/sensitivities when relevant.
-
-OUTPUT VALID JSON EXACTLY:
+OUTPUT JSON:
 {{
   "risk": "LOW | MODERATE | HIGH",
-  "forecast": "Short headline with no numbers.",
-  "why": "Brief sentence on why bodies may notice today.",
-  "sources": ["Optional source names - if provided, use format: 'Title (Journal, Year)' or 'Title - Journal' for credibility"],
-  "support_note": "Optional actionable guidance.",
-  "personal_anecdote": "Optional relatable line.",
-  "behavior_prompt": "Optional gentle reminder with timing.",
+  "forecast": "Short headline, no numbers",
+  "why": "Brief why bodies may notice",
+  "sources": ["Optional: 'Title (Journal, Year)'"],
+  "support_note": "Optional guidance",
+  "personal_anecdote": "Optional relatable line",
+  "behavior_prompt": "Optional reminder",
   "daily_insight": {{
-    "summary_sentence": "REQUIRED: '[Weather description] which could [impact].' Include weather pattern and body impact. If user has conditions/sensitivities, reference them. Use grade 12 vocabulary. Example: 'Cool air with heavy humidity which could increase joint stiffness, especially for those with arthritis.'",
-    "why_line": "REQUIRED: Explain why this weather causes symptoms. If user has conditions, mention them. Personalize. Focus on mechanism: how pressure affects joints, humidity impacts inflammation, temperature affects blood flow. Use grade 12 vocabulary. Example: 'For those with arthritis, dropping pressure can cause tissues to expand, increasing pressure on sensitive joints.'",
-    "comfort_tip": f"Generate a specific comfort tip (up to 20 words) with a medical tradition source. Alternate between Western medicine, Chinese medicine (TCM), and Ayurveda. ALWAYS mention source (e.g., 'Western medicine suggests...', 'Chinese medicine recommends...'). Be specific when possible (e.g., 'Chinese medicine suggests a 5-minute tai-chi routine' for muscle tension). Match tip to today's weather and symptoms. Use tentative language (may, might) - NEVER definitive statements. If risk is MODERATE or HIGH, include a tip. If LOW, leave empty. Ensure variety.",
-    "sign_off": "One calm sign-off sentence with gentle forward-looking guidance (e.g., 'Take things at your own pace today' or 'Your body knows what it needs')."
+    "summary_sentence": "REQUIRED: '[Weather] which could [impact].' Example: 'Cool air with heavy humidity which could increase joint stiffness, especially for those with arthritis.'",
+    "why_line": "REQUIRED: Explain mechanism. Example: 'For those with arthritis, dropping pressure can cause tissues to expand, increasing pressure on sensitive joints.'",
+    "comfort_tip": "REQUIRED if MODERATE/HIGH. Up to 20 words. MUST include medical source: 'Western medicine suggests...', 'Chinese medicine recommends...', or 'Ayurveda suggests...'. Be specific (e.g., 'Chinese medicine suggests a 5-minute tai-chi routine' for muscle tension). Match weather/symptoms. Use tentative language. If LOW, leave empty.",
+    "sign_off": "One calm sign-off sentence"
   }}
 }}
 
-DO NOT:
-- Use numbers, degrees, or percentages.
-- Mention pain, attacks, flare-ups, or danger.
-- Add extra sections beyond the JSON.
-- Break the required tone."""
+DO NOT: Use numbers/percentages. Mention pain/flare-ups. Add extra sections."""
 
     risk = "MODERATE"
     forecast_from_model: Optional[str] = None
@@ -820,8 +793,8 @@ DO NOT:
                 {"role": "system", "content": "You translate weather moods into calm, compassionate guidance for weather-sensitive people."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.4,  # Lower temperature for faster, more consistent responses
-            max_tokens=500,  # Further reduced for faster generation (comfort tips are now shorter)
+            temperature=0.3,  # Lower temperature for faster, more consistent responses
+            max_tokens=400,  # Further reduced for faster generation
             response_format={"type": "json_object"}
         )
         response_text = completion.choices[0].message.content.strip()
@@ -889,11 +862,11 @@ DO NOT:
             daily_why_line = "Steady cues often feel easier on the body."
 
     if not daily_comfort_tip and risk != "LOW":
-        # Randomly select a comfort tip for variety, but avoid the most common one
-        # Exclude "Move at a pace that feels kind to you" to force variety
-        available_tips = [tip for tip in ALLOWED_COMFORT_TIPS if "pace that feels kind" not in tip.lower()]
-        if available_tips:
-            daily_comfort_tip = random.choice(available_tips)
+        # Randomly select a comfort tip with medical tradition source for variety
+        # Prefer tips with medical sources (Western, Chinese, Ayurveda)
+        tips_with_sources = [tip for tip in ALLOWED_COMFORT_TIPS if any(source in tip.lower() for source in ["western medicine", "chinese medicine", "ayurveda"])]
+        if tips_with_sources:
+            daily_comfort_tip = random.choice(tips_with_sources)
         else:
             daily_comfort_tip = random.choice(ALLOWED_COMFORT_TIPS)
     elif not daily_comfort_tip:
