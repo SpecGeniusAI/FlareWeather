@@ -1156,7 +1156,22 @@ struct DailyInsightCardView: View {
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }
                     
-                    // Behavior prompt removed per user request - no longer displayed
+                    if let behaviorPrompt = behaviorPrompt, !behaviorPrompt.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Divider()
+                                .background(Color.adaptiveMuted.opacity(0.15))
+                            HStack(spacing: 8) {
+                                Image(systemName: "square.and.pencil")
+                                    .font(.interCaption)
+                                    .foregroundColor(Color.adaptiveText)
+                                Text(behaviorPrompt)
+                                    .font(.interCaption)
+                                    .foregroundColor(Color.adaptiveText)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    }
                     
                     Text(disclaimerText)
                         .font(.interSmall)
