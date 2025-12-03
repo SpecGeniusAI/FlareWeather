@@ -823,63 +823,65 @@ DO NOT: Use numbers/percentages. Mention pain/flare-ups. Add extra sections. Rep
     response_json = None
     ai_provider_used = None
     
-    # Try Claude Haiku first (faster)
-    if claude_client:
-        try:
-            print("🚀 Attempting Claude Haiku (faster)...")
-            # Claude doesn't have native JSON mode, so we add JSON formatting instructions to the prompt
-            json_prompt = prompt + "\n\nIMPORTANT: Respond ONLY with valid JSON. Do not include any text before or after the JSON object. The JSON must match the exact structure specified above."
-            
-            message = claude_client.messages.create(
-                model="claude-3-5-haiku-20241022",  # Fastest Claude model
-                max_tokens=350,
-                temperature=0.3,
-                system="You translate weather moods into calm, compassionate guidance for weather-sensitive people. Always respond with valid JSON only.",
-                messages=[{"role": "user", "content": json_prompt}]
-            )
-            response_text = message.content[0].text.strip()
-            
-            # Try to extract JSON if Claude added markdown formatting
-            if "```json" in response_text:
-                response_text = response_text.split("```json")[1].split("```")[0].strip()
-            elif "```" in response_text:
-                response_text = response_text.split("```")[1].split("```")[0].strip()
-            
-            response_json = json.loads(response_text)
-            ai_provider_used = "claude"
-            print(f"✅ Claude Haiku response received in ~2-4s")
-        except json.JSONDecodeError as e:
-            print(f"⚠️  Claude response not valid JSON, trying OpenAI: {e}")
-            response_json = None
-        except Exception as e:
-            print(f"⚠️  Claude API error, falling back to OpenAI: {e}")
-            response_json = None
-    
-    # Fall back to OpenAI if Claude failed or unavailable
-    if response_json is None and client:
-        try:
-            print("🔄 Using OpenAI gpt-4o-mini (fallback)...")
-            completion = client.chat.completions.create(
-                model="gpt-4o-mini",  # Faster model - 2-3x speed improvement
-                messages=[
-                    {"role": "system", "content": "You translate weather moods into calm, compassionate guidance for weather-sensitive people."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.3,  # Lower temperature for faster, more consistent responses
-                max_tokens=350,  # Increased to prevent comfort tip truncation (was 300)
-                response_format={"type": "json_object"}
-            )
-            response_text = completion.choices[0].message.content.strip()
-            response_json = json.loads(response_text)
-            ai_provider_used = "openai"
-            print(f"✅ OpenAI response received")
-        except Exception as e:
-            print(f"❌ OpenAI also failed: {e}")
-            raise
-    
-    if response_json is None:
-        raise Exception("No AI provider available (Claude and OpenAI both failed)")
+    try:
+        # Try Claude Haiku first (faster)
+        if claude_client:
+            try:
+                print("🚀 Attempting Claude Haiku (faster)...")
+                # Claude doesn't have native JSON mode, so we add JSON formatting instructions to the prompt
+                json_prompt = prompt + "\n\nIMPORTANT: Respond ONLY with valid JSON. Do not include any text before or after the JSON object. The JSON must match the exact structure specified above."
+                
+                message = claude_client.messages.create(
+                    model="claude-3-5-haiku-20241022",  # Fastest Claude model
+                    max_tokens=350,
+                    temperature=0.3,
+                    system="You translate weather moods into calm, compassionate guidance for weather-sensitive people. Always respond with valid JSON only.",
+                    messages=[{"role": "user", "content": json_prompt}]
+                )
+                response_text = message.content[0].text.strip()
+                
+                # Try to extract JSON if Claude added markdown formatting
+                if "```json" in response_text:
+                    response_text = response_text.split("```json")[1].split("```")[0].strip()
+                elif "```" in response_text:
+                    response_text = response_text.split("```")[1].split("```")[0].strip()
+                
+                response_json = json.loads(response_text)
+                ai_provider_used = "claude"
+                print(f"✅ Claude Haiku response received in ~2-4s")
+            except json.JSONDecodeError as e:
+                print(f"⚠️  Claude response not valid JSON, trying OpenAI: {e}")
+                response_json = None
+            except Exception as e:
+                print(f"⚠️  Claude API error, falling back to OpenAI: {e}")
+                response_json = None
+        
+        # Fall back to OpenAI if Claude failed or unavailable
+        if response_json is None and client:
+            try:
+                print("🔄 Using OpenAI gpt-4o-mini (fallback)...")
+                completion = client.chat.completions.create(
+                    model="gpt-4o-mini",  # Faster model - 2-3x speed improvement
+                    messages=[
+                        {"role": "system", "content": "You translate weather moods into calm, compassionate guidance for weather-sensitive people."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.3,  # Lower temperature for faster, more consistent responses
+                    max_tokens=350,  # Increased to prevent comfort tip truncation (was 300)
+                    response_format={"type": "json_object"}
+                )
+                response_text = completion.choices[0].message.content.strip()
+                response_json = json.loads(response_text)
+                ai_provider_used = "openai"
+                print(f"✅ OpenAI response received")
+            except Exception as e:
+                print(f"❌ OpenAI also failed: {e}")
+                raise
+        
+        if response_json is None:
+            raise Exception("No AI provider available (Claude and OpenAI both failed)")
 
+        # Parse response (same format for both Claude and OpenAI)
         risk = response_json.get("risk", "MODERATE").upper()
         forecast_from_model = response_json.get("forecast")
         why_from_model = response_json.get("why")
@@ -907,7 +909,6 @@ DO NOT: Use numbers/percentages. Mention pain/flare-ups. Add extra sections. Rep
                 daily_comfort_tip = ""
             else:
                 # Track AI-generated tips to prevent duplicates on refresh
-                global _recently_used_comfort_tips
                 # Normalize for comparison (case-insensitive)
                 tip_lower = normalized_tip.lower()
                 # Check if this exact tip (or very similar) was recently used
@@ -960,7 +961,6 @@ DO NOT: Use numbers/percentages. Mention pain/flare-ups. Add extra sections. Rep
     if not daily_comfort_tip:
         # Always generate a comfort tip - PRIORITIZE Eastern medicine (Chinese medicine, Ayurveda)
         # Exclude recently used tips to prevent duplicates on refresh
-        global _recently_used_comfort_tips
         
         # Get Eastern medicine tips, excluding recently used ones
         eastern_tips = [tip for tip in ALLOWED_COMFORT_TIPS 
