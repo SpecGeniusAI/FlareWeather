@@ -893,6 +893,7 @@ Move at the pace that feels right.
             var comfortText = (sanitizeInsightText(filterAppMessages(comfortTip)) ?? comfortTip)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             
             // Validate comfort tip: allow up to 20 words and check for medical tradition source
+            // PRIORITIZE Eastern medicine tips
             if !comfortText.isEmpty {
                 let wordCount = comfortText.components(separatedBy: .whitespaces).filter { !$0.isEmpty }.count
                 let hasMedicalSource = comfortText.lowercased().contains("western medicine") ||
@@ -904,9 +905,18 @@ Move at the pace that feels right.
                                       comfortText.lowercased().contains("suggests") ||
                                       comfortText.lowercased().contains("recommends")
                 
+                let hasEasternSource = comfortText.lowercased().contains("chinese medicine") ||
+                                      comfortText.lowercased().contains("tcm") ||
+                                      comfortText.lowercased().contains("ayurveda") ||
+                                      comfortText.lowercased().contains("traditional chinese")
+                
                 // If it has a medical source and is within word limit, keep it (even if it has some vague language)
                 // Only replace if it's too long OR doesn't have a medical source AND has vague language
+                // If it's Western medicine only (no Eastern), prefer to replace with Eastern medicine tip
                 if wordCount > 20 || (!hasMedicalSource && containsVagueLanguage(comfortText)) {
+                    comfortText = getApprovedComfortTip()
+                } else if hasMedicalSource && !hasEasternSource && Double.random(in: 0...1) < 0.3 {
+                    // 30% chance to replace Western-only tips with Eastern medicine tips for more education
                     comfortText = getApprovedComfortTip()
                 }
             } else {
@@ -1747,34 +1757,48 @@ Move at the pace that feels right.
         return combined
     }
     
-    /// Get an approved comfort tip (up to 20 words, includes Western/Eastern medicine sources, immediately doable, not medical)
+    /// Get an approved comfort tip (up to 20 words, PRIORITIZES Eastern medicine for education)
     private func getApprovedComfortTip() -> String {
         let approvedTips = [
-            // Western medicine tips
-            "Western medicine suggests gentle stretching to ease muscle tension.",
-            "Western medicine recommends staying warm and hydrated during weather shifts.",
-            "Western medicine suggests taking short breaks throughout the day.",
-            
-            // Chinese medicine (TCM) tips
+            // Chinese medicine (TCM) tips - PRIORITIZED
             "Chinese medicine suggests a 5-minute tai-chi routine to ease muscle tension.",
             "Chinese medicine recommends acupressure on the LI4 point for headache relief.",
             "Chinese medicine suggests warm ginger tea to support circulation during cold shifts.",
             "Chinese medicine recommends gentle qigong movements to ease joint stiffness.",
+            "Chinese medicine suggests warming the lower back with a hot water bottle to support kidney energy.",
+            "Chinese medicine recommends massaging the GB20 points at the base of the skull for tension relief.",
             
-            // Ayurveda tips
+            // Ayurveda tips - PRIORITIZED
             "Ayurveda suggests warm oil massage to support joint mobility.",
             "Ayurveda recommends gentle yoga stretches to ease muscle tension.",
             "Ayurveda suggests staying warm with layers during temperature drops.",
+            "Ayurveda recommends sipping warm water with ginger to support digestion and circulation.",
+            "Ayurveda suggests a warm sesame oil massage to balance vata dosha during weather shifts.",
             
-            // Combined approaches
-            "Western medicine suggests gentle movement; Chinese medicine recommends tai-chi for muscle tension.",
-            "For joint stiffness, Western medicine suggests stretching; Ayurveda recommends warm oil massage.",
+            // Western medicine tips (less prioritized)
+            "Western medicine suggests gentle stretching to ease muscle tension.",
+            "Western medicine recommends staying warm and hydrated during weather shifts.",
+            "Western medicine suggests taking short breaks throughout the day.",
             
-            // General fallbacks (if no specific tradition fits)
+            // Combined approaches (prefer Eastern + Western)
+            "Chinese medicine recommends tai-chi for muscle tension; Western medicine suggests gentle movement.",
+            "For joint stiffness, Ayurveda recommends warm oil massage; Western medicine suggests stretching.",
+            
+            // General fallbacks
             "Take short pauses through the day when your body needs them.",
             "Move gently at your own pace and listen to your body.",
             "Stay warm and keep hydrated to support your body through shifts."
         ]
+        
+        // Prioritize Eastern medicine tips (70% chance)
+        let easternTips = approvedTips.filter { tip in
+            tip.lowercased().contains("chinese medicine") || tip.lowercased().contains("ayurveda")
+        }
+        
+        if !easternTips.isEmpty && Double.random(in: 0...1) < 0.7 {
+            return easternTips.randomElement() ?? approvedTips[0]
+        }
+        
         return approvedTips.randomElement() ?? approvedTips[0]
     }
     
