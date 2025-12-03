@@ -1111,15 +1111,7 @@ struct DailyInsightCardView: View {
                         }
                     }
                     
-                    // Closing line
-                    if let signOff = sections.signOff, !signOff.isEmpty {
-                        Text(signOff)
-                            .font(.interBody)
-                            .foregroundColor(Color.adaptiveMuted)
-                            .lineSpacing(4)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.top, 4)
-                    }
+                    // Sign-off removed per user request - no longer displayed
                     
                     // Don't show supportNote if there's already a comfort tip (prevents duplicate comfort tips)
                     // Only show supportNote if there's no comfort tip from the parsed sections
