@@ -844,6 +844,20 @@ DO NOT: Use numbers/percentages. Mention pain/flare-ups. Add extra sections. Rep
             if word_count > 20 or (normalized_tip.lower() not in allowed_normalized and not has_medical_source):
                 # Too long or doesn't have medical source and not in allowed list
                 daily_comfort_tip = ""
+            else:
+                # Track AI-generated tips to prevent duplicates on refresh
+                global _recently_used_comfort_tips
+                # Normalize for comparison (case-insensitive)
+                tip_lower = normalized_tip.lower()
+                # Check if this exact tip (or very similar) was recently used
+                if any(tip_lower == existing.lower() for existing in _recently_used_comfort_tips):
+                    # This tip was recently used, regenerate it
+                    daily_comfort_tip = ""
+                else:
+                    # Track this tip as recently used (keep last 5)
+                    _recently_used_comfort_tips.append(normalized_tip)
+                    if len(_recently_used_comfort_tips) > 5:
+                        _recently_used_comfort_tips.pop(0)  # Remove oldest
     except Exception as exc:  # noqa: BLE001
         print(f"❌ Error generating daily insight JSON: {exc}")
         import traceback
