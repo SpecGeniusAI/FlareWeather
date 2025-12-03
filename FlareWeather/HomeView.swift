@@ -759,8 +759,8 @@ struct HomeView: View {
     }
 }
 
-private // Prominent loading overlay for insights processing
-struct LoadingOverlayView: View {
+// Prominent loading overlay for insights processing
+private struct LoadingOverlayView: View {
     @State private var rotation: Double = 0
     @State private var scale: CGFloat = 1.0
     
@@ -788,7 +788,7 @@ struct LoadingOverlayView: View {
                 // Loading text
                 VStack(spacing: 8) {
                     Text("Analyzing Weather Patterns")
-                        .font(.interTitle2)
+                        .font(.interTitle)
                         .foregroundColor(Color.adaptiveText)
                     
                     Text("This will just take a moment...")
@@ -820,7 +820,7 @@ struct LoadingOverlayView: View {
     }
 }
 
-struct LogoWordmarkView: View {
+private struct LogoWordmarkView: View {
     var body: some View {
         HStack(spacing: 8) {
             Image("AppLogo")
