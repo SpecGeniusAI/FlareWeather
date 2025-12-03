@@ -94,7 +94,7 @@ def _format_daily_message(
 
 
 ALLOWED_COMFORT_TIPS = [
-    # Chinese medicine (TCM) tips - PRIORITIZED for education
+    # Chinese medicine (TCM) tips - PRIORITIZED for education (expanded for variety)
     "Chinese medicine suggests a 5-minute tai-chi routine to ease muscle tension.",
     "Chinese medicine recommends acupressure on the LI4 point for headache relief.",
     "Chinese medicine suggests warm ginger tea to support circulation during cold shifts.",
@@ -102,24 +102,35 @@ ALLOWED_COMFORT_TIPS = [
     "Chinese medicine suggests warming the lower back with a hot water bottle to support kidney energy.",
     "Chinese medicine recommends massaging the GB20 points at the base of the skull for tension relief.",
     "Chinese medicine suggests slow, mindful breathing exercises to calm the nervous system.",
-    # Ayurveda tips - PRIORITIZED for education
+    "Chinese medicine recommends the Baihui point (top of head) for mental clarity during weather shifts.",
+    "Chinese medicine suggests foot soaks with warm water and Epsom salt to support circulation.",
+    "Chinese medicine recommends gentle neck stretches to release tension in the upper body.",
+    "Chinese medicine suggests applying warm compresses to the lower abdomen to support digestion.",
+    "Chinese medicine recommends the Yongquan point (sole of foot) massage for grounding energy.",
+    # Ayurveda tips - PRIORITIZED for education (expanded for variety)
     "Ayurveda suggests warm oil massage to support joint mobility.",
     "Ayurveda recommends gentle yoga stretches to ease muscle tension.",
     "Ayurveda suggests staying warm with layers during temperature drops.",
     "Ayurveda recommends sipping warm water with ginger to support digestion and circulation.",
     "Ayurveda suggests a warm sesame oil massage to balance vata dosha during weather shifts.",
     "Ayurveda recommends gentle pranayama breathing to calm the nervous system.",
-    # Western medicine tips (less prioritized)
+    "Ayurveda suggests abhyanga (self-massage) with warm coconut oil for joint support.",
+    "Ayurveda recommends nasya (nasal oil drops) to support sinus health during pressure changes.",
+    "Ayurveda suggests drinking warm herbal teas like turmeric or tulsi to support immunity.",
+    "Ayurveda recommends gentle twists and forward folds in yoga to ease stiffness.",
+    "Ayurveda suggests grounding practices like walking barefoot on grass when possible.",
+    "Ayurveda recommends warm baths with Epsom salt to support muscle relaxation.",
+    # Western medicine tips (less prioritized, fewer options)
     "Western medicine suggests gentle stretching to ease muscle tension.",
     "Western medicine recommends staying warm and hydrated during weather shifts.",
     "Western medicine suggests taking short breaks throughout the day.",
     # Combined approaches (prefer Eastern + Western)
     "Chinese medicine recommends tai-chi for muscle tension; Western medicine suggests gentle movement.",
     "For joint stiffness, Ayurveda recommends warm oil massage; Western medicine suggests stretching.",
-    # General fallbacks (if no specific tradition fits)
+    "Chinese medicine suggests acupressure; Western medicine recommends staying hydrated.",
+    # General fallbacks (if no specific tradition fits - minimal use)
     "Take short pauses through the day when your body needs them.",
-    "Move gently at your own pace and listen to your body.",
-    "Stay warm and keep hydrated to support your body through shifts."
+    "Move gently at your own pace and listen to your body."
 ]
 
 
@@ -759,22 +770,29 @@ def generate_flare_risk_assessment(
 
     prompt = f"""FlareWeather Assistant. Location: {location_str}. Weather: {weather_descriptor}. Hourly: {hourly_note}. User: {diagnoses_str}{sensitivities_context}
 
+CRITICAL VARIETY REQUIREMENTS:
+- VARY your comfort tip selections - rotate through different Eastern medicine approaches (tai-chi, acupressure, qigong, ginger tea, oil massage, breathing, etc.)
+- VARY your summary sentences - use different weather descriptions and impact statements
+- VARY your why_line explanations - use different mechanisms and body systems
+- Even for LOW risk days, ensure variety in language and approach
+- NEVER repeat the same comfort tip or insight phrasing
+
 STYLE: Grade 12 vocab. No numbers/units. Tentative language (may, might). Short sentences. Reference user conditions when relevant.
 
 OUTPUT JSON:
 {{
   "risk": "LOW | MODERATE | HIGH",
-  "forecast": "Actionable headline with risk context. Examples: 'Seize the day — low flare risk' or 'Plan ahead — moderate risk'. No numbers.",
-  "why": "Brief why bodies may notice",
+  "forecast": "Actionable headline with risk context. VARY your phrasing. Examples: 'Seize the day — low flare risk' or 'Plan ahead — moderate risk'. No numbers.",
+  "why": "Brief why bodies may notice. VARY your explanations.",
   "daily_insight": {{
-    "summary_sentence": "REQUIRED: '[Weather] which could [impact].' Example: 'Cool air with heavy humidity which could increase joint stiffness, especially for those with arthritis.'",
-    "why_line": "REQUIRED: Explain the specific mechanism in concrete terms. Avoid vague phrases like 'increase sensitivity' or 'added discomfort'. Instead, explain WHAT happens: 'Dropping pressure causes joint tissues to expand, which presses against nerve endings and creates stiffness' or 'High humidity makes the body retain more fluid, which can increase inflammation in sensitive joints'. Be educational and specific about the physical process.",
-    "comfort_tip": "REQUIRED for ALL risk levels (LOW, MODERATE, HIGH). Up to 20 words. ALWAYS PRIORITIZE Eastern medicine (Chinese medicine/TCM or Ayurveda) over Western medicine - they offer more educational and holistic approaches. For LOW risk days, still use Eastern medicine. MUST include medical source: 'Chinese medicine recommends...', 'Ayurveda suggests...', or 'Western medicine suggests...'. Be specific and educational. Match weather/symptoms. Always include a tip.",
-    "sign_off": "One calm sign-off sentence"
+    "summary_sentence": "REQUIRED: '[Weather] which could [impact].' VARY your weather descriptions and impacts. Example: 'Cool air with heavy humidity which could increase joint stiffness, especially for those with arthritis.' Use different phrasing each time.",
+    "why_line": "REQUIRED: Explain the specific mechanism in concrete terms. VARY which body systems and mechanisms you mention. Avoid vague phrases like 'increase sensitivity' or 'added discomfort'. Instead, explain WHAT happens: 'Dropping pressure causes joint tissues to expand, which presses against nerve endings and creates stiffness' or 'High humidity makes the body retain more fluid, which can increase inflammation in sensitive joints'. Rotate through different explanations.",
+    "comfort_tip": "REQUIRED for ALL risk levels (LOW, MODERATE, HIGH). Up to 20 words. ALWAYS PRIORITIZE Eastern medicine (Chinese medicine/TCM or Ayurveda) over Western medicine. VARY your selections - rotate through tai-chi, acupressure, qigong, ginger tea, oil massage, breathing exercises, etc. For LOW risk days, still use Eastern medicine. MUST include medical source: 'Chinese medicine recommends...', 'Ayurveda suggests...', or 'Western medicine suggests...'. Be specific and educational. Match weather/symptoms. Always include a tip.",
+    "sign_off": "One calm sign-off sentence. VARY your phrasing."
   }}
 }}
 
-DO NOT: Use numbers/percentages. Mention pain/flare-ups. Add extra sections."""
+DO NOT: Use numbers/percentages. Mention pain/flare-ups. Add extra sections. Repeat the same phrases."""
 
     risk = "MODERATE"
     forecast_from_model: Optional[str] = None
@@ -866,17 +884,24 @@ DO NOT: Use numbers/percentages. Mention pain/flare-ups. Add extra sections."""
 
     if not daily_comfort_tip:
         # Always generate a comfort tip - PRIORITIZE Eastern medicine (Chinese medicine, Ayurveda)
-        # First try Eastern medicine tips (more educational)
+        # Shuffle for variety - ensures different tips each time
         eastern_tips = [tip for tip in ALLOWED_COMFORT_TIPS if any(source in tip.lower() for source in ["chinese medicine", "ayurveda", "tcm"])]
         if eastern_tips:
-            daily_comfort_tip = random.choice(eastern_tips)
+            # Shuffle for maximum variety
+            shuffled_eastern = eastern_tips.copy()
+            random.shuffle(shuffled_eastern)
+            daily_comfort_tip = shuffled_eastern[0]
         else:
             # Fallback to any tip with medical source
             tips_with_sources = [tip for tip in ALLOWED_COMFORT_TIPS if any(source in tip.lower() for source in ["western medicine", "chinese medicine", "ayurveda"])]
             if tips_with_sources:
-                daily_comfort_tip = random.choice(tips_with_sources)
+                shuffled_sources = tips_with_sources.copy()
+                random.shuffle(shuffled_sources)
+                daily_comfort_tip = shuffled_sources[0]
             else:
-                daily_comfort_tip = random.choice(ALLOWED_COMFORT_TIPS)
+                shuffled_all = ALLOWED_COMFORT_TIPS.copy()
+                random.shuffle(shuffled_all)
+                daily_comfort_tip = shuffled_all[0]
 
     daily_sign_off = daily_sign_off or _choose_sign_off(user_diagnoses, location)
 
