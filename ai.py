@@ -94,27 +94,32 @@ def _format_daily_message(
 
 
 ALLOWED_COMFORT_TIPS = [
-    # Western medicine tips
-    "Western medicine suggests gentle stretching to ease muscle tension.",
-    "Western medicine recommends staying warm and hydrated during weather shifts.",
-    "Western medicine suggests taking short breaks throughout the day.",
-    # Chinese medicine (TCM) tips
+    # Chinese medicine (TCM) tips - PRIORITIZED for education
     "Chinese medicine suggests a 5-minute tai-chi routine to ease muscle tension.",
     "Chinese medicine recommends acupressure on the LI4 point for headache relief.",
     "Chinese medicine suggests warm ginger tea to support circulation during cold shifts.",
     "Chinese medicine recommends gentle qigong movements to ease joint stiffness.",
-    # Ayurveda tips
+    "Chinese medicine suggests warming the lower back with a hot water bottle to support kidney energy.",
+    "Chinese medicine recommends massaging the GB20 points at the base of the skull for tension relief.",
+    "Chinese medicine suggests slow, mindful breathing exercises to calm the nervous system.",
+    # Ayurveda tips - PRIORITIZED for education
     "Ayurveda suggests warm oil massage to support joint mobility.",
     "Ayurveda recommends gentle yoga stretches to ease muscle tension.",
     "Ayurveda suggests staying warm with layers during temperature drops.",
-    # Combined approaches
-    "Western medicine suggests gentle movement; Chinese medicine recommends tai-chi for muscle tension.",
-    "For joint stiffness, Western medicine suggests stretching; Ayurveda recommends warm oil massage.",
+    "Ayurveda recommends sipping warm water with ginger to support digestion and circulation.",
+    "Ayurveda suggests a warm sesame oil massage to balance vata dosha during weather shifts.",
+    "Ayurveda recommends gentle pranayama breathing to calm the nervous system.",
+    # Western medicine tips (less prioritized)
+    "Western medicine suggests gentle stretching to ease muscle tension.",
+    "Western medicine recommends staying warm and hydrated during weather shifts.",
+    "Western medicine suggests taking short breaks throughout the day.",
+    # Combined approaches (prefer Eastern + Western)
+    "Chinese medicine recommends tai-chi for muscle tension; Western medicine suggests gentle movement.",
+    "For joint stiffness, Ayurveda recommends warm oil massage; Western medicine suggests stretching.",
     # General fallbacks (if no specific tradition fits)
     "Take short pauses through the day when your body needs them.",
     "Move gently at your own pace and listen to your body.",
-    "Stay warm and keep hydrated to support your body through shifts.",
-    "Your well-being comes first today."
+    "Stay warm and keep hydrated to support your body through shifts."
 ]
 
 
@@ -763,8 +768,8 @@ OUTPUT JSON:
   "why": "Brief why bodies may notice",
   "daily_insight": {{
     "summary_sentence": "REQUIRED: '[Weather] which could [impact].' Example: 'Cool air with heavy humidity which could increase joint stiffness, especially for those with arthritis.'",
-    "why_line": "REQUIRED: Explain mechanism. Example: 'For those with arthritis, dropping pressure can cause tissues to expand, increasing pressure on sensitive joints.'",
-    "comfort_tip": "REQUIRED if MODERATE/HIGH. Up to 20 words. MUST include medical source: 'Western medicine suggests...', 'Chinese medicine recommends...', or 'Ayurveda suggests...'. Be specific. Match weather/symptoms. If LOW, leave empty.",
+    "why_line": "REQUIRED: Explain the specific mechanism in concrete terms. Avoid vague phrases like 'increase sensitivity' or 'added discomfort'. Instead, explain WHAT happens: 'Dropping pressure causes joint tissues to expand, which presses against nerve endings and creates stiffness' or 'High humidity makes the body retain more fluid, which can increase inflammation in sensitive joints'. Be educational and specific about the physical process.",
+    "comfort_tip": "REQUIRED if MODERATE/HIGH. Up to 20 words. PRIORITIZE Eastern medicine (Chinese medicine/TCM or Ayurveda) over Western medicine - they offer more educational and holistic approaches. MUST include medical source: 'Chinese medicine recommends...', 'Ayurveda suggests...', or 'Western medicine suggests...'. Be specific and educational. Match weather/symptoms. If LOW, leave empty.",
     "sign_off": "One calm sign-off sentence"
   }}
 }}
@@ -853,20 +858,25 @@ DO NOT: Use numbers/percentages. Mention pain/flare-ups. Add extra sections."""
 
     if not daily_why_line:
         if severity_label == "sharp":
-            daily_why_line = "Rapid cues may leave sensitive bodies feeling more reactive."
+            daily_why_line = "Rapid pressure changes cause joint tissues to expand and contract quickly, which can press against nerve endings and create stiffness or tension."
         elif severity_label == "moderate":
-            daily_why_line = "Mixed cues may feel a touch less steady."
+            daily_why_line = "Weather shifts can cause subtle changes in body fluid retention and circulation, which may make joints or muscles feel less stable."
         else:
-            daily_why_line = "Steady cues often feel easier on the body."
+            daily_why_line = "Stable weather patterns allow the body's systems to maintain consistent fluid balance and circulation, which often feels more comfortable."
 
     if not daily_comfort_tip and risk != "LOW":
-        # Randomly select a comfort tip with medical tradition source for variety
-        # Prefer tips with medical sources (Western, Chinese, Ayurveda)
-        tips_with_sources = [tip for tip in ALLOWED_COMFORT_TIPS if any(source in tip.lower() for source in ["western medicine", "chinese medicine", "ayurveda"])]
-        if tips_with_sources:
-            daily_comfort_tip = random.choice(tips_with_sources)
+        # Randomly select a comfort tip - PRIORITIZE Eastern medicine (Chinese medicine, Ayurveda)
+        # First try Eastern medicine tips (more educational)
+        eastern_tips = [tip for tip in ALLOWED_COMFORT_TIPS if any(source in tip.lower() for source in ["chinese medicine", "ayurveda", "tcm"])]
+        if eastern_tips:
+            daily_comfort_tip = random.choice(eastern_tips)
         else:
-            daily_comfort_tip = random.choice(ALLOWED_COMFORT_TIPS)
+            # Fallback to any tip with medical source
+            tips_with_sources = [tip for tip in ALLOWED_COMFORT_TIPS if any(source in tip.lower() for source in ["western medicine", "chinese medicine", "ayurveda"])]
+            if tips_with_sources:
+                daily_comfort_tip = random.choice(tips_with_sources)
+            else:
+                daily_comfort_tip = random.choice(ALLOWED_COMFORT_TIPS)
     elif not daily_comfort_tip:
         daily_comfort_tip = ""
 
