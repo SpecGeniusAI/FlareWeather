@@ -244,7 +244,7 @@ final class AIInsightsService: ObservableObject {
         text = text.replacingOccurrences(of: "**", with: "")
         text = text.replacingOccurrences(of: "*", with: "")
         text = text.replacingOccurrences(of: "_", with: "")
-        text = text.replacingOccurrences(of: "- ", with: "") // Remove bullet-style dashes
+        text = text.replacingOccurrences(of: "- ", with: "") // Remove bullet-style dashes (but keep hyphens in words like "tai-chi")
         text = text.replacingOccurrences(of: "•", with: "")
         text = text.replacingOccurrences(of: "  ", with: " ") // Collapse double spaces
         

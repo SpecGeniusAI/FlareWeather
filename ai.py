@@ -813,7 +813,7 @@ DO NOT: Use numbers/percentages. Mention pain/flare-ups. Add extra sections. Rep
                 {"role": "user", "content": prompt}
             ],
             temperature=0.3,  # Lower temperature for faster, more consistent responses
-            max_tokens=300,  # Reduced further for faster generation (critical for UX)
+            max_tokens=350,  # Increased to prevent comfort tip truncation (was 300)
             response_format={"type": "json_object"}
         )
         response_text = completion.choices[0].message.content.strip()
