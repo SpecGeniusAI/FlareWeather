@@ -732,6 +732,12 @@ def generate_flare_risk_assessment(
     hourly_forecast: Optional[List[Dict[str, float]]] = None
 ) -> Tuple[str, str, str, str, List[str], Optional[str], str, int, Optional[str], Optional[str]]:
     """Generate a daily flare insight that obeys strict formatting rules."""
+    global _recently_used_comfort_tips  # Declare global at function level
+    
+    # Initialize global variable if it doesn't exist (MUST be before try block)
+    if '_recently_used_comfort_tips' not in globals() or _recently_used_comfort_tips is None:
+        _recently_used_comfort_tips = []
+    
     if not client:
         fallback_message = _format_daily_message(
             "Weather feels steady today.",
@@ -912,7 +918,8 @@ DO NOT: Use numbers/percentages. Mention pain/flare-ups. Add extra sections. Rep
                 # Normalize for comparison (case-insensitive)
                 tip_lower = normalized_tip.lower()
                 # Use local copy to avoid scoping issues in list comprehension
-                recent_tips_list = list(_recently_used_comfort_tips)  # Create local copy
+                # Ensure we have a valid list (should already be initialized at function start)
+                recent_tips_list = list(_recently_used_comfort_tips) if _recently_used_comfort_tips else []
                 # Check if this exact tip (or very similar) was recently used
                 if any(tip_lower == existing.lower() for existing in recent_tips_list):
                     # This tip was recently used, regenerate it
