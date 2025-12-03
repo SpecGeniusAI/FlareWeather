@@ -15,6 +15,22 @@ load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=api_key) if api_key else None
 
+# Initialize Claude client (Anthropic) - faster alternative
+try:
+    from anthropic import Anthropic
+    claude_api_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("CLAUDE_API_KEY")
+    claude_client = Anthropic(api_key=claude_api_key) if claude_api_key else None
+    if claude_client:
+        print("✅ Claude (Anthropic) client initialized - will use for faster insights")
+    else:
+        print("ℹ️  Claude API key not found - will use OpenAI only")
+except ImportError:
+    print("⚠️  Anthropic SDK not installed - install with: pip install anthropic")
+    claude_client = None
+except Exception as e:
+    print(f"⚠️  Claude client initialization error: {e}")
+    claude_client = None
+
 
 def _describe_temperature(value: float) -> str:
     if value <= 2:
@@ -803,21 +819,66 @@ DO NOT: Use numbers/percentages. Mention pain/flare-ups. Add extra sections. Rep
     daily_comfort_tip: str = ""
     daily_sign_off: Optional[str] = None
 
-    try:
-        # OPTIMIZATION: Use gpt-4o-mini for 2-3x faster response (still excellent quality)
-        # This significantly improves user experience by reducing wait time from 20-30s to 8-12s
-        completion = client.chat.completions.create(
-            model="gpt-4o-mini",  # Faster model - 2-3x speed improvement
-            messages=[
-                {"role": "system", "content": "You translate weather moods into calm, compassionate guidance for weather-sensitive people."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.3,  # Lower temperature for faster, more consistent responses
-            max_tokens=350,  # Increased to prevent comfort tip truncation (was 300)
-            response_format={"type": "json_object"}
-        )
-        response_text = completion.choices[0].message.content.strip()
-        response_json = json.loads(response_text)
+    # Try Claude Haiku first (2-4x faster), fall back to OpenAI if unavailable
+    response_json = None
+    ai_provider_used = None
+    
+    # Try Claude Haiku first (faster)
+    if claude_client:
+        try:
+            print("🚀 Attempting Claude Haiku (faster)...")
+            # Claude doesn't have native JSON mode, so we add JSON formatting instructions to the prompt
+            json_prompt = prompt + "\n\nIMPORTANT: Respond ONLY with valid JSON. Do not include any text before or after the JSON object. The JSON must match the exact structure specified above."
+            
+            message = claude_client.messages.create(
+                model="claude-3-5-haiku-20241022",  # Fastest Claude model
+                max_tokens=350,
+                temperature=0.3,
+                system="You translate weather moods into calm, compassionate guidance for weather-sensitive people. Always respond with valid JSON only.",
+                messages=[{"role": "user", "content": json_prompt}]
+            )
+            response_text = message.content[0].text.strip()
+            
+            # Try to extract JSON if Claude added markdown formatting
+            if "```json" in response_text:
+                response_text = response_text.split("```json")[1].split("```")[0].strip()
+            elif "```" in response_text:
+                response_text = response_text.split("```")[1].split("```")[0].strip()
+            
+            response_json = json.loads(response_text)
+            ai_provider_used = "claude"
+            print(f"✅ Claude Haiku response received in ~2-4s")
+        except json.JSONDecodeError as e:
+            print(f"⚠️  Claude response not valid JSON, trying OpenAI: {e}")
+            response_json = None
+        except Exception as e:
+            print(f"⚠️  Claude API error, falling back to OpenAI: {e}")
+            response_json = None
+    
+    # Fall back to OpenAI if Claude failed or unavailable
+    if response_json is None and client:
+        try:
+            print("🔄 Using OpenAI gpt-4o-mini (fallback)...")
+            completion = client.chat.completions.create(
+                model="gpt-4o-mini",  # Faster model - 2-3x speed improvement
+                messages=[
+                    {"role": "system", "content": "You translate weather moods into calm, compassionate guidance for weather-sensitive people."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3,  # Lower temperature for faster, more consistent responses
+                max_tokens=350,  # Increased to prevent comfort tip truncation (was 300)
+                response_format={"type": "json_object"}
+            )
+            response_text = completion.choices[0].message.content.strip()
+            response_json = json.loads(response_text)
+            ai_provider_used = "openai"
+            print(f"✅ OpenAI response received")
+        except Exception as e:
+            print(f"❌ OpenAI also failed: {e}")
+            raise
+    
+    if response_json is None:
+        raise Exception("No AI provider available (Claude and OpenAI both failed)")
 
         risk = response_json.get("risk", "MODERATE").upper()
         forecast_from_model = response_json.get("forecast")
@@ -1733,22 +1794,65 @@ BAD EXAMPLE (repeating):
 - Day 3: "Low flare risk — stable pattern"
 """
 
-    try:
-        completion = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You produce calm weekly outlooks in plain language and valid JSON. CRITICAL RULES: 1) Each daily_pattern descriptor MUST include BOTH the risk level prefix AND the descriptive text after the dash. Example: 'Low flare risk — steady pressure' NOT just 'Low flare risk'. 2) You MUST use ONLY the approved descriptors from the lists provided - NEVER create new phrases. 3) ABSOLUTELY FORBIDDEN vague phrases: 'a bit more', 'a bit', 'bit more', 'more', 'a bit easier', 'a bit achy', 'bit achy', 'more stable', 'at ease', 'more balanced', 'steady conditions'. 4) If you use any vague phrase not in the approved lists, your response will be rejected. 5) The descriptor after the dash is REQUIRED and provides value to users - use approved phrases only. 6) MOST IMPORTANT: You MUST use the exact risk level from [SUGGESTED RISK: X] hints in the weather data. If a hint says 'Moderate' or 'High', you MUST use that risk level - DO NOT default to 'Low'. Your response will be rejected if you ignore the suggested risk levels."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.5,
-            response_format={"type": "json_object"}
-        )
-        response_text = completion.choices[0].message.content.strip().strip("` ")
-        response_data = json.loads(response_text)
-    except Exception as exc:  # noqa: BLE001
-        print(f"❌ Error generating weekly forecast insight: {exc}")
-        import traceback
-        traceback.print_exc()
+    # Try Claude Haiku first (faster), fall back to OpenAI
+    response_data = None
+    
+    weekly_system_prompt = "You produce calm weekly outlooks in plain language and valid JSON. CRITICAL RULES: 1) Each daily_pattern descriptor MUST include BOTH the risk level prefix AND the descriptive text after the dash. Example: 'Low flare risk — steady pressure' NOT just 'Low flare risk'. 2) You MUST use ONLY the approved descriptors from the lists provided - NEVER create new phrases. 3) ABSOLUTELY FORBIDDEN vague phrases: 'a bit more', 'a bit', 'bit more', 'more', 'a bit easier', 'a bit achy', 'bit achy', 'more stable', 'at ease', 'more balanced', 'steady conditions'. 4) If you use any vague phrase not in the approved lists, your response will be rejected. 5) The descriptor after the dash is REQUIRED and provides value to users - use approved phrases only. 6) MOST IMPORTANT: You MUST use the exact risk level from [SUGGESTED RISK: X] hints in the weather data. If a hint says 'Moderate' or 'High', you MUST use that risk level - DO NOT default to 'Low'. Your response will be rejected if you ignore the suggested risk levels. Always respond with valid JSON only."
+    
+    if claude_client:
+        try:
+            print("🚀 Attempting Claude Haiku for weekly insight (faster)...")
+            json_prompt = prompt + "\n\nIMPORTANT: Respond ONLY with valid JSON. Do not include any text before or after the JSON object. The JSON must match the exact structure specified above."
+            
+            message = claude_client.messages.create(
+                model="claude-3-5-haiku-20241022",
+                max_tokens=800,  # Weekly insights need more tokens
+                temperature=0.5,
+                system=weekly_system_prompt,
+                messages=[{"role": "user", "content": json_prompt}]
+            )
+            response_text = message.content[0].text.strip()
+            
+            # Try to extract JSON if Claude added markdown formatting
+            if "```json" in response_text:
+                response_text = response_text.split("```json")[1].split("```")[0].strip()
+            elif "```" in response_text:
+                response_text = response_text.split("```")[1].split("```")[0].strip()
+            
+            response_data = json.loads(response_text)
+            print(f"✅ Claude Haiku weekly insight received")
+        except json.JSONDecodeError as e:
+            print(f"⚠️  Claude weekly response not valid JSON, trying OpenAI: {e}")
+            response_data = None
+        except Exception as e:
+            print(f"⚠️  Claude weekly API error, falling back to OpenAI: {e}")
+            response_data = None
+    
+    if response_data is None and client:
+        try:
+            print("🔄 Using OpenAI gpt-4o-mini for weekly insight (fallback)...")
+            completion = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": weekly_system_prompt},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.5,
+                response_format={"type": "json_object"}
+            )
+            response_text = completion.choices[0].message.content.strip().strip("` ")
+            response_data = json.loads(response_text)
+        except Exception as exc:  # noqa: BLE001
+            print(f"❌ Error generating weekly forecast insight: {exc}")
+            import traceback
+            traceback.print_exc()
+            fallback = json.dumps({
+                "weekly_summary": "Weekly outlook is unavailable right now.",
+                "daily_breakdown": []
+            })
+            return (fallback, [])
+    
+    if response_data is None:
         fallback = json.dumps({
             "weekly_summary": "Weekly outlook is unavailable right now.",
             "daily_breakdown": []

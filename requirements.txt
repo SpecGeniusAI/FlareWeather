@@ -3,6 +3,7 @@ uvicorn
 pandas
 numpy
 openai
+anthropic
 python-dotenv
 pydantic
 email-validator
