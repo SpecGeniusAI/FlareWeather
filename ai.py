@@ -911,10 +911,10 @@ DO NOT: Use numbers/percentages. Mention pain/flare-ups. Add extra sections. Rep
                 # Track AI-generated tips to prevent duplicates on refresh
                 # Normalize for comparison (case-insensitive)
                 tip_lower = normalized_tip.lower()
-                # Ensure list exists before checking
-                recent_tips = _recently_used_comfort_tips if '_recently_used_comfort_tips' in globals() else []
+                # Use local copy to avoid scoping issues in list comprehension
+                recent_tips_list = list(_recently_used_comfort_tips)  # Create local copy
                 # Check if this exact tip (or very similar) was recently used
-                if any(tip_lower == existing.lower() for existing in recent_tips):
+                if any(tip_lower == existing.lower() for existing in recent_tips_list):
                     # This tip was recently used, regenerate it
                     daily_comfort_tip = ""
                 else:
