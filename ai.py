@@ -911,8 +911,10 @@ DO NOT: Use numbers/percentages. Mention pain/flare-ups. Add extra sections. Rep
                 # Track AI-generated tips to prevent duplicates on refresh
                 # Normalize for comparison (case-insensitive)
                 tip_lower = normalized_tip.lower()
+                # Ensure list exists before checking
+                recent_tips = _recently_used_comfort_tips if '_recently_used_comfort_tips' in globals() else []
                 # Check if this exact tip (or very similar) was recently used
-                if any(tip_lower == existing.lower() for existing in _recently_used_comfort_tips):
+                if any(tip_lower == existing.lower() for existing in recent_tips):
                     # This tip was recently used, regenerate it
                     daily_comfort_tip = ""
                 else:
@@ -962,15 +964,19 @@ DO NOT: Use numbers/percentages. Mention pain/flare-ups. Add extra sections. Rep
         # Always generate a comfort tip - PRIORITIZE Eastern medicine (Chinese medicine, Ayurveda)
         # Exclude recently used tips to prevent duplicates on refresh
         
+        # Ensure list exists before using in list comprehension
+        recent_tips = _recently_used_comfort_tips if '_recently_used_comfort_tips' in globals() else []
+        
         # Get Eastern medicine tips, excluding recently used ones
         eastern_tips = [tip for tip in ALLOWED_COMFORT_TIPS 
                        if any(source in tip.lower() for source in ["chinese medicine", "ayurveda", "tcm"])
-                       and tip not in _recently_used_comfort_tips]
+                       and tip not in recent_tips]
         
         if not eastern_tips:
             # If all Eastern tips were recently used, reset and use all Eastern tips
             eastern_tips = [tip for tip in ALLOWED_COMFORT_TIPS 
                            if any(source in tip.lower() for source in ["chinese medicine", "ayurveda", "tcm"])]
+            recent_tips = []  # Reset tracking
             _recently_used_comfort_tips = []  # Reset tracking
         
         if eastern_tips:
@@ -982,12 +988,13 @@ DO NOT: Use numbers/percentages. Mention pain/flare-ups. Add extra sections. Rep
             # Fallback to any tip with medical source (excluding recently used)
             tips_with_sources = [tip for tip in ALLOWED_COMFORT_TIPS 
                                 if any(source in tip.lower() for source in ["western medicine", "chinese medicine", "ayurveda"])
-                                and tip not in _recently_used_comfort_tips]
+                                and tip not in recent_tips]
             
             if not tips_with_sources:
                 # Reset if all tips were used
                 tips_with_sources = [tip for tip in ALLOWED_COMFORT_TIPS 
                                     if any(source in tip.lower() for source in ["western medicine", "chinese medicine", "ayurveda"])]
+                recent_tips = []
                 _recently_used_comfort_tips = []
             
             if tips_with_sources:
@@ -996,9 +1003,10 @@ DO NOT: Use numbers/percentages. Mention pain/flare-ups. Add extra sections. Rep
                 daily_comfort_tip = shuffled_sources[0]
             else:
                 # Final fallback
-                available_tips = [tip for tip in ALLOWED_COMFORT_TIPS if tip not in _recently_used_comfort_tips]
+                available_tips = [tip for tip in ALLOWED_COMFORT_TIPS if tip not in recent_tips]
                 if not available_tips:
                     available_tips = ALLOWED_COMFORT_TIPS
+                    recent_tips = []
                     _recently_used_comfort_tips = []
                 shuffled_all = available_tips.copy()
                 random.shuffle(shuffled_all)
