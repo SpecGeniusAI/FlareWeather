@@ -769,7 +769,7 @@ OUTPUT JSON:
   "daily_insight": {{
     "summary_sentence": "REQUIRED: '[Weather] which could [impact].' Example: 'Cool air with heavy humidity which could increase joint stiffness, especially for those with arthritis.'",
     "why_line": "REQUIRED: Explain the specific mechanism in concrete terms. Avoid vague phrases like 'increase sensitivity' or 'added discomfort'. Instead, explain WHAT happens: 'Dropping pressure causes joint tissues to expand, which presses against nerve endings and creates stiffness' or 'High humidity makes the body retain more fluid, which can increase inflammation in sensitive joints'. Be educational and specific about the physical process.",
-    "comfort_tip": "REQUIRED for all risk levels. Up to 20 words. PRIORITIZE Eastern medicine (Chinese medicine/TCM or Ayurveda) over Western medicine - they offer more educational and holistic approaches. MUST include medical source: 'Chinese medicine recommends...', 'Ayurveda suggests...', or 'Western medicine suggests...'. Be specific and educational. Match weather/symptoms. Always include a tip.",
+    "comfort_tip": "REQUIRED for ALL risk levels (LOW, MODERATE, HIGH). Up to 20 words. ALWAYS PRIORITIZE Eastern medicine (Chinese medicine/TCM or Ayurveda) over Western medicine - they offer more educational and holistic approaches. For LOW risk days, still use Eastern medicine. MUST include medical source: 'Chinese medicine recommends...', 'Ayurveda suggests...', or 'Western medicine suggests...'. Be specific and educational. Match weather/symptoms. Always include a tip.",
     "sign_off": "One calm sign-off sentence"
   }}
 }}
