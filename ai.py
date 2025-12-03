@@ -884,24 +884,56 @@ DO NOT: Use numbers/percentages. Mention pain/flare-ups. Add extra sections. Rep
 
     if not daily_comfort_tip:
         # Always generate a comfort tip - PRIORITIZE Eastern medicine (Chinese medicine, Ayurveda)
-        # Shuffle for variety - ensures different tips each time
-        eastern_tips = [tip for tip in ALLOWED_COMFORT_TIPS if any(source in tip.lower() for source in ["chinese medicine", "ayurveda", "tcm"])]
+        # Exclude recently used tips to prevent duplicates on refresh
+        global _recently_used_comfort_tips
+        
+        # Get Eastern medicine tips, excluding recently used ones
+        eastern_tips = [tip for tip in ALLOWED_COMFORT_TIPS 
+                       if any(source in tip.lower() for source in ["chinese medicine", "ayurveda", "tcm"])
+                       and tip not in _recently_used_comfort_tips]
+        
+        if not eastern_tips:
+            # If all Eastern tips were recently used, reset and use all Eastern tips
+            eastern_tips = [tip for tip in ALLOWED_COMFORT_TIPS 
+                           if any(source in tip.lower() for source in ["chinese medicine", "ayurveda", "tcm"])]
+            _recently_used_comfort_tips = []  # Reset tracking
+        
         if eastern_tips:
             # Shuffle for maximum variety
             shuffled_eastern = eastern_tips.copy()
             random.shuffle(shuffled_eastern)
             daily_comfort_tip = shuffled_eastern[0]
         else:
-            # Fallback to any tip with medical source
-            tips_with_sources = [tip for tip in ALLOWED_COMFORT_TIPS if any(source in tip.lower() for source in ["western medicine", "chinese medicine", "ayurveda"])]
+            # Fallback to any tip with medical source (excluding recently used)
+            tips_with_sources = [tip for tip in ALLOWED_COMFORT_TIPS 
+                                if any(source in tip.lower() for source in ["western medicine", "chinese medicine", "ayurveda"])
+                                and tip not in _recently_used_comfort_tips]
+            
+            if not tips_with_sources:
+                # Reset if all tips were used
+                tips_with_sources = [tip for tip in ALLOWED_COMFORT_TIPS 
+                                    if any(source in tip.lower() for source in ["western medicine", "chinese medicine", "ayurveda"])]
+                _recently_used_comfort_tips = []
+            
             if tips_with_sources:
                 shuffled_sources = tips_with_sources.copy()
                 random.shuffle(shuffled_sources)
                 daily_comfort_tip = shuffled_sources[0]
             else:
-                shuffled_all = ALLOWED_COMFORT_TIPS.copy()
+                # Final fallback
+                available_tips = [tip for tip in ALLOWED_COMFORT_TIPS if tip not in _recently_used_comfort_tips]
+                if not available_tips:
+                    available_tips = ALLOWED_COMFORT_TIPS
+                    _recently_used_comfort_tips = []
+                shuffled_all = available_tips.copy()
                 random.shuffle(shuffled_all)
                 daily_comfort_tip = shuffled_all[0]
+        
+        # Track this tip as recently used (keep last 5)
+        if daily_comfort_tip:
+            _recently_used_comfort_tips.append(daily_comfort_tip)
+            if len(_recently_used_comfort_tips) > 5:
+                _recently_used_comfort_tips.pop(0)  # Remove oldest
 
     daily_sign_off = daily_sign_off or _choose_sign_off(user_diagnoses, location)
 

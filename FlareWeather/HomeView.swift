@@ -451,33 +451,35 @@ struct HomeView: View {
             aiInsightsCard
                 .cardEnterAnimation(delay: 0.2)
             
-            // Hourly Forecast Card
-            HourlyForecastCardView(
-                forecasts: weatherService.hourlyForecast,
-                isLoading: weatherService.isLoadingHourly,
-                currentPressure: weatherService.weatherData?.pressure
-            )
-            .padding(.horizontal)
-            .cardEnterAnimation(delay: 0.3)
-            
-            // Weekly Forecast Insight Card (lazy loaded - only show when weekly data is ready)
-            let weeklySummary = aiService.weeklyInsightSummary ?? aiService.weeklyForecastInsight
-            if shouldLoadWeeklyData && ((weeklySummary != nil && !(weeklySummary ?? "").isEmpty) || !aiService.weeklyInsightDays.isEmpty) {
-                WeeklyForecastInsightCardView(
-                    summary: weeklySummary ?? "",
-                    days: aiService.weeklyInsightDays,
-                    sources: aiService.weeklyInsightSources
-                )
-                    .cardEnterAnimation(delay: 0.4)
-            }
-            
-            // Weekly Forecast Card (lazy loaded - always shown, but data loads lazily)
-            WeeklyForecastCardView(
-                forecasts: weatherService.weeklyForecast,
-                isLoading: weatherService.isLoadingForecast
-            )
-            .padding(.horizontal)
-            .cardEnterAnimation(delay: 0.5)
+                   // Hourly Forecast Card
+                   HourlyForecastCardView(
+                       forecasts: weatherService.hourlyForecast,
+                       isLoading: weatherService.isLoadingHourly,
+                       currentPressure: weatherService.weatherData?.pressure
+                   )
+                   .padding(.horizontal)
+                   .cardEnterAnimation(delay: 0.3)
+
+                   // Weekly Forecast Insight Card (lazy loaded - only show when weekly data is ready)
+                   // SHOWN BEFORE Weekly Forecast Card
+                   let weeklySummary = aiService.weeklyInsightSummary ?? aiService.weeklyForecastInsight
+                   if shouldLoadWeeklyData && ((weeklySummary != nil && !(weeklySummary ?? "").isEmpty) || !aiService.weeklyInsightDays.isEmpty) {
+                       WeeklyForecastInsightCardView(
+                           summary: weeklySummary ?? "",
+                           days: aiService.weeklyInsightDays,
+                           sources: aiService.weeklyInsightSources
+                       )
+                           .cardEnterAnimation(delay: 0.4)
+                   }
+
+                   // Weekly Forecast Card (lazy loaded - always shown, but data loads lazily)
+                   // SHOWN AFTER Weekly Forecast Insight Card
+                   WeeklyForecastCardView(
+                       forecasts: weatherService.weeklyForecast,
+                       isLoading: weatherService.isLoadingForecast
+                   )
+                   .padding(.horizontal)
+                   .cardEnterAnimation(delay: 0.5)
             .onAppear {
                 // Trigger weekly forecast fetch when card appears (lazy loading)
                 if shouldLoadWeeklyData && weatherService.weeklyForecast.isEmpty && !weatherService.isLoadingForecast {
