@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, status, Header, Query
+from fastapi import FastAPI, HTTPException, Depends, status, Header, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timedelta
 from typing import List, Tuple, Optional, Dict, Any
@@ -770,7 +770,7 @@ async def reset_password(request: ResetPasswordRequest, db: Session = Depends(ge
 
 
 @app.post("/analyze", response_model=InsightResponse)
-async def analyze_data(request: CorrelationRequest, db: Session = Depends(get_db)):
+async def analyze_data(request: CorrelationRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """
     Analyze symptom and weather data to find correlations and generate AI insights.
     """
@@ -1136,8 +1136,8 @@ async def analyze_data(request: CorrelationRequest, db: Session = Depends(get_db
         # Use citations from AI function (they're already formatted)
         citations = paper_citations if paper_citations else citations
         
-        # Prepare weekly forecast data for AI
-        if request.weekly_forecast and len(request.weekly_forecast) > 0:
+        # Prepare weekly forecast data for AI (skip if skip_weekly=True for faster response)
+        if not request.skip_weekly and request.weekly_forecast and len(request.weekly_forecast) > 0:
             weekly_forecast_data = []
             for day_payload in request.weekly_forecast:
                 try:
@@ -1194,6 +1194,11 @@ async def analyze_data(request: CorrelationRequest, db: Session = Depends(get_db
                     traceback.print_exc()
                     weekly_forecast_insight = None
                     weekly_insight_sources = []
+        else:
+            if request.skip_weekly:
+                print("⏭️  Skipping weekly forecast generation for faster daily insight response")
+            else:
+                print("⏭️  No weekly forecast data provided, skipping weekly insight generation")
         
         # Check user access status if user_id is provided
         access_required = None

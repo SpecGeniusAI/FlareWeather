@@ -47,8 +47,9 @@ struct CorrelationRequest: Codable {
     let user_id: String?
     let diagnoses: [String]?
     let sensitivities: [String]?
-    
-    init(symptoms: [SymptomEntryPayload], weather: [WeatherSnapshotPayload], hourly_forecast: [WeatherSnapshotPayload]? = nil, weekly_forecast: [WeatherSnapshotPayload]? = nil, user_id: String? = nil, diagnoses: [String]? = nil, sensitivities: [String]? = nil) {
+    let skip_weekly: Bool?
+
+    init(symptoms: [SymptomEntryPayload], weather: [WeatherSnapshotPayload], hourly_forecast: [WeatherSnapshotPayload]? = nil, weekly_forecast: [WeatherSnapshotPayload]? = nil, user_id: String? = nil, diagnoses: [String]? = nil, sensitivities: [String]? = nil, skip_weekly: Bool? = nil) {
         self.symptoms = symptoms
         self.weather = weather
         self.hourly_forecast = hourly_forecast
@@ -56,6 +57,7 @@ struct CorrelationRequest: Codable {
         self.user_id = user_id
         self.diagnoses = diagnoses
         self.sensitivities = sensitivities
+        self.skip_weekly = skip_weekly
     }
 }
 
@@ -2389,7 +2391,8 @@ Move at the pace that feels right.
             weekly_forecast: weeklyForecast,
             user_id: nil,
             diagnoses: diagnoses,
-            sensitivities: sensitivities
+            sensitivities: sensitivities,
+            skip_weekly: true  // Skip weekly forecast generation for faster daily insight (target: 2 seconds)
         )
         guard let jsonData = try? JSONEncoder().encode(requestBody) else {
             print("❌ Failed to encode request body")

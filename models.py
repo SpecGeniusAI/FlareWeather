@@ -67,6 +67,7 @@ class UserResponse(BaseModel):
     access_type: Optional[str] = None  # "subscription" | "free" | "none"
     access_expires_at: Optional[str] = None  # ISO datetime string or None
     access_required: Optional[bool] = None  # Whether access is required for full features
+    access_expired: Optional[bool] = None  # True if user's free access has expired
     logout_message: Optional[str] = None  # Message to show under logout button
 
 
@@ -96,6 +97,7 @@ class CorrelationRequest(BaseModel):
     user_id: Optional[str] = None
     diagnoses: Optional[List[str]] = None  # User's health diagnoses/conditions for personalization
     sensitivities: Optional[List[str]] = None  # User's weather sensitivities/triggers (e.g., "Pressure shifts", "Humidity changes")
+    skip_weekly: Optional[bool] = False  # If True, skip weekly forecast generation for faster daily insight response
 
 
 # Internal models for processing (with datetime objects)
