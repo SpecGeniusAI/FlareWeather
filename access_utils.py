@@ -93,11 +93,20 @@ def get_access_status(db: Session, user_id: str) -> dict:
             is_expired = False
         
         if not is_expired:
+            # Active free access
             return {
                 "has_access": True,
                 "access_type": "free",
                 "expires_at": expires_at.isoformat() if expires_at else None,
                 "is_expired": False
+            }
+        else:
+            # Expired free access - return this so iOS knows it was free access that expired
+            return {
+                "has_access": False,
+                "access_type": "free",  # Still "free" to indicate they had free access
+                "expires_at": expires_at.isoformat() if expires_at else None,
+                "is_expired": True
             }
     
     # Check subscription access
@@ -123,6 +132,7 @@ def get_access_status(db: Session, user_id: str) -> dict:
                     "is_expired": False
                 }
     
+    # No access at all
     return {
         "has_access": False,
         "access_type": "none",
