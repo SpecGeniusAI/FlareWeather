@@ -63,6 +63,11 @@ class UserResponse(BaseModel):
     email: str = ""  # Allow empty string for Apple Sign In users
     name: Optional[str] = None
     created_at: datetime
+    has_access: Optional[bool] = None  # Whether user has active access (subscription or free)
+    access_type: Optional[str] = None  # "subscription" | "free" | "none"
+    access_expires_at: Optional[str] = None  # ISO datetime string or None
+    access_required: Optional[bool] = None  # Whether access is required for full features
+    logout_message: Optional[str] = None  # Message to show under logout button
 
 
 # Request models matching iOS format (with string timestamps)
@@ -129,6 +134,9 @@ class InsightResponse(BaseModel):
     personalization_score: Optional[int] = None  # 1-5 personalization rating
     personal_anecdote: Optional[str] = None
     behavior_prompt: Optional[str] = None
+    access_required: Optional[bool] = None  # True if user needs to subscribe/upgrade for full access
+    access_expired: Optional[bool] = None  # True if user's free access has expired
+    logout_message: Optional[str] = None  # Message to show under logout button
 
 
 class FeedbackRequest(BaseModel):
@@ -189,3 +197,4 @@ class AccessStatusResponse(BaseModel):
     access_type: str  # "subscription" | "free" | "none"
     expires_at: Optional[str] = None
     is_expired: bool
+    logout_message: Optional[str] = None  # Message to show under logout button

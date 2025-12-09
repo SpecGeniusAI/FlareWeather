@@ -450,7 +450,7 @@ async def apple_signin(request: AppleSignInRequest, db: Session = Depends(get_db
 @app.get("/auth/me", response_model=UserResponse)
 async def get_current_user_info(current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     """
-    Get current user information
+    Get current user information including access status
     """
     user = db.query(User).filter(User.id == current_user["user_id"]).first()
     if not user:
@@ -459,11 +459,24 @@ async def get_current_user_info(current_user: dict = Depends(get_current_user), 
             detail="User not found"
         )
     
+    # Get access status
+    access_status = get_access_status(db, user.id)
+    
+    # Set logout message if access is required
+    logout_message = None
+    if not access_status["has_access"]:
+        logout_message = "Logout to see basic insights"
+    
     return UserResponse(
         user_id=user.id,
         email=user.email or "",
         name=user.name,
-        created_at=user.created_at
+        created_at=user.created_at,
+        has_access=access_status["has_access"],
+        access_type=access_status["access_type"],
+        access_expires_at=access_status["expires_at"],
+        access_required=not access_status["has_access"],  # True if access is required (user doesn't have it)
+        logout_message=logout_message
     )
 
 
@@ -544,6 +557,37 @@ async def submit_feedback(request: FeedbackRequest, db: Session = Depends(get_db
         db.rollback()
         print(f"❌ Feedback error: {e}")
         raise HTTPException(status_code=500, detail="Failed to record feedback")
+
+
+@app.get("/user/access-status", response_model=AccessStatusResponse)
+async def get_user_access_status(
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get current user's access status.
+    Returns detailed access information for the iOS app to determine if popup should be shown.
+    """
+    user_id = current_user["user_id"]
+    access_status = get_access_status(db, user_id)
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    email = user.email if user else None
+    
+    # Set logout message if access is required
+    logout_message = None
+    if not access_status["has_access"]:
+        logout_message = "Logout to see basic insights"
+    
+    return AccessStatusResponse(
+        user_id=user_id,
+        email=email,
+        has_access=access_status["has_access"],
+        access_type=access_status["access_type"],
+        expires_at=access_status["expires_at"],
+        is_expired=access_status["is_expired"],
+        logout_message=logout_message
+    )
 
 
 @app.put("/user/profile")
@@ -1147,6 +1191,31 @@ async def analyze_data(request: CorrelationRequest, db: Session = Depends(get_db
                     weekly_forecast_insight = None
                     weekly_insight_sources = []
         
+        # Check user access status if user_id is provided
+        access_required = None
+        access_expired = None
+        logout_message = None
+        if request.user_id:
+            access_status = get_access_status(db, request.user_id)
+            access_required = not access_status["has_access"]
+            # Set logout message if access is required
+            if not access_status["has_access"]:
+                logout_message = "Logout to see basic insights"
+            # Check if free access expired (user had free access but it's now expired)
+            if access_status["access_type"] == "free" and access_status["is_expired"]:
+                access_expired = True
+            elif access_status["access_type"] == "none" and not access_status["has_access"]:
+                # Check if user had free access that expired
+                user = db.query(User).filter(User.id == request.user_id).first()
+                if user and user.free_access_enabled and user.free_access_expires_at:
+                    from datetime import timezone as tz
+                    now = datetime.now(tz.utc)
+                    expires_at = user.free_access_expires_at
+                    if isinstance(expires_at, datetime):
+                        expires_at = expires_at.replace(tzinfo=tz.utc)
+                        if expires_at <= now:
+                            access_expired = True
+        
         # Prepare response
         response = InsightResponse(
             correlation_summary=correlation_summary,
@@ -1163,7 +1232,10 @@ async def analyze_data(request: CorrelationRequest, db: Session = Depends(get_db
             alert_severity=alert_severity,
             personalization_score=personalization_score,
             personal_anecdote=personal_anecdote,
-            behavior_prompt=behavior_prompt
+            behavior_prompt=behavior_prompt,
+            access_required=access_required,
+            access_expired=access_expired,
+            logout_message=logout_message
         )
         
         return response
