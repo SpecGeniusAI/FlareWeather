@@ -1450,13 +1450,19 @@ async def get_access_status_endpoint(
         # Get access status
         status = get_access_status(db, user.id)
         
+        # Set logout message if access is required
+        logout_message = None
+        if not status["has_access"]:
+            logout_message = "Logout to see basic insights"
+        
         return AccessStatusResponse(
             user_id=user.id,
             email=user.email,
             has_access=status["has_access"],
             access_type=status["access_type"],
             expires_at=status["expires_at"],
-            is_expired=status["is_expired"]
+            is_expired=status["is_expired"],
+            logout_message=logout_message
         )
     except HTTPException:
         raise
