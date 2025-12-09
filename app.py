@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timedelta
 from typing import List, Tuple, Optional, Dict, Any
@@ -8,6 +8,7 @@ from sqlalchemy import func
 import uuid
 import json
 import random
+import os
 
 # Import with error handling to catch import errors early
 try:
@@ -28,13 +29,18 @@ try:
         AuthResponse,
         UserResponse,
         FeedbackRequest,
-        FeedbackResponse
+        FeedbackResponse,
+        GrantFreeAccessRequest,
+        RevokeFreeAccessRequest,
+        FreeAccessResponse,
+        AccessStatusResponse
     )
     from logic import calculate_correlations, generate_correlation_summary, get_upcoming_pressure_change
     from ai import generate_insight_with_papers, generate_flare_risk_assessment, generate_weekly_forecast_insight, _choose_forecast, _analyze_pressure_window
     from rag.query import query_rag
     from paper_search import search_papers, format_papers_for_prompt
     from database import get_db, init_db, User, InsightFeedback, PasswordReset
+    from access_utils import has_active_access, get_access_status
     from mailgun_service import send_password_reset_email
     from auth import (
         verify_password,
@@ -1170,3 +1176,220 @@ async def analyze_data(request: CorrelationRequest, db: Session = Depends(get_db
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+# ============================================================================
+# Admin endpoints for free access management
+# ============================================================================
+
+def verify_admin_key(admin_key: Optional[str] = None) -> bool:
+    """
+    Verify admin API key from environment variable.
+    Set ADMIN_API_KEY environment variable to secure these endpoints.
+    If not set, these endpoints will be accessible (for development only).
+    """
+    expected_key = os.getenv("ADMIN_API_KEY")
+    if not expected_key:
+        print("⚠️  WARNING: ADMIN_API_KEY not set - admin endpoints are open!")
+        return True  # Allow access if no key is set (development mode)
+    return admin_key == expected_key
+
+
+@app.post("/admin/grant-free-access", response_model=FreeAccessResponse)
+async def grant_free_access(
+    request: GrantFreeAccessRequest,
+    admin_key_header: Optional[str] = Header(None, alias="X-Admin-Key"),
+    admin_key: Optional[str] = Query(None, description="Admin API key (alternative to header)"),
+    db: Session = Depends(get_db)
+):
+    """
+    Grant free access to a user by email or user_id.
+    Requires ADMIN_API_KEY header (X-Admin-Key) or query parameter.
+    
+    Args:
+        request: GrantFreeAccessRequest with user_identifier and expiration
+        admin_key_header: Admin API key from header
+        admin_key: Admin API key from query parameter (alternative)
+        db: Database session
+    """
+    # Use header key if provided, otherwise use query param
+    key = admin_key_header or admin_key
+    
+    # Verify admin key
+    if not verify_admin_key(key):
+        raise HTTPException(status_code=401, detail="Invalid admin API key")
+    
+    try:
+        # Find user by email or user_id
+        user = None
+        if "@" in request.user_identifier:
+            # Assume it's an email
+            user = db.query(User).filter(User.email == request.user_identifier).first()
+        else:
+            # Assume it's a user_id
+            user = db.query(User).filter(User.id == request.user_identifier).first()
+        
+        if not user:
+            raise HTTPException(status_code=404, detail=f"User not found: {request.user_identifier}")
+        
+        # Calculate expiration date
+        expires_at = None
+        if request.expires_at:
+            try:
+                expires_at = datetime.fromisoformat(request.expires_at.replace("Z", "+00:00"))
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid expires_at format. Use ISO format.")
+        elif request.days:
+            expires_at = datetime.utcnow() + timedelta(days=request.days)
+        # If neither expires_at nor days provided, access never expires (None)
+        
+        # Grant free access
+        user.free_access_enabled = True
+        user.free_access_expires_at = expires_at
+        user.updated_at = datetime.utcnow()
+        
+        db.commit()
+        db.refresh(user)
+        
+        expires_at_str = expires_at.isoformat() if expires_at else None
+        
+        print(f"✅ Granted free access to user {user.id} ({user.email}) - expires: {expires_at_str or 'never'}")
+        
+        return FreeAccessResponse(
+            success=True,
+            message=f"Free access granted successfully. Expires: {expires_at_str or 'never'}",
+            user_id=user.id,
+            email=user.email,
+            free_access_enabled=True,
+            free_access_expires_at=expires_at_str
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error granting free access: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to grant free access: {str(e)}")
+
+
+@app.post("/admin/revoke-free-access", response_model=FreeAccessResponse)
+async def revoke_free_access(
+    request: RevokeFreeAccessRequest,
+    admin_key_header: Optional[str] = Header(None, alias="X-Admin-Key"),
+    admin_key: Optional[str] = Query(None, description="Admin API key (alternative to header)"),
+    db: Session = Depends(get_db)
+):
+    """
+    Revoke free access from a user by email or user_id.
+    Requires ADMIN_API_KEY header (X-Admin-Key) or query parameter.
+    
+    Args:
+        request: RevokeFreeAccessRequest with user_identifier
+        admin_key_header: Admin API key from header
+        admin_key: Admin API key from query parameter (alternative)
+        db: Database session
+    """
+    # Use header key if provided, otherwise use query param
+    key = admin_key_header or admin_key
+    
+    # Verify admin key
+    if not verify_admin_key(key):
+        raise HTTPException(status_code=401, detail="Invalid admin API key")
+    
+    try:
+        # Find user by email or user_id
+        user = None
+        if "@" in request.user_identifier:
+            # Assume it's an email
+            user = db.query(User).filter(User.email == request.user_identifier).first()
+        else:
+            # Assume it's a user_id
+            user = db.query(User).filter(User.id == request.user_identifier).first()
+        
+        if not user:
+            raise HTTPException(status_code=404, detail=f"User not found: {request.user_identifier}")
+        
+        # Revoke free access
+        user.free_access_enabled = False
+        user.free_access_expires_at = None
+        user.updated_at = datetime.utcnow()
+        
+        db.commit()
+        db.refresh(user)
+        
+        print(f"✅ Revoked free access from user {user.id} ({user.email})")
+        
+        return FreeAccessResponse(
+            success=True,
+            message="Free access revoked successfully",
+            user_id=user.id,
+            email=user.email,
+            free_access_enabled=False,
+            free_access_expires_at=None
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error revoking free access: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to revoke free access: {str(e)}")
+
+
+@app.get("/admin/access-status/{user_identifier}", response_model=AccessStatusResponse)
+async def get_access_status_endpoint(
+    user_identifier: str,
+    admin_key_header: Optional[str] = Header(None, alias="X-Admin-Key"),
+    admin_key: Optional[str] = Query(None, description="Admin API key (alternative to header)"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get access status for a user by email or user_id.
+    Requires ADMIN_API_KEY header (X-Admin-Key) or query parameter.
+    
+    Args:
+        user_identifier: User email or user_id
+        admin_key_header: Admin API key from header
+        admin_key: Admin API key from query parameter (alternative)
+        db: Database session
+    """
+    # Use header key if provided, otherwise use query param
+    key = admin_key_header or admin_key
+    
+    # Verify admin key
+    if not verify_admin_key(key):
+        raise HTTPException(status_code=401, detail="Invalid admin API key")
+    
+    try:
+        # Find user by email or user_id
+        user = None
+        if "@" in user_identifier:
+            # Assume it's an email
+            user = db.query(User).filter(User.email == user_identifier).first()
+        else:
+            # Assume it's a user_id
+            user = db.query(User).filter(User.id == user_identifier).first()
+        
+        if not user:
+            raise HTTPException(status_code=404, detail=f"User not found: {user_identifier}")
+        
+        # Get access status
+        status = get_access_status(db, user.id)
+        
+        return AccessStatusResponse(
+            user_id=user.id,
+            email=user.email,
+            has_access=status["has_access"],
+            access_type=status["access_type"],
+            expires_at=status["expires_at"],
+            is_expired=status["is_expired"]
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error getting access status: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to get access status: {str(e)}")

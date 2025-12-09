@@ -31,6 +31,79 @@ except Exception as e:
     print(f"⚠️  Claude client initialization error: {e}")
     claude_client = None
 
+# Date-based comfort tip tracking to prevent repeats for 30+ days
+_comfort_tip_history: Dict[str, List[str]] = {}  # Maps date strings (YYYY-MM-DD) to lists of tips used
+
+
+def _get_today_date_string() -> str:
+    """Get today's date as YYYY-MM-DD string."""
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+def _get_recent_tips(days: int = 30) -> List[str]:
+    """
+    Get all comfort tips used in the last N days.
+    
+    Args:
+        days: Number of days to look back (default 30)
+        
+    Returns:
+        List of all tips used in the specified time period
+    """
+    today = datetime.now()
+    recent_tips = []
+    
+    for i in range(days):
+        check_date = today - timedelta(days=i)
+        date_str = check_date.strftime("%Y-%m-%d")
+        if date_str in _comfort_tip_history:
+            recent_tips.extend(_comfort_tip_history[date_str])
+    
+    return recent_tips
+
+
+def _cleanup_old_tip_history(days_to_keep: int = 35):
+    """
+    Remove tip history entries older than specified days.
+    This prevents the dictionary from growing indefinitely.
+    
+    Args:
+        days_to_keep: Number of days of history to keep (default 35, slightly more than tracking window)
+    """
+    today = datetime.now()
+    cutoff_date = today - timedelta(days=days_to_keep)
+    cutoff_str = cutoff_date.strftime("%Y-%m-%d")
+    
+    # Remove entries older than cutoff
+    dates_to_remove = [date_str for date_str in _comfort_tip_history.keys() if date_str < cutoff_str]
+    for date_str in dates_to_remove:
+        del _comfort_tip_history[date_str]
+
+
+def _track_comfort_tip(tip: str):
+    """
+    Track a comfort tip as used today.
+    
+    Args:
+        tip: The comfort tip text to track
+    """
+    today_str = _get_today_date_string()
+    
+    if today_str not in _comfort_tip_history:
+        _comfort_tip_history[today_str] = []
+    
+    # Normalize tip for comparison (case-insensitive, trimmed)
+    normalized_tip = tip.strip().lower()
+    normalized_existing = [t.strip().lower() for t in _comfort_tip_history[today_str]]
+    
+    # Only add if not already in today's list (prevent duplicates on same day)
+    if normalized_tip not in normalized_existing:
+        _comfort_tip_history[today_str].append(tip.strip())
+    
+    # Clean up old entries periodically
+    if len(_comfort_tip_history) > 40:  # Clean up when we have more than 40 days
+        _cleanup_old_tip_history()
+
 
 def _describe_temperature(value: float) -> str:
     if value <= 2:
@@ -110,7 +183,7 @@ def _format_daily_message(
 
 
 ALLOWED_COMFORT_TIPS = [
-    # Chinese medicine (TCM) tips - PRIORITIZED for education (expanded for variety)
+    # Chinese medicine (TCM) tips - PRIORITIZED for education (expanded for variety - 50+ tips)
     "Chinese medicine suggests a 5-minute tai-chi routine to ease muscle tension.",
     "Chinese medicine recommends acupressure on the LI4 point for headache relief.",
     "Chinese medicine suggests warm ginger tea to support circulation during cold shifts.",
@@ -123,7 +196,46 @@ ALLOWED_COMFORT_TIPS = [
     "Chinese medicine recommends gentle neck stretches to release tension in the upper body.",
     "Chinese medicine suggests applying warm compresses to the lower abdomen to support digestion.",
     "Chinese medicine recommends the Yongquan point (sole of foot) massage for grounding energy.",
-    # Ayurveda tips - PRIORITIZED for education (expanded for variety)
+    "Chinese medicine suggests massaging the Hegu point (between thumb and index finger) for overall wellness.",
+    "Chinese medicine recommends the Zusanli point (below the knee) to support energy and digestion.",
+    "Chinese medicine suggests the Neiguan point (inner wrist) for calming the mind during stress.",
+    "Chinese medicine recommends warm moxibustion on the lower abdomen to support circulation.",
+    "Chinese medicine suggests cupping therapy techniques with gentle self-massage for muscle tension.",
+    "Chinese medicine recommends the Fengchi point (back of neck) for headache and tension relief.",
+    "Chinese medicine suggests warm cinnamon tea to support yang energy during cold weather.",
+    "Chinese medicine recommends the Sanyinjiao point (inner ankle) for hormonal balance and relaxation.",
+    "Chinese medicine suggests gentle tapping along the bladder meridian to release tension.",
+    "Chinese medicine recommends the Laogong point (center of palm) for calming and grounding.",
+    "Chinese medicine suggests warm foot baths with ginger to support circulation and warmth.",
+    "Chinese medicine recommends the Shenmen point (ear) for stress relief and mental calm.",
+    "Chinese medicine suggests the Dazhui point (upper back) for immune support during weather changes.",
+    "Chinese medicine recommends warm herbal compresses with mugwort to support joint mobility.",
+    "Chinese medicine suggests the Taichong point (top of foot) for emotional balance and tension relief.",
+    "Chinese medicine recommends gentle meridian stretching to support energy flow.",
+    "Chinese medicine suggests warm rice bags on the lower back to support kidney energy.",
+    "Chinese medicine recommends the Guanyuan point (lower abdomen) for overall vitality.",
+    "Chinese medicine suggests the Qihai point (below navel) for supporting life force energy.",
+    "Chinese medicine recommends warm sesame oil massage to support circulation and flexibility.",
+    "Chinese medicine suggests the Yinlingquan point (inner knee) for supporting fluid balance.",
+    "Chinese medicine recommends gentle self-acupressure on the temples for headache relief.",
+    "Chinese medicine suggests warm chrysanthemum tea to support liver energy and calm.",
+    "Chinese medicine recommends the Tianshu point (abdomen) for supporting digestive comfort.",
+    "Chinese medicine suggests the Weizhong point (back of knee) for supporting lower back comfort.",
+    "Chinese medicine recommends warm ginger foot soaks to support yang energy circulation.",
+    "Chinese medicine suggests the Baihui point combined with slow breathing for mental clarity.",
+    "Chinese medicine recommends gentle ear acupressure for overall body balance.",
+    "Chinese medicine suggests warm herbal teas with goji berries to support vitality.",
+    "Chinese medicine recommends the Chengshan point (calf) for supporting lower body comfort.",
+    "Chinese medicine suggests the Lieque point (wrist) for supporting lung energy and breathing.",
+    "Chinese medicine recommends warm salt compresses to support circulation and reduce stiffness.",
+    "Chinese medicine suggests the Kunlun point (ankle) for supporting back and neck comfort.",
+    "Chinese medicine recommends gentle tapping on the Ren meridian to support energy flow.",
+    "Chinese medicine suggests warm jujube tea to support blood circulation and calm.",
+    "Chinese medicine recommends the Feishu point (upper back) for supporting respiratory comfort.",
+    "Chinese medicine suggests the Pishu point (mid-back) for supporting digestive wellness.",
+    "Chinese medicine recommends warm moxa on the lower back to support kidney yang energy.",
+    "Chinese medicine suggests the Shenshu point (lower back) for supporting kidney energy and vitality.",
+    # Ayurveda tips - PRIORITIZED for education (expanded for variety - 50+ tips)
     "Ayurveda suggests warm oil massage to support joint mobility.",
     "Ayurveda recommends gentle yoga stretches to ease muscle tension.",
     "Ayurveda suggests staying warm with layers during temperature drops.",
@@ -136,14 +248,90 @@ ALLOWED_COMFORT_TIPS = [
     "Ayurveda recommends gentle twists and forward folds in yoga to ease stiffness.",
     "Ayurveda suggests grounding practices like walking barefoot on grass when possible.",
     "Ayurveda recommends warm baths with Epsom salt to support muscle relaxation.",
-    # Western medicine tips (less prioritized, fewer options)
+    "Ayurveda suggests the Nadi Shodhana breathing technique to balance energy channels.",
+    "Ayurveda recommends warm ghee on the joints to support flexibility and reduce stiffness.",
+    "Ayurveda suggests the Bhramari breathing technique (bee breath) for calming the mind.",
+    "Ayurveda recommends warm oil application on the soles of feet before bed for grounding.",
+    "Ayurveda suggests gentle yoga nidra (yogic sleep) for deep relaxation during stress.",
+    "Ayurveda recommends warm cumin, coriander, and fennel tea to support digestion.",
+    "Ayurveda suggests the Kapalabhati breathing technique to energize and clear the mind.",
+    "Ayurveda recommends warm mustard oil massage for supporting circulation in cold weather.",
+    "Ayurveda suggests the Sheetali breathing technique (cooling breath) for calming heat.",
+    "Ayurveda recommends warm castor oil packs on the abdomen to support digestive comfort.",
+    "Ayurveda suggests gentle yoga poses like child's pose and cat-cow for spinal flexibility.",
+    "Ayurveda recommends warm triphala tea to support digestive wellness and balance.",
+    "Ayurveda suggests the Ujjayi breathing technique (ocean breath) for steadying the mind.",
+    "Ayurveda recommends warm almond oil massage to support skin and joint health.",
+    "Ayurveda suggests grounding yoga poses like mountain pose and tree pose for stability.",
+    "Ayurveda recommends warm ashwagandha tea to support stress resilience and energy.",
+    "Ayurveda suggests the Sitali pranayama (cooling breath) for balancing internal heat.",
+    "Ayurveda recommends warm oil application on the crown of head for mental clarity.",
+    "Ayurveda suggests gentle forward bends in yoga to calm the nervous system.",
+    "Ayurveda recommends warm cardamom tea to support digestion and respiratory comfort.",
+    "Ayurveda suggests the Bhastrika breathing technique (bellows breath) for energizing.",
+    "Ayurveda recommends warm oil massage with brahmi oil for supporting mental calm.",
+    "Ayurveda suggests gentle hip-opening yoga poses to support lower back comfort.",
+    "Ayurveda recommends warm licorice tea to support adrenal health and energy balance.",
+    "Ayurveda suggests the Anulom Vilom breathing technique (alternate nostril) for balance.",
+    "Ayurveda recommends warm oil application on the temples for headache and tension relief.",
+    "Ayurveda suggests gentle spinal twists in yoga to support flexibility and circulation.",
+    "Ayurveda recommends warm ginger and honey tea to support immunity and warmth.",
+    "Ayurveda suggests the Dirgha breathing technique (three-part breath) for deep relaxation.",
+    "Ayurveda recommends warm oil massage with mahanarayan oil for joint and muscle support.",
+    "Ayurveda suggests grounding practices like sitting in nature to balance vata dosha.",
+    "Ayurveda recommends warm cinnamon and clove tea to support circulation and warmth.",
+    "Ayurveda suggests gentle restorative yoga poses for supporting recovery and rest.",
+    "Ayurveda recommends warm oil application on the navel area to support digestive fire.",
+    "Ayurveda suggests the Surya Bhedana breathing technique (right nostril) for energizing.",
+    "Ayurveda recommends warm oil massage with dashamoola oil for supporting muscle comfort.",
+    "Ayurveda suggests gentle inversion poses like legs-up-the-wall for circulation support.",
+    "Ayurveda recommends warm fennel tea to support digestion and reduce bloating.",
+    "Ayurveda suggests the Chandra Bhedana breathing technique (left nostril) for calming.",
+    "Ayurveda recommends warm oil application on the feet with gentle massage for grounding.",
+    "Ayurveda suggests gentle backbends in yoga to support spinal flexibility and energy.",
+    "Ayurveda recommends warm turmeric milk (golden milk) to support joint health and calm.",
+    # Western medicine tips (expanded for variety - 25+ tips)
     "Western medicine suggests gentle stretching to ease muscle tension.",
     "Western medicine recommends staying warm and hydrated during weather shifts.",
     "Western medicine suggests taking short breaks throughout the day.",
-    # Combined approaches (prefer Eastern + Western)
+    "Western medicine recommends progressive muscle relaxation to reduce tension.",
+    "Western medicine suggests maintaining consistent sleep schedules to support circadian rhythms.",
+    "Western medicine recommends gentle aerobic exercise to support circulation and mood.",
+    "Western medicine suggests applying heat or cold therapy based on your body's response.",
+    "Western medicine recommends maintaining good posture to reduce muscle strain.",
+    "Western medicine suggests staying hydrated with electrolyte-rich fluids during weather changes.",
+    "Western medicine recommends gentle range-of-motion exercises to maintain joint flexibility.",
+    "Western medicine suggests mindfulness meditation to support stress management.",
+    "Western medicine recommends maintaining a balanced diet to support overall wellness.",
+    "Western medicine suggests gradual temperature adaptation to support body adjustment.",
+    "Western medicine recommends adequate rest and sleep to support recovery and resilience.",
+    "Western medicine suggests gentle massage or self-massage to support muscle relaxation.",
+    "Western medicine recommends maintaining social connections to support mental wellness.",
+    "Western medicine suggests creating a comfortable environment with appropriate temperature and humidity.",
+    "Western medicine recommends regular movement breaks to prevent stiffness and tension.",
+    "Western medicine suggests deep breathing exercises to support relaxation and oxygen flow.",
+    "Western medicine recommends maintaining consistent daily routines to support body rhythms.",
+    "Western medicine suggests gentle yoga or Pilates to support flexibility and strength.",
+    "Western medicine recommends staying active within your comfort level to support circulation.",
+    "Western medicine suggests using supportive pillows and ergonomic setups to reduce strain.",
+    "Western medicine recommends listening to your body's signals and adjusting activities accordingly.",
+    "Western medicine suggests maintaining a positive mindset to support overall well-being.",
+    # Combined approaches (prefer Eastern + Western - 15+ tips)
     "Chinese medicine recommends tai-chi for muscle tension; Western medicine suggests gentle movement.",
     "For joint stiffness, Ayurveda recommends warm oil massage; Western medicine suggests stretching.",
     "Chinese medicine suggests acupressure; Western medicine recommends staying hydrated.",
+    "Ayurveda recommends pranayama breathing; Western medicine suggests progressive muscle relaxation.",
+    "Chinese medicine suggests qigong movements; Western medicine recommends maintaining good posture.",
+    "Ayurveda recommends abhyanga massage; Western medicine suggests applying heat therapy.",
+    "Chinese medicine suggests ginger tea; Western medicine recommends staying hydrated with electrolytes.",
+    "Ayurveda recommends yoga stretches; Western medicine suggests gentle range-of-motion exercises.",
+    "Chinese medicine suggests foot soaks; Western medicine recommends maintaining consistent sleep.",
+    "Ayurveda recommends warm oil application; Western medicine suggests gentle massage techniques.",
+    "Chinese medicine suggests breathing exercises; Western medicine recommends mindfulness meditation.",
+    "Ayurveda recommends herbal teas; Western medicine suggests maintaining a balanced diet.",
+    "Chinese medicine suggests acupressure points; Western medicine recommends gradual temperature adaptation.",
+    "Ayurveda recommends grounding practices; Western medicine suggests creating comfortable environments.",
+    "Chinese medicine suggests meridian work; Western medicine recommends regular movement breaks.",
     # General fallbacks (if no specific tradition fits - minimal use)
     "Take short pauses through the day when your body needs them.",
     "Move gently at your own pace and listen to your body."
@@ -732,11 +920,6 @@ def generate_flare_risk_assessment(
     hourly_forecast: Optional[List[Dict[str, float]]] = None
 ) -> Tuple[str, str, str, str, List[str], Optional[str], str, int, Optional[str], Optional[str]]:
     """Generate a daily flare insight that obeys strict formatting rules."""
-    global _recently_used_comfort_tips  # Declare global at function level
-    
-    # Initialize global variable if it doesn't exist (MUST be before try block)
-    if '_recently_used_comfort_tips' not in globals() or _recently_used_comfort_tips is None:
-        _recently_used_comfort_tips = []
     
     if not client:
         fallback_message = _format_daily_message(
@@ -914,21 +1097,18 @@ DO NOT: Use numbers/percentages. Mention pain/flare-ups. Add extra sections. Rep
                 # Too long or doesn't have medical source and not in allowed list
                 daily_comfort_tip = ""
             else:
-                # Track AI-generated tips to prevent duplicates on refresh
+                # Track AI-generated tips to prevent duplicates - check last 30 days
                 # Normalize for comparison (case-insensitive)
                 tip_lower = normalized_tip.lower()
-                # Use local copy to avoid scoping issues in list comprehension
-                # Ensure we have a valid list (should already be initialized at function start)
-                recent_tips_list = list(_recently_used_comfort_tips) if _recently_used_comfort_tips else []
+                # Get all tips used in the last 30 days
+                recent_tips_list = _get_recent_tips(days=30)
                 # Check if this exact tip (or very similar) was recently used
                 if any(tip_lower == existing.lower() for existing in recent_tips_list):
-                    # This tip was recently used, regenerate it
+                    # This tip was recently used (within last 30 days), regenerate it
                     daily_comfort_tip = ""
                 else:
-                    # Track this tip as recently used (keep last 5)
-                    _recently_used_comfort_tips.append(normalized_tip)
-                    if len(_recently_used_comfort_tips) > 5:
-                        _recently_used_comfort_tips.pop(0)  # Remove oldest
+                    # Track this tip as used today
+                    _track_comfort_tip(normalized_tip)
     except Exception as exc:  # noqa: BLE001
         print(f"❌ Error generating daily insight JSON: {exc}")
         import traceback
@@ -969,22 +1149,26 @@ DO NOT: Use numbers/percentages. Mention pain/flare-ups. Add extra sections. Rep
 
     if not daily_comfort_tip:
         # Always generate a comfort tip - PRIORITIZE Eastern medicine (Chinese medicine, Ayurveda)
-        # Exclude recently used tips to prevent duplicates on refresh
+        # Exclude tips used in the last 30 days to prevent repeats
         
-        # Ensure list exists before using in list comprehension
-        recent_tips = _recently_used_comfort_tips if '_recently_used_comfort_tips' in globals() else []
+        # Get all tips used in the last 30 days
+        recent_tips = _get_recent_tips(days=30)
         
-        # Get Eastern medicine tips, excluding recently used ones
+        # Get Eastern medicine tips, excluding recently used ones (last 30 days)
         eastern_tips = [tip for tip in ALLOWED_COMFORT_TIPS 
                        if any(source in tip.lower() for source in ["chinese medicine", "ayurveda", "tcm"])
-                       and tip not in recent_tips]
+                       and tip.lower() not in [t.lower() for t in recent_tips]]
         
         if not eastern_tips:
-            # If all Eastern tips were recently used, reset and use all Eastern tips
+            # If all Eastern tips were recently used, expand to 60 days or use all if still none
+            recent_tips_60 = _get_recent_tips(days=60)
             eastern_tips = [tip for tip in ALLOWED_COMFORT_TIPS 
-                           if any(source in tip.lower() for source in ["chinese medicine", "ayurveda", "tcm"])]
-            recent_tips = []  # Reset tracking
-            _recently_used_comfort_tips = []  # Reset tracking
+                           if any(source in tip.lower() for source in ["chinese medicine", "ayurveda", "tcm"])
+                           and tip.lower() not in [t.lower() for t in recent_tips_60]]
+            # If still none, use all Eastern tips (very rare with 100+ tips)
+            if not eastern_tips:
+                eastern_tips = [tip for tip in ALLOWED_COMFORT_TIPS 
+                               if any(source in tip.lower() for source in ["chinese medicine", "ayurveda", "tcm"])]
         
         if eastern_tips:
             # Shuffle for maximum variety
@@ -992,38 +1176,45 @@ DO NOT: Use numbers/percentages. Mention pain/flare-ups. Add extra sections. Rep
             random.shuffle(shuffled_eastern)
             daily_comfort_tip = shuffled_eastern[0]
         else:
-            # Fallback to any tip with medical source (excluding recently used)
-            tips_with_sources = [tip for tip in ALLOWED_COMFORT_TIPS 
+            # Fallback to any tip with medical source (excluding recently used - last 30 days)
+            tips_with_sources = [tip for tip in ALLOWED_COMFORT_TIPS
                                 if any(source in tip.lower() for source in ["western medicine", "chinese medicine", "ayurveda"])
-                                and tip not in recent_tips]
+                                and tip.lower() not in [t.lower() for t in recent_tips]]
             
             if not tips_with_sources:
-                # Reset if all tips were used
-                tips_with_sources = [tip for tip in ALLOWED_COMFORT_TIPS 
-                                    if any(source in tip.lower() for source in ["western medicine", "chinese medicine", "ayurveda"])]
-                recent_tips = []
-                _recently_used_comfort_tips = []
+                # Expand to 60 days if needed
+                recent_tips_60 = _get_recent_tips(days=60)
+                tips_with_sources = [tip for tip in ALLOWED_COMFORT_TIPS
+                                    if any(source in tip.lower() for source in ["western medicine", "chinese medicine", "ayurveda"])
+                                    and tip.lower() not in [t.lower() for t in recent_tips_60]]
+                # If still none, use all tips with sources (very rare with 150+ tips)
+                if not tips_with_sources:
+                    tips_with_sources = [tip for tip in ALLOWED_COMFORT_TIPS
+                                        if any(source in tip.lower() for source in ["western medicine", "chinese medicine", "ayurveda"])]
             
             if tips_with_sources:
                 shuffled_sources = tips_with_sources.copy()
                 random.shuffle(shuffled_sources)
                 daily_comfort_tip = shuffled_sources[0]
             else:
-                # Final fallback
-                available_tips = [tip for tip in ALLOWED_COMFORT_TIPS if tip not in recent_tips]
+                # Final fallback - exclude recent tips
+                available_tips = [tip for tip in ALLOWED_COMFORT_TIPS 
+                                if tip.lower() not in [t.lower() for t in recent_tips]]
                 if not available_tips:
-                    available_tips = ALLOWED_COMFORT_TIPS
-                    recent_tips = []
-                    _recently_used_comfort_tips = []
+                    # If all tips were used, expand to 60 days
+                    recent_tips_60 = _get_recent_tips(days=60)
+                    available_tips = [tip for tip in ALLOWED_COMFORT_TIPS 
+                                    if tip.lower() not in [t.lower() for t in recent_tips_60]]
+                    # If still none, use all tips (extremely rare)
+                    if not available_tips:
+                        available_tips = ALLOWED_COMFORT_TIPS
                 shuffled_all = available_tips.copy()
                 random.shuffle(shuffled_all)
                 daily_comfort_tip = shuffled_all[0]
         
-        # Track this tip as recently used (keep last 5)
+        # Track this tip as used today
         if daily_comfort_tip:
-            _recently_used_comfort_tips.append(daily_comfort_tip)
-            if len(_recently_used_comfort_tips) > 5:
-                _recently_used_comfort_tips.pop(0)  # Remove oldest
+            _track_comfort_tip(daily_comfort_tip)
 
     daily_sign_off = daily_sign_off or _choose_sign_off(user_diagnoses, location)
 

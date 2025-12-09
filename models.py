@@ -156,3 +156,36 @@ class FeedbackResponse(BaseModel):
     """Response model for feedback submission"""
     status: str = "success"
     feedback_id: str
+
+
+# Admin models for free access management
+class GrantFreeAccessRequest(BaseModel):
+    """Request model for granting free access"""
+    user_identifier: str = Field(description="User email or user_id")
+    days: Optional[int] = Field(None, description="Number of days to grant access (None = never expires)")
+    expires_at: Optional[str] = Field(None, description="ISO datetime string for expiration (overrides days if provided)")
+
+
+class RevokeFreeAccessRequest(BaseModel):
+    """Request model for revoking free access"""
+    user_identifier: str = Field(description="User email or user_id")
+
+
+class FreeAccessResponse(BaseModel):
+    """Response model for free access operations"""
+    success: bool
+    message: str
+    user_id: Optional[str] = None
+    email: Optional[str] = None
+    free_access_enabled: Optional[bool] = None
+    free_access_expires_at: Optional[str] = None
+
+
+class AccessStatusResponse(BaseModel):
+    """Response model for access status check"""
+    user_id: str
+    email: Optional[str] = None
+    has_access: bool
+    access_type: str  # "subscription" | "free" | "none"
+    expires_at: Optional[str] = None
+    is_expired: bool

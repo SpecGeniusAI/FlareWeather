@@ -69,6 +69,8 @@ class User(Base):
     diagnoses = Column(Text, nullable=True)  # JSON array of user diagnoses
     stored_papers = Column(Text, nullable=True)  # JSON array of papers searched for user's diagnoses
     papers_updated_at = Column(DateTime, nullable=True)  # When papers were last updated
+    free_access_enabled = Column(Boolean, default=False, nullable=False)  # Whether user has free access granted
+    free_access_expires_at = Column(DateTime, nullable=True)  # When free access expires (None = never expires)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -223,6 +225,34 @@ def init_db():
                 print(f"⚠️  Migration error: {e}")
                 import traceback
                 traceback.print_exc()
+        
+        # Add free_access_enabled column if it doesn't exist
+        if 'free_access_enabled' not in columns:
+            print("🔄 Migrating database: Adding free_access_enabled column...")
+            try:
+                db_type = engine.dialect.name
+                with engine.begin() as conn:
+                    if db_type == 'postgresql':
+                        conn.execute(text("ALTER TABLE users ADD COLUMN free_access_enabled BOOLEAN DEFAULT FALSE"))
+                    else:
+                        conn.execute(text("ALTER TABLE users ADD COLUMN free_access_enabled BOOLEAN DEFAULT 0"))
+                print("✅ Migration complete: free_access_enabled column added")
+            except Exception as e:
+                print(f"⚠️  Migration error: {e}")
+        
+        # Add free_access_expires_at column if it doesn't exist
+        if 'free_access_expires_at' not in columns:
+            print("🔄 Migrating database: Adding free_access_expires_at column...")
+            try:
+                db_type = engine.dialect.name
+                with engine.begin() as conn:
+                    if db_type == 'postgresql':
+                        conn.execute(text("ALTER TABLE users ADD COLUMN free_access_expires_at TIMESTAMP"))
+                    else:
+                        conn.execute(text("ALTER TABLE users ADD COLUMN free_access_expires_at DATETIME"))
+                print("✅ Migration complete: free_access_expires_at column added")
+            except Exception as e:
+                print(f"⚠️  Migration error: {e}")
                 
         print("📊 Database schema check complete")
     else:
