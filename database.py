@@ -71,6 +71,8 @@ class User(Base):
     papers_updated_at = Column(DateTime, nullable=True)  # When papers were last updated
     free_access_enabled = Column(Boolean, default=False, nullable=False)  # Whether user has free access granted
     free_access_expires_at = Column(DateTime, nullable=True)  # When free access expires (None = never expires)
+    subscription_status = Column(String, nullable=True)  # Subscription status: "active", "expired", "revoked", "none"
+    subscription_plan = Column(String, nullable=True)  # Subscription plan/product_id (e.g., "monthly", "yearly")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -251,6 +253,26 @@ def init_db():
                     else:
                         conn.execute(text("ALTER TABLE users ADD COLUMN free_access_expires_at DATETIME"))
                 print("✅ Migration complete: free_access_expires_at column added")
+            except Exception as e:
+                print(f"⚠️  Migration error: {e}")
+        
+        # Add subscription_status column if it doesn't exist
+        if 'subscription_status' not in columns:
+            print("🔄 Migrating database: Adding subscription_status column...")
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN subscription_status VARCHAR"))
+                print("✅ Migration complete: subscription_status column added")
+            except Exception as e:
+                print(f"⚠️  Migration error: {e}")
+        
+        # Add subscription_plan column if it doesn't exist
+        if 'subscription_plan' not in columns:
+            print("🔄 Migrating database: Adding subscription_plan column...")
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN subscription_plan VARCHAR"))
+                print("✅ Migration complete: subscription_plan column added")
             except Exception as e:
                 print(f"⚠️  Migration error: {e}")
                 
