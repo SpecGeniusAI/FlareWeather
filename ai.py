@@ -34,6 +34,11 @@ except Exception as e:
 # Date-based comfort tip tracking to prevent repeats for 30+ days
 _comfort_tip_history: Dict[str, List[str]] = {}  # Maps date strings (YYYY-MM-DD) to lists of tips used
 
+# Simple cache for insight generation (weather pattern -> insight response)
+# Cache expires after 1 hour to allow for weather changes
+_insight_cache: Dict[str, Tuple[float, str, str, str, str, List[str], Optional[str], str, int, Optional[str], Optional[str]]] = {}
+_CACHE_TTL_SECONDS = 3600  # 1 hour
+
 
 def _get_today_date_string() -> str:
     """Get today's date as YYYY-MM-DD string."""
@@ -921,6 +926,28 @@ def generate_flare_risk_assessment(
 ) -> Tuple[str, str, str, str, List[str], Optional[str], str, int, Optional[str], Optional[str]]:
     """Generate a daily flare insight that obeys strict formatting rules."""
     
+    # Simple cache key based on weather pattern (rounded to avoid cache misses from tiny variations)
+    # Only cache if no user-specific data (diagnoses/sensitivities) to keep responses personalized
+    use_cache = not user_diagnoses and not user_sensitivities
+    cache_key = None
+    if use_cache:
+        import time
+        pressure = round(current_weather.get("pressure", 1013), 0)
+        temp = round(current_weather.get("temperature", 20), 1)
+        humidity = round(current_weather.get("humidity", 50), 0)
+        cache_key = f"{pressure}_{temp}_{humidity}_{pressure_trend or 'stable'}"
+        
+        # Check cache
+        if cache_key in _insight_cache:
+            cached_time, *cached_result = _insight_cache[cache_key]
+            age = time.time() - cached_time
+            if age < _CACHE_TTL_SECONDS:
+                print(f"⚡ Using cached insight (age: {age:.0f}s)")
+                return tuple(cached_result)
+            else:
+                # Cache expired, remove it
+                del _insight_cache[cache_key]
+    
     if not client:
         fallback_message = _format_daily_message(
             "Weather feels steady today.",
@@ -973,31 +1000,27 @@ def generate_flare_risk_assessment(
     if sensitivities_str:
         sensitivities_context = f"\n- Triggers: {sensitivities_str}"
 
+    # Optimized prompt - shorter for faster generation while maintaining quality
     prompt = f"""FlareWeather Assistant. Location: {location_str}. Weather: {weather_descriptor}. Hourly: {hourly_note}. User: {diagnoses_str}{sensitivities_context}
 
-CRITICAL VARIETY REQUIREMENTS:
-- VARY your comfort tip selections - rotate through different Eastern medicine approaches (tai-chi, acupressure, qigong, ginger tea, oil massage, breathing, etc.)
-- VARY your summary sentences - use different weather descriptions and impact statements
-- VARY your why_line explanations - use different mechanisms and body systems
-- Even for LOW risk days, ensure variety in language and approach
-- NEVER repeat the same comfort tip or insight phrasing
+VARY: Comfort tips (rotate Eastern medicine approaches), summary sentences, why explanations. No repeats.
 
-STYLE: Grade 12 vocab. No numbers/units. Tentative language (may, might). Short sentences. Reference user conditions when relevant.
+STYLE: Grade 12 vocab. No numbers. Tentative language (may, might). Short sentences.
 
 OUTPUT JSON:
 {{
   "risk": "LOW | MODERATE | HIGH",
-  "forecast": "Actionable headline with risk context. VARY your phrasing. Examples: 'Seize the day — low flare risk' or 'Plan ahead — moderate risk'. No numbers.",
-  "why": "Brief why bodies may notice. VARY your explanations.",
+  "forecast": "Actionable headline. VARY phrasing. No numbers.",
+  "why": "Brief why bodies may notice. VARY explanations.",
   "daily_insight": {{
-    "summary_sentence": "REQUIRED: '[Weather] which could [impact].' VARY your weather descriptions and impacts. Example: 'Cool air with heavy humidity which could increase joint stiffness, especially for those with arthritis.' Use different phrasing each time.",
-    "why_line": "REQUIRED: Explain the specific mechanism in concrete terms. VARY which body systems and mechanisms you mention. Avoid vague phrases like 'increase sensitivity' or 'added discomfort'. Instead, explain WHAT happens: 'Dropping pressure causes joint tissues to expand, which presses against nerve endings and creates stiffness' or 'High humidity makes the body retain more fluid, which can increase inflammation in sensitive joints'. Rotate through different explanations.",
-    "comfort_tip": "REQUIRED for ALL risk levels (LOW, MODERATE, HIGH). Up to 20 words. ALWAYS PRIORITIZE Eastern medicine (Chinese medicine/TCM or Ayurveda) over Western medicine. VARY your selections - rotate through tai-chi, acupressure, qigong, ginger tea, oil massage, breathing exercises, etc. For LOW risk days, still use Eastern medicine. MUST include medical source: 'Chinese medicine recommends...', 'Ayurveda suggests...', or 'Western medicine suggests...'. Be specific and educational. Match weather/symptoms. Always include a tip.",
-    "sign_off": "One calm sign-off sentence. VARY your phrasing."
+    "summary_sentence": "[Weather] which could [impact]. VARY descriptions.",
+    "why_line": "Explain specific mechanism. VARY body systems. Example: 'Dropping pressure causes joint tissues to expand, pressing nerve endings.'",
+    "comfort_tip": "Up to 20 words. PRIORITIZE Eastern medicine (Chinese medicine/Ayurveda). Include source: 'Chinese medicine recommends...' or 'Ayurveda suggests...'. VARY selections.",
+    "sign_off": "One calm sentence. VARY phrasing."
   }}
 }}
 
-DO NOT: Use numbers/percentages. Mention pain/flare-ups. Add extra sections. Repeat the same phrases."""
+DO NOT: Numbers/percentages. Pain/flare-ups. Extra sections. Repeats."""
 
     risk = "MODERATE"
     forecast_from_model: Optional[str] = None
@@ -1022,7 +1045,7 @@ DO NOT: Use numbers/percentages. Mention pain/flare-ups. Add extra sections. Rep
                 
                 message = claude_client.messages.create(
                     model="claude-3-5-haiku-20241022",  # Fastest Claude model
-                    max_tokens=350,
+                    max_tokens=300,  # Reduced from 350 for faster generation
                     temperature=0.3,
                     system="You translate weather moods into calm, compassionate guidance for weather-sensitive people. Always respond with valid JSON only.",
                     messages=[{"role": "user", "content": json_prompt}]
@@ -1056,7 +1079,7 @@ DO NOT: Use numbers/percentages. Mention pain/flare-ups. Add extra sections. Rep
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.3,  # Lower temperature for faster, more consistent responses
-                    max_tokens=350,  # Increased to prevent comfort tip truncation (was 300)
+                    max_tokens=300,  # Reduced for faster generation (comfort tips are max 20 words)
                     response_format={"type": "json_object"}
                 )
                 response_text = completion.choices[0].message.content.strip()
@@ -1294,7 +1317,7 @@ DO NOT: Use numbers/percentages. Mention pain/flare-ups. Add extra sections. Rep
             if paper.get("source") or paper.get("title")
         ]
 
-    return (
+    result = (
         risk,
         forecast or "",
         why_text or "",
@@ -1306,6 +1329,22 @@ DO NOT: Use numbers/percentages. Mention pain/flare-ups. Add extra sections. Rep
         personal_anecdote,
         behavior_prompt
     )
+    
+    # Cache result if applicable (only for generic weather patterns without user-specific data)
+    if use_cache and cache_key:
+        import time
+        _insight_cache[cache_key] = (time.time(), *result)
+        # Clean up old cache entries (keep cache size reasonable)
+        if len(_insight_cache) > 50:
+            current_time = time.time()
+            keys_to_remove = [
+                key for key, (cached_time, *_) in _insight_cache.items()
+                if (current_time - cached_time) > _CACHE_TTL_SECONDS
+            ]
+            for key in keys_to_remove:
+                del _insight_cache[key]
+    
+    return result
 
 
 # Backward compatibility function

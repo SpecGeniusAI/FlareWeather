@@ -75,6 +75,9 @@ struct InsightResponse: Codable {
     let personalization_score: Int?
     let personal_anecdote: String?
     let behavior_prompt: String?
+    let access_required: Bool?  // True if user needs to subscribe/upgrade
+    let access_expired: Bool?  // True if user's free access has expired
+    let logout_message: String?  // Message to show under logout button
 }
 
 struct FeedbackRequestPayload: Codable {
@@ -2398,8 +2401,9 @@ Move at the pace that feels right.
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = jsonData
-        // Increase timeout for analyze endpoint since it calls OpenAI API which can take 20-30 seconds
-        request.timeoutInterval = 60.0  // 60 second timeout for AI analysis
+        // Timeout for analyze endpoint - optimized for faster responses
+        // Claude Haiku: 2-4s, gpt-4o-mini: 5-8s, with fallbacks: up to 15s
+        request.timeoutInterval = 20.0  // Reduced from 60s - should be enough with optimizations
         
         print("📤 Sending request to: \(url) [Request ID: \(requestId)]")
         
@@ -2473,6 +2477,21 @@ Move at the pace that feels right.
                 pressureAlert = decoded.pressure_alert
                 alertSeverity = decoded.alert_severity
                 personalizationScore = decoded.personalization_score
+                
+                // Check if access is required from the response
+                if let accessRequired = decoded.access_required, accessRequired {
+                    print("⚠️  Access required detected in insight response")
+                    // Post notification to check access status
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("AccessRequired"),
+                        object: nil,
+                        userInfo: [
+                            "access_expired": decoded.access_expired ?? false,
+                            "logout_message": decoded.logout_message ?? "Logout to see basic insights"
+                        ]
+                    )
+                }
+                
                 isLoading = false
                 lastAnalysisTime = Date()
                 lastAnalysisId = requestId.uuidString

@@ -467,6 +467,9 @@ async def get_current_user_info(current_user: dict = Depends(get_current_user), 
     if not access_status["has_access"]:
         logout_message = "Logout to see basic insights"
     
+    # Determine if access expired (had free access but it's now expired)
+    access_expired = access_status["access_type"] == "free" and not access_status["has_access"]
+    
     return UserResponse(
         user_id=user.id,
         email=user.email or "",
@@ -476,6 +479,7 @@ async def get_current_user_info(current_user: dict = Depends(get_current_user), 
         access_type=access_status["access_type"],
         access_expires_at=access_status["expires_at"],
         access_required=not access_status["has_access"],  # True if access is required (user doesn't have it)
+        access_expired=access_expired,
         logout_message=logout_message
     )
 
