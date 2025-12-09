@@ -875,96 +875,96 @@ async def analyze_data(request: CorrelationRequest, background_tasks: Background
             )
             
             if stored_papers:
-            # Use stored papers - this is FAST!
-            papers = stored_papers
-            # Format citations from stored papers
-            enhanced_citations = []
-            for paper in papers:
-                title = paper.get("title", "").strip()
-                journal = paper.get("journal", "").strip()
-                year = paper.get("year", "").strip()
-                source_id = paper.get("source", "").strip()
+                # Use stored papers - this is FAST!
+                papers = stored_papers
+                # Format citations from stored papers
+                enhanced_citations = []
+                for paper in papers:
+                    title = paper.get("title", "").strip()
+                    journal = paper.get("journal", "").strip()
+                    year = paper.get("year", "").strip()
+                    source_id = paper.get("source", "").strip()
+                    
+                    if not title:
+                        if source_id:
+                            enhanced_citations.append(source_id)
+                        continue
+                    
+                    citation_parts = [title]
+                    if journal and journal != "Unknown journal":
+                        if year and year != "Unknown":
+                            citation_parts.append(f"({journal}, {year})")
+                        else:
+                            citation_parts.append(f"({journal})")
+                    elif year and year != "Unknown":
+                        citation_parts.append(f"({year})")
+                    
+                    enhanced_citation = " ".join(citation_parts)
+                    enhanced_citations.append(enhanced_citation)
                 
-                if not title:
-                    if source_id:
-                        enhanced_citations.append(source_id)
-                    continue
-                
-                citation_parts = [title]
-                if journal and journal != "Unknown journal":
-                    if year and year != "Unknown":
-                        citation_parts.append(f"({journal}, {year})")
-                    else:
-                        citation_parts.append(f"({journal})")
-                elif year and year != "Unknown":
-                    citation_parts.append(f"({year})")
-                
-                enhanced_citation = " ".join(citation_parts)
-                enhanced_citations.append(enhanced_citation)
-            
-            citations = enhanced_citations if enhanced_citations else [
-                paper.get("source", paper.get("title", "Unknown")) 
-                for paper in papers 
-                if paper.get("source") or paper.get("title")
-            ]
+                citations = enhanced_citations if enhanced_citations else [
+                    paper.get("source", paper.get("title", "Unknown")) 
+                    for paper in papers 
+                    if paper.get("source") or paper.get("title")
+                ]
                 citations = [c for c in citations if c and c != "Unknown"]
                 print(f"📚 Using stored citations: {citations}")
             elif should_search_papers:
-            try:
-                print(f"\n🔍 Searching papers for: '{search_query_symptom}' AND '{weather_search_term}'")
-                papers = search_papers(search_query_symptom, weather_search_term, max_results=3)
-                print(f"📊 Paper search returned: {len(papers)} papers")
-                if papers:
-                    print(f"✅ Found {len(papers)} papers from EuropePMC:")
-                    for i, paper in enumerate(papers, 1):
-                        title = paper.get("title", "No title")[:60]
-                        source = paper.get("source", "Unknown")
-                        print(f"   {i}. {title}... [Source: {source}]")
-                    
-                    # Enhanced citation formatting: "Title (Journal, Year)" for better credibility
-                    enhanced_citations = []
-                    for paper in papers:
-                        title = paper.get("title", "").strip()
-                        journal = paper.get("journal", "").strip()
-                        year = paper.get("year", "").strip()
-                        source_id = paper.get("source", "").strip()
+                try:
+                    print(f"\n🔍 Searching papers for: '{search_query_symptom}' AND '{weather_search_term}'")
+                    papers = search_papers(search_query_symptom, weather_search_term, max_results=3)
+                    print(f"📊 Paper search returned: {len(papers)} papers")
+                    if papers:
+                        print(f"✅ Found {len(papers)} papers from EuropePMC:")
+                        for i, paper in enumerate(papers, 1):
+                            title = paper.get("title", "No title")[:60]
+                            source = paper.get("source", "Unknown")
+                            print(f"   {i}. {title}... [Source: {source}]")
                         
-                        if not title:
-                            if source_id:
-                                enhanced_citations.append(source_id)
-                            continue
+                        # Enhanced citation formatting: "Title (Journal, Year)" for better credibility
+                        enhanced_citations = []
+                        for paper in papers:
+                            title = paper.get("title", "").strip()
+                            journal = paper.get("journal", "").strip()
+                            year = paper.get("year", "").strip()
+                            source_id = paper.get("source", "").strip()
+                            
+                            if not title:
+                                if source_id:
+                                    enhanced_citations.append(source_id)
+                                continue
+                            
+                            # Build enhanced citation
+                            citation_parts = [title]
+                            
+                            # Add journal and year if available
+                            if journal and journal != "Unknown journal":
+                                if year and year != "Unknown":
+                                    citation_parts.append(f"({journal}, {year})")
+                                else:
+                                    citation_parts.append(f"({journal})")
+                            elif year and year != "Unknown":
+                                citation_parts.append(f"({year})")
+                            
+                            # Join parts with space
+                            enhanced_citation = " ".join(citation_parts)
+                            enhanced_citations.append(enhanced_citation)
                         
-                        # Build enhanced citation
-                        citation_parts = [title]
-                        
-                        # Add journal and year if available
-                        if journal and journal != "Unknown journal":
-                            if year and year != "Unknown":
-                                citation_parts.append(f"({journal}, {year})")
-                            else:
-                                citation_parts.append(f"({journal})")
-                        elif year and year != "Unknown":
-                            citation_parts.append(f"({year})")
-                        
-                        # Join parts with space
-                        enhanced_citation = " ".join(citation_parts)
-                        enhanced_citations.append(enhanced_citation)
-                    
-                    citations = enhanced_citations if enhanced_citations else [
-                        paper.get("source", paper.get("title", "Unknown")) 
-                        for paper in papers 
-                        if paper.get("source") or paper.get("title")
-                    ]
-                    # Filter out "Unknown" sources
-                    citations = [c for c in citations if c and c != "Unknown"]
-                    print(f"📚 Citations to return: {citations}")
-                else:
-                    print("⚠️  No papers found from EuropePMC, will use fallback")
-            except Exception as e:
-                print(f"❌ Paper search failed: {e}")
-                import traceback
-                traceback.print_exc()
-                papers = []
+                        citations = enhanced_citations if enhanced_citations else [
+                            paper.get("source", paper.get("title", "Unknown")) 
+                            for paper in papers 
+                            if paper.get("source") or paper.get("title")
+                        ]
+                        # Filter out "Unknown" sources
+                        citations = [c for c in citations if c and c != "Unknown"]
+                        print(f"📚 Citations to return: {citations}")
+                    else:
+                        print("⚠️  No papers found from EuropePMC, will use fallback")
+                except Exception as e:
+                    print(f"❌ Paper search failed: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    papers = []
             else:
                 print("⏭️  Skipping paper search for faster daily insight generation (no weekly forecast or diagnoses)")
         else:
