@@ -848,32 +848,33 @@ async def analyze_data(request: CorrelationRequest, background_tasks: Background
         weather_search_term = weather_search_terms.get(strongest_factor, strongest_factor)
         
         # Search for live papers (non-blocking)
-        # OPTIMIZATION: Use stored papers from user profile if available (searched at account setup)
-        # This saves 5-10 seconds on every insight generation!
+        # OPTIMIZATION: Skip paper loading entirely when skip_weekly=True for fastest daily insight
         papers = []
         citations = []
         
-        # First, try to get stored papers from user profile (if user_id provided)
-        stored_papers = None
-        if request.user_id:
-            try:
-                user = db.query(User).filter(User.id == request.user_id).first()
-                if user and user.stored_papers:
-                    stored_papers = json.loads(user.stored_papers)
-                    print(f"📦 Using {len(stored_papers)} stored papers from user profile")
-            except Exception as e:
-                print(f"⚠️  Error loading stored papers: {e}")
-                stored_papers = None
-        
-        # Only do live paper search if:
-        # 1. No stored papers available AND
-        # 2. (Weekly forecast is provided OR user has diagnoses)
-        should_search_papers = (
-            stored_papers is None and
-            ((request.weekly_forecast and len(request.weekly_forecast) > 0) or (user_diagnoses and len(user_diagnoses) > 0))
-        )
-        
-        if stored_papers:
+        # Skip paper loading if skip_weekly=True (daily insights don't need papers for speed)
+        if not request.skip_weekly:
+            # First, try to get stored papers from user profile (if user_id provided)
+            stored_papers = None
+            if request.user_id:
+                try:
+                    user = db.query(User).filter(User.id == request.user_id).first()
+                    if user and user.stored_papers:
+                        stored_papers = json.loads(user.stored_papers)
+                        print(f"📦 Using {len(stored_papers)} stored papers from user profile")
+                except Exception as e:
+                    print(f"⚠️  Error loading stored papers: {e}")
+                    stored_papers = None
+            
+            # Only do live paper search if:
+            # 1. No stored papers available AND
+            # 2. (Weekly forecast is provided OR user has diagnoses)
+            should_search_papers = (
+                stored_papers is None and
+                ((request.weekly_forecast and len(request.weekly_forecast) > 0) or (user_diagnoses and len(user_diagnoses) > 0))
+            )
+            
+            if stored_papers:
             # Use stored papers - this is FAST!
             papers = stored_papers
             # Format citations from stored papers
@@ -906,9 +907,9 @@ async def analyze_data(request: CorrelationRequest, background_tasks: Background
                 for paper in papers 
                 if paper.get("source") or paper.get("title")
             ]
-            citations = [c for c in citations if c and c != "Unknown"]
-            print(f"📚 Using stored citations: {citations}")
-        elif should_search_papers:
+                citations = [c for c in citations if c and c != "Unknown"]
+                print(f"📚 Using stored citations: {citations}")
+            elif should_search_papers:
             try:
                 print(f"\n🔍 Searching papers for: '{search_query_symptom}' AND '{weather_search_term}'")
                 papers = search_papers(search_query_symptom, weather_search_term, max_results=3)
@@ -964,8 +965,10 @@ async def analyze_data(request: CorrelationRequest, background_tasks: Background
                 import traceback
                 traceback.print_exc()
                 papers = []
+            else:
+                print("⏭️  Skipping paper search for faster daily insight generation (no weekly forecast or diagnoses)")
         else:
-            print("⏭️  Skipping paper search for faster daily insight generation (no weekly forecast or diagnoses)")
+            print("⚡ Skipping paper loading entirely for fastest daily insight (skip_weekly=True)")
         
         # Calculate pressure trend from weather snapshots
         pressure_trend = None
@@ -1080,8 +1083,11 @@ async def analyze_data(request: CorrelationRequest, background_tasks: Background
             quick_why = "Analyzing current conditions..."
         
         # Generate full flare risk assessment with AI
-        print(f"🤖 Generating full AI insight with {len(papers)} papers...")
-        print(f"📄 Papers data: {[p.get('source', 'Unknown') for p in papers]}")
+        if not request.skip_weekly:
+            print(f"🤖 Generating full AI insight with {len(papers)} papers...")
+            print(f"📄 Papers data: {[p.get('source', 'Unknown') for p in papers]}")
+        else:
+            print(f"⚡ Generating fast daily insight (papers skipped for speed)...")
         
         try:
             risk, forecast, why, ai_message, paper_citations, support_note, alert_severity, personalization_score, personal_anecdote, behavior_prompt = generate_flare_risk_assessment(

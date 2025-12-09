@@ -1000,27 +1000,21 @@ def generate_flare_risk_assessment(
     if sensitivities_str:
         sensitivities_context = f"\n- Triggers: {sensitivities_str}"
 
-    # Optimized prompt - shorter for faster generation while maintaining quality
-    prompt = f"""FlareWeather Assistant. Location: {location_str}. Weather: {weather_descriptor}. Hourly: {hourly_note}. User: {diagnoses_str}{sensitivities_context}
+    # Ultra-optimized prompt - minimal for fastest generation
+    prompt = f"""Weather: {weather_descriptor}. User: {diagnoses_str}{sensitivities_context}
 
-VARY: Comfort tips (rotate Eastern medicine approaches), summary sentences, why explanations. No repeats.
-
-STYLE: Grade 12 vocab. No numbers. Tentative language (may, might). Short sentences.
-
-OUTPUT JSON:
+JSON:
 {{
-  "risk": "LOW | MODERATE | HIGH",
-  "forecast": "Actionable headline. VARY phrasing. No numbers.",
-  "why": "Brief why bodies may notice. VARY explanations.",
+  "risk": "LOW|MODERATE|HIGH",
+  "forecast": "Headline. No numbers.",
+  "why": "Brief explanation.",
   "daily_insight": {{
-    "summary_sentence": "[Weather] which could [impact]. VARY descriptions.",
-    "why_line": "Explain specific mechanism. VARY body systems. Example: 'Dropping pressure causes joint tissues to expand, pressing nerve endings.'",
-    "comfort_tip": "Up to 20 words. PRIORITIZE Eastern medicine (Chinese medicine/Ayurveda). Include source: 'Chinese medicine recommends...' or 'Ayurveda suggests...'. VARY selections.",
-    "sign_off": "One calm sentence. VARY phrasing."
+    "summary_sentence": "[Weather] which could [impact].",
+    "why_line": "Mechanism explanation.",
+    "comfort_tip": "Up to 20 words. Eastern medicine. Include source.",
+    "sign_off": "One sentence."
   }}
-}}
-
-DO NOT: Numbers/percentages. Pain/flare-ups. Extra sections. Repeats."""
+}}"""
 
     risk = "MODERATE"
     forecast_from_model: Optional[str] = None
@@ -1045,8 +1039,8 @@ DO NOT: Numbers/percentages. Pain/flare-ups. Extra sections. Repeats."""
                 
                 message = claude_client.messages.create(
                     model="claude-3-5-haiku-20241022",  # Fastest Claude model
-                    max_tokens=300,  # Reduced from 350 for faster generation
-                    temperature=0.3,
+                    max_tokens=200,  # Aggressively reduced for fastest generation (comfort tips are max 20 words)
+                    temperature=0.2,  # Lower temperature for faster, more deterministic responses
                     system="You translate weather moods into calm, compassionate guidance for weather-sensitive people. Always respond with valid JSON only.",
                     messages=[{"role": "user", "content": json_prompt}]
                 )
@@ -1078,8 +1072,8 @@ DO NOT: Numbers/percentages. Pain/flare-ups. Extra sections. Repeats."""
                         {"role": "system", "content": "You translate weather moods into calm, compassionate guidance for weather-sensitive people."},
                         {"role": "user", "content": prompt}
                     ],
-                    temperature=0.3,  # Lower temperature for faster, more consistent responses
-                    max_tokens=300,  # Reduced for faster generation (comfort tips are max 20 words)
+                    temperature=0.2,  # Lower temperature for faster, more deterministic responses
+                    max_tokens=200,  # Aggressively reduced for fastest generation (comfort tips are max 20 words)
                     response_format={"type": "json_object"}
                 )
                 response_text = completion.choices[0].message.content.strip()
