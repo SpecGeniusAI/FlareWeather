@@ -1000,21 +1000,23 @@ def generate_flare_risk_assessment(
     if sensitivities_str:
         sensitivities_context = f"\n- Triggers: {sensitivities_str}"
 
-    # Ultra-optimized prompt - minimal for fastest generation
-    prompt = f"""Weather: {weather_descriptor}. User: {diagnoses_str}{sensitivities_context}
+    # Optimized prompt - balanced for speed and quality
+    prompt = f"""FlareWeather Assistant. Weather: {weather_descriptor}. Hourly: {hourly_note}. User: {diagnoses_str}{sensitivities_context}
 
-JSON:
+Generate JSON:
 {{
-  "risk": "LOW|MODERATE|HIGH",
-  "forecast": "Headline. No numbers.",
-  "why": "Brief explanation.",
+  "risk": "LOW | MODERATE | HIGH",
+  "forecast": "Actionable headline. No numbers.",
+  "why": "Brief why bodies may notice.",
   "daily_insight": {{
     "summary_sentence": "[Weather] which could [impact].",
-    "why_line": "Mechanism explanation.",
-    "comfort_tip": "Up to 20 words. Eastern medicine. Include source.",
-    "sign_off": "One sentence."
+    "why_line": "Explain mechanism briefly.",
+    "comfort_tip": "Up to 20 words. Eastern medicine. Include source like 'Chinese medicine recommends...'",
+    "sign_off": "One calm sentence."
   }}
-}}"""
+}}
+
+Style: Grade 12 vocab. Tentative language (may, might). Short sentences."""
 
     risk = "MODERATE"
     forecast_from_model: Optional[str] = None
@@ -1035,12 +1037,12 @@ JSON:
             try:
                 print("🚀 Attempting Claude Haiku (faster)...")
                 # Claude doesn't have native JSON mode, so we add JSON formatting instructions to the prompt
-                json_prompt = prompt + "\n\nIMPORTANT: Respond ONLY with valid JSON. Do not include any text before or after the JSON object. The JSON must match the exact structure specified above."
+                json_prompt = prompt + "\n\nIMPORTANT: Respond ONLY with valid JSON matching the structure above. No markdown, no extra text."
                 
                 message = claude_client.messages.create(
                     model="claude-3-5-haiku-20241022",  # Fastest Claude model
-                    max_tokens=200,  # Aggressively reduced for fastest generation (comfort tips are max 20 words)
-                    temperature=0.2,  # Lower temperature for faster, more deterministic responses
+                    max_tokens=280,  # Balanced for speed and completeness
+                    temperature=0.3,  # Slightly higher for better quality while still fast
                     system="You translate weather moods into calm, compassionate guidance for weather-sensitive people. Always respond with valid JSON only.",
                     messages=[{"role": "user", "content": json_prompt}]
                 )
@@ -1072,8 +1074,8 @@ JSON:
                         {"role": "system", "content": "You translate weather moods into calm, compassionate guidance for weather-sensitive people."},
                         {"role": "user", "content": prompt}
                     ],
-                    temperature=0.2,  # Lower temperature for faster, more deterministic responses
-                    max_tokens=200,  # Aggressively reduced for fastest generation (comfort tips are max 20 words)
+                    temperature=0.3,  # Balanced for speed and quality
+                    max_tokens=280,  # Balanced for speed and completeness
                     response_format={"type": "json_object"}
                 )
                 response_text = completion.choices[0].message.content.strip()
