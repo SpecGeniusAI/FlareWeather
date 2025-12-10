@@ -40,16 +40,16 @@ def query_apple_subscriptions():
         print("   5. Convert the .p8 key to PEM format (or use as-is)")
         return
     
+    try:
+        # Try to import the App Store Server Library
         try:
-            # Try to import the App Store Server Library
-            try:
-                from appstoreserverlibrary.api_client import APIClient
-                from appstoreserverlibrary.models import Environment
-            except ImportError:
-                print("❌ app-store-server-library not installed")
-                print("\n📦 Install it with:")
-                print("   pip install app-store-server-library")
-                return
+            from appstoreserverlibrary.api_client import APIClient
+            from appstoreserverlibrary.models import Environment
+        except ImportError:
+            print("❌ app-store-server-library not installed")
+            print("\n📦 Install it with:")
+            print("   pip install app-store-server-library")
+            return
         
         # Initialize API client
         print("🔐 Initializing App Store Server API client...")
