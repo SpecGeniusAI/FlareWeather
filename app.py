@@ -1486,3 +1486,85 @@ async def get_access_status_endpoint(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to get access status: {str(e)}")
+
+
+@app.get("/admin/subscription-stats")
+async def get_subscription_stats(
+    admin_key_header: Optional[str] = Header(None, alias="X-Admin-Key"),
+    admin_key: Optional[str] = Query(None, description="Admin API key (alternative to header)"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get subscription statistics - shows what subscription data exists and if it's linked to users.
+    Requires ADMIN_API_KEY header (X-Admin-Key) or query parameter.
+    """
+    # Use header key if provided, otherwise use query param
+    key = admin_key_header or admin_key
+
+    # Verify admin key
+    if not verify_admin_key(key):
+        raise HTTPException(status_code=401, detail="Invalid admin API key")
+
+    try:
+        # Count users
+        total_users = db.query(User).count()
+        users_with_subscription_status = db.query(User).filter(User.subscription_status.isnot(None)).count()
+        users_with_original_transaction_id = db.query(User).filter(User.original_transaction_id.isnot(None)).count()
+        
+        # Count entitlements
+        total_entitlements = db.query(SubscriptionEntitlement).count()
+        active_entitlements = db.query(SubscriptionEntitlement).filter(SubscriptionEntitlement.status == "active").count()
+        
+        # Get active entitlements with user info
+        active_list = []
+        active_ents = db.query(SubscriptionEntitlement).filter(SubscriptionEntitlement.status == "active").all()
+        for ent in active_ents:
+            user = db.query(User).filter(User.original_transaction_id == ent.original_transaction_id).first()
+            active_list.append({
+                "original_transaction_id": ent.original_transaction_id,
+                "product_id": ent.product_id,
+                "status": ent.status,
+                "expires_at": ent.expires_at.isoformat() if ent.expires_at else None,
+                "linked_to_user": user.email if user else None,
+                "user_id": user.id if user else None
+            })
+        
+        # Get unlinked entitlements
+        unlinked = []
+        all_entitlements = db.query(SubscriptionEntitlement).all()
+        for ent in all_entitlements:
+            user = db.query(User).filter(User.original_transaction_id == ent.original_transaction_id).first()
+            if not user:
+                unlinked.append({
+                    "original_transaction_id": ent.original_transaction_id,
+                    "product_id": ent.product_id,
+                    "status": ent.status,
+                    "updated_at": ent.updated_at.isoformat() if ent.updated_at else None
+                })
+        
+        return {
+            "users": {
+                "total": total_users,
+                "with_subscription_status": users_with_subscription_status,
+                "with_original_transaction_id": users_with_original_transaction_id
+            },
+            "entitlements": {
+                "total": total_entitlements,
+                "active": active_entitlements
+            },
+            "active_subscriptions": active_list,
+            "unlinked_entitlements": unlinked,
+            "summary": {
+                "users_without_subscription_data": total_users - users_with_subscription_status,
+                "active_subscriptions_linked": len([a for a in active_list if a["linked_to_user"]]),
+                "active_subscriptions_unlinked": len([a for a in active_list if not a["linked_to_user"]])
+            }
+        }
+    except Exception as e:
+        print(f"❌ Error getting subscription stats: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get subscription stats: {str(e)}"
+        )
