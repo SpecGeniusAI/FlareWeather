@@ -87,23 +87,42 @@ def get_google_sheets_service():
 
 def get_all_users(db: Session) -> List[Dict[str, Any]]:
     """Fetch all users from database with subscription info"""
+    # Use a LEFT JOIN to get subscription info from SubscriptionEntitlement
+    from sqlalchemy import or_
+    
+    # Query users with their entitlements
     users = db.query(User).all()
+    
+    # Get all active entitlements for quick lookup
+    all_entitlements = {}
+    for ent in db.query(SubscriptionEntitlement).all():
+        all_entitlements[ent.original_transaction_id] = ent
     
     user_data = []
     for user in users:
-        # Get subscription info from SubscriptionEntitlement if available
-        subscription_status = user.subscription_status
-        subscription_plan = user.subscription_plan
+        # Get subscription info - prioritize SubscriptionEntitlement table (most accurate)
+        subscription_status = None
+        subscription_plan = None
         
-        # If not set on user, try to get from SubscriptionEntitlement
-        if not subscription_status and user.original_transaction_id:
-            entitlement = db.query(SubscriptionEntitlement).filter(
-                SubscriptionEntitlement.original_transaction_id == user.original_transaction_id
-            ).first()
-            
-            if entitlement:
-                subscription_status = entitlement.status
-                subscription_plan = entitlement.product_id
+        # First, try to get from SubscriptionEntitlement table (most reliable)
+        # Check by original_transaction_id if user has it
+        if user.original_transaction_id and user.original_transaction_id in all_entitlements:
+            entitlement = all_entitlements[user.original_transaction_id]
+            subscription_status = entitlement.status
+            subscription_plan = entitlement.product_id
+            print(f"  User {user.email}: Found entitlement - status={subscription_status}, plan={subscription_plan}")
+        
+        # Fallback to user table fields if SubscriptionEntitlement didn't have it
+        if not subscription_status:
+            subscription_status = user.subscription_status
+        if not subscription_plan:
+            subscription_plan = user.subscription_plan
+        
+        # Default to "none" if still not found
+        if not subscription_status:
+            subscription_status = "none"
+        if not subscription_plan:
+            subscription_plan = "N/A"
         
         # Determine access type
         access_type = "none"
