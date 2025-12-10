@@ -1,0 +1,15 @@
+# Railway configuration for Google Sheets Sync Service
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "python sync_to_sheets.py"
+restartPolicyType = "on_failure"
+
+[env]
+PYTHON_VERSION = "3.11"
+SYNC_INTERVAL_HOURS = "1"
+GOOGLE_SHEET_ID = "18f5nfH8YsM5vUv5ZUN_KSniGhQAggwRyf-57jOnXLuY"
+GOOGLE_WORKSHEET_NAME = "Sheet1"
+# GOOGLE_OAUTH_TOKEN_JSON - Add this in Railway dashboard (entire token.json contents)
+# DATABASE_URL - Railway will auto-set this if you link the PostgreSQL service
