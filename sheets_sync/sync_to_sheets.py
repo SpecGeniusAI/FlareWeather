@@ -142,6 +142,13 @@ def sync_to_sheets():
     print(f"[{datetime.now()}] Starting sync to Google Sheets...")
     
     try:
+        # Check DATABASE_URL
+        db_url = os.getenv("DATABASE_URL")
+        if not db_url:
+            raise ValueError("DATABASE_URL environment variable not set! Add it in Railway Variables tab.")
+        
+        print(f"  Database: {db_url.split('@')[1] if '@' in db_url else 'configured'}")  # Show host without credentials
+        
         # Get database session
         db = SessionLocal()
         
