@@ -54,10 +54,10 @@ def query_apple_subscriptions():
         # Initialize API client
         print("🔐 Initializing App Store Server API client...")
         # Convert private key string to bytes if needed
-        private_key_bytes = APP_STORE_PRIVATE_KEY.encode('utf-8') if isinstance(APP_STORE_PRIVATE_KEY, str) else APP_STORE_PRIVATE_KEY
+        signing_key = APP_STORE_PRIVATE_KEY.encode('utf-8') if isinstance(APP_STORE_PRIVATE_KEY, str) else APP_STORE_PRIVATE_KEY
         
         client = AppStoreServerAPIClient(
-            private_key=private_key_bytes,
+            signing_key=signing_key,
             key_id=APP_STORE_KEY_ID,
             issuer_id=APP_STORE_ISSUER_ID,
             bundle_id=APP_STORE_BUNDLE_ID,
