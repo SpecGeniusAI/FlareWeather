@@ -84,6 +84,18 @@ def update_entitlement(
         entitlement.status = "unknown"
 
     entitlement.updated_at = datetime.now(timezone.utc)
+    
+    # Also update User table if user exists with this original_transaction_id
+    user = _find_user_by_original_transaction(db, original_transaction_id)
+    if user:
+        user.subscription_status = entitlement.status
+        user.subscription_plan = entitlement.product_id
+        # Also set original_transaction_id if not already set
+        if not user.original_transaction_id:
+            user.original_transaction_id = original_transaction_id
+        print(f"✅ Updated user {user.email}: subscription_status={entitlement.status}, plan={entitlement.product_id}")
+    else:
+        print(f"⚠️  No user found with original_transaction_id={original_transaction_id}")
 
 
 def handle_notification(
