@@ -53,8 +53,19 @@ def query_apple_subscriptions():
         
         # Initialize API client
         print("🔐 Initializing App Store Server API client...")
-        # Convert private key string to bytes if needed
-        signing_key = APP_STORE_PRIVATE_KEY.encode('utf-8') if isinstance(APP_STORE_PRIVATE_KEY, str) else APP_STORE_PRIVATE_KEY
+        # Handle private key - it should be a string with proper PEM formatting
+        # Railway environment variables preserve newlines, so the key should be fine as-is
+        # But we need to ensure it's properly formatted
+        signing_key = APP_STORE_PRIVATE_KEY
+        
+        # If the key doesn't start with -----BEGIN, it might need formatting
+        if not signing_key.strip().startswith('-----BEGIN'):
+            print("⚠️  Warning: Private key format might be incorrect")
+            print("   Key should start with: -----BEGIN PRIVATE KEY-----")
+        
+        # Convert to bytes if it's a string
+        if isinstance(signing_key, str):
+            signing_key = signing_key.encode('utf-8')
         
         client = AppStoreServerAPIClient(
             signing_key=signing_key,
