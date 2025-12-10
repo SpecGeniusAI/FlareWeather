@@ -50,13 +50,13 @@ Copy the entire output (including `-----BEGIN PRIVATE KEY-----` and `-----END PR
 Add to your `requirements.txt`:
 
 ```
-app-store-server-library-python
+app-store-server-library
 ```
 
 Or install locally:
 
 ```bash
-pip install app-store-server-library-python
+pip install app-store-server-library
 ```
 
 ## Step 4: Run the Query Script
