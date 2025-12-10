@@ -107,7 +107,14 @@ def query_apple_subscriptions():
             
             # For users with transaction ID, query their subscription status
             updated_count = 0
+            skipped_count = 0
             for user in users_with_transaction_id:
+                # Skip invalid transaction IDs (like "0" from simulator)
+                if not user.original_transaction_id or user.original_transaction_id == "0" or len(user.original_transaction_id) < 10:
+                    print(f"\n⏭️  Skipping user: {user.email} (invalid transaction ID: {user.original_transaction_id})")
+                    skipped_count += 1
+                    continue
+                
                 try:
                     print(f"\n🔍 Querying subscription for user: {user.email} (transaction: {user.original_transaction_id})")
                     
@@ -214,12 +221,15 @@ def query_apple_subscriptions():
             
             db.commit()
             print(f"\n✅ Updated {updated_count} users' subscription status")
+            if skipped_count > 0:
+                print(f"⏭️  Skipped {skipped_count} users with invalid transaction IDs")
             
             # Show summary
             print("\n📊 Summary:")
             users_with_status = db.query(User).filter(User.subscription_status.isnot(None)).count()
             print(f"   Users with subscription status: {users_with_status}")
             print(f"   Users with transaction ID: {len(users_with_transaction_id)}")
+            print(f"   Users skipped (invalid IDs): {skipped_count}")
             
         finally:
             db.close()
