@@ -33,7 +33,8 @@ try:
         GrantFreeAccessRequest,
         RevokeFreeAccessRequest,
         FreeAccessResponse,
-        AccessStatusResponse
+        AccessStatusResponse,
+        LinkSubscriptionRequest
     )
     from logic import calculate_correlations, generate_correlation_summary, get_upcoming_pressure_change
     from ai import generate_insight_with_papers, generate_flare_risk_assessment, generate_weekly_forecast_insight, _choose_forecast, _analyze_pressure_window
@@ -592,6 +593,69 @@ async def get_user_access_status(
         is_expired=access_status["is_expired"],
         logout_message=logout_message
     )
+
+
+@app.post("/user/link-subscription")
+async def link_subscription(
+    request: LinkSubscriptionRequest,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Link a subscription to the current user by storing original_transaction_id.
+    Called by iOS app when user subscribes.
+    """
+    try:
+        user_id = current_user["user_id"]
+        user = db.query(User).filter(User.id == user_id).first()
+        
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Store original_transaction_id
+        user.original_transaction_id = request.original_transaction_id
+        
+        # Check if SubscriptionEntitlement already exists for this transaction
+        entitlement = db.query(SubscriptionEntitlement).filter(
+            SubscriptionEntitlement.original_transaction_id == request.original_transaction_id
+        ).first()
+        
+        if entitlement:
+            # Update user's subscription fields from existing entitlement
+            user.subscription_status = entitlement.status
+            user.subscription_plan = entitlement.product_id
+            print(f"✅ Linked user {user.email} to existing subscription: {entitlement.status}, {entitlement.product_id}")
+        else:
+            # Create new entitlement record (status will be updated when notification arrives)
+            new_entitlement = SubscriptionEntitlement(
+                original_transaction_id=request.original_transaction_id,
+                product_id=request.product_id,
+                status="unknown",  # Will be updated by App Store notification
+            )
+            db.add(new_entitlement)
+            user.subscription_status = "unknown"
+            user.subscription_plan = request.product_id
+            print(f"✅ Created new subscription record for user {user.email}: {request.original_transaction_id}")
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": "Subscription linked successfully",
+            "subscription_status": user.subscription_status,
+            "subscription_plan": user.subscription_plan
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error linking subscription: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to link subscription: {str(e)}"
+        )
 
 
 @app.put("/user/profile")
