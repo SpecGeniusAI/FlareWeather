@@ -39,7 +39,7 @@ try:
     from ai import generate_insight_with_papers, generate_flare_risk_assessment, generate_weekly_forecast_insight, _choose_forecast, _analyze_pressure_window
     from rag.query import query_rag
     from paper_search import search_papers, format_papers_for_prompt
-    from database import get_db, init_db, User, InsightFeedback, PasswordReset
+    from database import get_db, init_db, User, InsightFeedback, PasswordReset, SubscriptionEntitlement
     from access_utils import has_active_access, get_access_status
     from mailgun_service import send_password_reset_email
     from auth import (
