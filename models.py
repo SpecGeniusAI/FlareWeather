@@ -200,3 +200,9 @@ class AccessStatusResponse(BaseModel):
     expires_at: Optional[str] = None
     is_expired: bool
     logout_message: Optional[str] = None  # Message to show under logout button
+
+
+class LinkSubscriptionRequest(BaseModel):
+    """Request model for linking subscription to user"""
+    original_transaction_id: str
+    product_id: Optional[str] = None  # Optional: subscription product ID (e.g., "monthly", "yearly")
