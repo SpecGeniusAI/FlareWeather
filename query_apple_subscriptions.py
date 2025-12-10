@@ -53,17 +53,34 @@ def query_apple_subscriptions():
         
         # Initialize API client
         print("🔐 Initializing App Store Server API client...")
-        # Handle private key - it should be a string with proper PEM formatting
-        # Railway environment variables preserve newlines, so the key should be fine as-is
-        # But we need to ensure it's properly formatted
+        # Handle private key - ensure it has proper PEM formatting
         signing_key = APP_STORE_PRIVATE_KEY
         
-        # If the key doesn't start with -----BEGIN, it might need formatting
-        if not signing_key.strip().startswith('-----BEGIN'):
-            print("⚠️  Warning: Private key format might be incorrect")
-            print("   Key should start with: -----BEGIN PRIVATE KEY-----")
+        # Check if key needs PEM headers
+        key_stripped = signing_key.strip() if isinstance(signing_key, str) else signing_key.decode('utf-8').strip()
         
-        # Convert to bytes if it's a string
+        if not key_stripped.startswith('-----BEGIN'):
+            print("⚠️  Private key missing PEM headers, adding them...")
+            # Remove any existing whitespace/newlines
+            key_content = key_stripped.replace('\n', '').replace(' ', '').replace('\r', '')
+            
+            # Reformat with proper PEM structure
+            # Split into 64 character lines (PEM standard)
+            formatted_lines = []
+            for i in range(0, len(key_content), 64):
+                formatted_lines.append(key_content[i:i+64])
+            
+            # Build complete PEM key
+            formatted_key = '-----BEGIN PRIVATE KEY-----\n'
+            formatted_key += '\n'.join(formatted_lines)
+            formatted_key += '\n-----END PRIVATE KEY-----\n'
+            
+            signing_key = formatted_key
+            print("✅ PEM headers added")
+        else:
+            print("✅ Private key has proper PEM format")
+        
+        # Convert to bytes
         if isinstance(signing_key, str):
             signing_key = signing_key.encode('utf-8')
         
