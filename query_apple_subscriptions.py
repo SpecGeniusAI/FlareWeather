@@ -43,8 +43,8 @@ def query_apple_subscriptions():
     try:
         # Try to import the App Store Server Library
         try:
-            from appstoreserverlibrary.api_client import APIClient
-            from appstoreserverlibrary.models import Environment
+            from appstoreserverlibrary.api_client import AppStoreServerAPIClient, APIException
+            from appstoreserverlibrary.models.Environment import Environment
         except ImportError:
             print("❌ app-store-server-library not installed")
             print("\n📦 Install it with:")
@@ -53,10 +53,10 @@ def query_apple_subscriptions():
         
         # Initialize API client
         print("🔐 Initializing App Store Server API client...")
-        client = APIClient(
+        client = AppStoreServerAPIClient(
+            private_key=APP_STORE_PRIVATE_KEY,
             key_id=APP_STORE_KEY_ID,
             issuer_id=APP_STORE_ISSUER_ID,
-            private_key=APP_STORE_PRIVATE_KEY,
             bundle_id=APP_STORE_BUNDLE_ID,
             environment=Environment.PRODUCTION  # Use Environment.SANDBOX for testing
         )
