@@ -38,6 +38,8 @@ struct HomeView: View {
     @State private var lastSensitivitiesHash: String? = nil
     @State private var shouldLoadWeeklyData = false // Lazy loading flag for weekly forecast and insights
     @State private var lastForegroundDate: Date? = nil
+    @State private var showingPaywall = false
+    @State private var showingAccessExpiredPopup = false
     @AppStorage("useFahrenheit") private var useFahrenheit = false
     @AppStorage("hasGeneratedDailyInsightSession") private var hasGeneratedDailyInsightSession = false
     @AppStorage("lastInsightDate") private var lastInsightDateString: String = ""
@@ -104,6 +106,9 @@ struct HomeView: View {
             lastSensitivitiesHash = getUserProfileHash() // Same hash includes both
         }
         
+        // Check access status when user info is available
+        checkAccessStatus()
+        
         // Check if aiService already has valid insights (persists across navigation)
         let hasExistingInsights = (aiService.insightMessage != "Analyzing your week…" && 
                                   aiService.insightMessage != "Analyzing weather patterns…" && 
@@ -117,8 +122,21 @@ struct HomeView: View {
         if weatherService.weatherData == nil {
             print("🌤️ HomeView: No weather data, fetching...")
             Task {
-                // No artificial delay - start immediately
-                if let location = getEffectiveLocation() {
+                // Wait for location to be available (with retry)
+                var location: CLLocation? = nil
+                var retryCount = 0
+                let maxRetries = 10 // Try for up to 5 seconds (10 * 0.5s)
+                
+                while location == nil && retryCount < maxRetries {
+                    location = getEffectiveLocation()
+                    if location == nil {
+                        print("⏳ HomeView: Waiting for location... (attempt \(retryCount + 1)/\(maxRetries))")
+                        try? await Task.sleep(nanoseconds: 500_000_000) // Wait 0.5 seconds
+                        retryCount += 1
+                    }
+                }
+                
+                if let location = location {
                     print("📍 HomeView: Current location: \(location.coordinate.latitude), \(location.coordinate.longitude)")
                     // Fetch current weather - handleWeatherDataChange will trigger analysis IMMEDIATELY when data arrives
                     await weatherService.fetchWeatherData(for: location, forceRefresh: !hasInitialAnalysis)
@@ -129,7 +147,11 @@ struct HomeView: View {
                         await weatherService.fetchHourlyForecast(for: location)
                     }
                 } else {
-                    print("⚠️ HomeView: No location available yet")
+                    print("⚠️ HomeView: No location available after \(maxRetries) attempts")
+                    // Set loading to false so UI doesn't spin forever
+                    await MainActor.run {
+                        weatherService.isLoading = false
+                    }
                 }
             }
         } else {
@@ -322,12 +344,32 @@ struct HomeView: View {
             // App came to foreground
             print("🔄 HomeView: App came to foreground")
             handleForegroundRefresh()
+            // Refresh user info and check access status when app comes to foreground
+            refreshUserInfoAndCheckAccess()
         } else if newPhase == .background {
             // App went to background - save current insight date
             if let insightDate = aiService.insightMessage.isEmpty ? nil : Date() {
                 let formatter = DateFormatter()
                 formatter.dateFormat = "yyyy-MM-dd"
                 lastInsightDateString = formatter.string(from: insightDate)
+            }
+        }
+    }
+    
+    // Refresh user info from server and check access status
+    private func refreshUserInfoAndCheckAccess() {
+        Task {
+            do {
+                if let token = authManager.accessToken {
+                    let authService = AuthService()
+                    let userInfo = try await authService.getCurrentUser(token: token)
+                    await MainActor.run {
+                        authManager.currentUser = userInfo
+                        checkAccessStatus()
+                    }
+                }
+            } catch {
+                print("⚠️  Failed to refresh user info: \(error)")
             }
         }
     }
@@ -569,68 +611,57 @@ struct HomeView: View {
     
     var body: some View {
         NavigationView {
-            scrollViewWithModifiers
+            baseScrollView
+                .toolbar {
+                    ToolbarItem(placement: .principal) {
+                        LogoWordmarkView()
+                    }
+                }
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(Color.adaptiveCardBackground.opacity(0.95), for: .navigationBar)
+                .refreshable {
+                    await handleRefresh()
+                }
+                .modifier(LocationChangeModifier(
+                    locationManager: locationManager,
+                    weatherService: weatherService,
+                    aiService: aiService,
+                    scenePhase: scenePhase,
+                    authManager: authManager,
+                    handleViewAppearAction: handleViewAppearAction,
+                    handleLocationChange: handleLocationChange,
+                    handleLocationPreferenceChange: handleLocationPreferenceChange,
+                    handleWeatherDataChange: handleWeatherDataChangeWithCheck,
+                    handleAuthorizationStatusChange: handleAuthorizationStatusChange,
+                    handleScenePhaseChange: handleScenePhaseChange,
+                    hasInitialAnalysis: hasInitialAnalysis,
+                    hasGeneratedDailyInsightSession: hasGeneratedDailyInsightSession,
+                    lastDiagnosesHash: lastDiagnosesHash,
+                    handleUserProfileChange: handleUserProfileChange,
+                    checkAccessStatus: checkAccessStatus,
+                    refreshUserInfoAndCheckAccess: refreshUserInfoAndCheckAccess,
+                    aiFeedback: $aiFeedback,
+                    showingOnboarding: $showingOnboarding,
+                    showingPaywall: $showingPaywall,
+                    showingAccessExpiredPopup: $showingAccessExpiredPopup,
+                    subscriptionManager: subscriptionManager
+                ))
         }
     }
     
-    private var scrollViewWithModifiers: some View {
+    private var baseScrollView: some View {
         ZStack {
             scrollViewContent
                 .background(backgroundView)
             
-            // Prominent loading overlay when insights are processing
-            if aiService.isLoading && !aiService.hasValidInsights {
-                LoadingOverlayView()
-                    .transition(.opacity)
-                    .animation(.easeInOut(duration: 0.3), value: aiService.isLoading)
-            }
+            loadingOverlay
         }
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    LogoWordmarkView()
-                }
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color.adaptiveCardBackground.opacity(0.95), for: .navigationBar)
-            .refreshable {
-                await handleRefresh()
-            }
-            .onAppear(perform: handleViewAppearAction)
-            .onChange(of: locationManager.location) { _, new in
-                handleLocationChange(new)
-            }
-            .onChange(of: locationManager.useDeviceLocation) { _, new in
-                handleLocationPreferenceChange(new)
-            }
-            .onChange(of: weatherService.weatherData) { old, new in
-                handleWeatherDataChangeWithCheck(old: old, new: new)
-            }
-            .onChange(of: locationManager.authorizationStatus) { _, new in
-                handleAuthorizationStatusChange(new)
-            }
-            .onChange(of: aiService.isLoading) { _, new in
-                if new { aiFeedback = nil }
-            }
-            .onChange(of: aiService.insightMessage) { old, new in
-                if old != new { aiFeedback = nil }
-            }
-            .onChange(of: scenePhase) { oldPhase, newPhase in
-                handleScenePhaseChange(oldPhase: oldPhase, newPhase: newPhase)
-            }
-            .onAppear {
-                // Check for profile changes when view appears (e.g., returning from Settings)
-                // This ensures we catch changes made in SettingsView
-                // Only check if we already have initial analysis (prevents duplicate check on first load)
-                // Also check flags to ensure we don't trigger analysis unnecessarily
-                if (hasInitialAnalysis || hasGeneratedDailyInsightSession) && lastDiagnosesHash != nil {
-                    handleUserProfileChange()
-                }
-            }
-            .fullScreenCover(isPresented: $showingOnboarding) {
-                OnboardingFlowView()
-                    .environmentObject(authManager)
-                    .environmentObject(subscriptionManager)
-            }
+    }
+    
+    private func checkAccessStatus() {
+        if let user = authManager.currentUser, user.access_required == true {
+            showingAccessExpiredPopup = true
+        }
     }
     
     private func handleRefresh() async {
@@ -660,6 +691,15 @@ struct HomeView: View {
     private var scrollViewContent: some View {
         ScrollView {
             contentView
+        }
+    }
+    
+    @ViewBuilder
+    private var loadingOverlay: some View {
+        if aiService.isLoading && !aiService.hasValidInsights {
+            LoadingOverlayView()
+                .transition(.opacity)
+                .animation(.easeInOut(duration: 0.3), value: aiService.isLoading)
         }
     }
     
