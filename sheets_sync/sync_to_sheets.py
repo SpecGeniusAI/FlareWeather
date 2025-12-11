@@ -5,7 +5,7 @@ Syncs user data from PostgreSQL to Google Sheets every hour
 """
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Any
 import json
 from sqlalchemy.orm import Session
@@ -250,34 +250,63 @@ def sync_to_sheets():
 
 
 def main():
-    """Main loop - sync every hour"""
+    """Main loop - sync every hour on the hour (e.g., 1:00, 2:00, 3:00)"""
     print("🚀 Google Sheets Sync Service Started")
     print(f"   Sheet ID: {SHEET_ID}")
     print(f"   Worksheet: {WORKSHEET_NAME}")
-    print(f"   Sync interval: {SYNC_INTERVAL_HOURS} hour(s)")
+    print(f"   Sync schedule: Every hour on the hour (e.g., 1:00, 2:00, 3:00)")
     print()
     
     # Do initial sync
     try:
+        print("🔄 Running initial sync...")
         sync_to_sheets()
+        print("✅ Initial sync complete")
     except Exception as e:
         print(f"❌ Initial sync failed: {e}")
-        print("   Will retry on next interval...")
+        print("   Will retry on next scheduled sync...")
     
-    # Sync every hour
-    interval_seconds = SYNC_INTERVAL_HOURS * 3600
+    # Calculate time until next hour
+    def get_seconds_until_next_hour():
+        """Calculate seconds until the next hour (e.g., if it's 2:30, return 30*60 = 1800)"""
+        now = datetime.now()
+        current_minute = now.minute
+        current_second = now.second
+        seconds_until_next_hour = (60 - current_minute) * 60 - current_second
+        return seconds_until_next_hour
     
+    # Main loop - sync every hour on the hour
     while True:
         try:
-            time.sleep(interval_seconds)
+            # Calculate time until next hour
+            seconds_to_wait = get_seconds_until_next_hour()
+            next_sync_time = datetime.now().replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+            
+            print(f"⏰ Next sync scheduled for: {next_sync_time.strftime('%Y-%m-%d %H:%M:%S')} UTC")
+            print(f"   Waiting {seconds_to_wait} seconds ({seconds_to_wait // 60} minutes)...")
+            
+            # Sleep until next hour
+            time.sleep(seconds_to_wait)
+            
+            # Sync at the top of the hour
+            print(f"\n🔄 Starting scheduled sync at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC...")
             sync_to_sheets()
+            print(f"✅ Sync complete at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC\n")
+            
         except KeyboardInterrupt:
             print("\n🛑 Sync service stopped")
             break
         except Exception as e:
             print(f"❌ Sync error: {e}")
-            print("   Will retry on next interval...")
-            time.sleep(60)  # Wait 1 minute before retrying on error
+            import traceback
+            traceback.print_exc()
+            print("   Will retry on next scheduled sync...")
+            # Wait until next hour even on error
+            seconds_to_wait = get_seconds_until_next_hour()
+            if seconds_to_wait > 60:  # Only wait if more than 1 minute until next hour
+                time.sleep(seconds_to_wait)
+            else:
+                time.sleep(60)  # Otherwise wait 1 minute
 
 
 if __name__ == "__main__":
