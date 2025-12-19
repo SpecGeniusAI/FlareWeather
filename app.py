@@ -1855,6 +1855,36 @@ async def get_notification_stats(
         raise HTTPException(status_code=500, detail=f"Failed to get notification stats: {str(e)}")
 
 
+@app.post("/admin/pre-prime-forecasts")
+async def trigger_pre_prime_forecasts(
+    admin_key_header: Optional[str] = Header(None, alias="X-Admin-Key"),
+    admin_key: Optional[str] = Query(None, description="Admin API key (alternative to header)"),
+    db: Session = Depends(get_db)
+):
+    """
+    Trigger pre-priming of daily forecasts.
+    Called by cron job at 7:45 AM EST.
+    Requires ADMIN_API_KEY header (X-Admin-Key) or query parameter.
+    """
+    key = admin_key_header or admin_key
+    
+    if not verify_admin_key(key):
+        raise HTTPException(status_code=401, detail="Invalid admin API key")
+    
+    try:
+        from pre_prime_forecasts import pre_prime_forecasts
+        
+        # Run the pre-priming
+        pre_prime_forecasts()
+        
+        return {"success": True, "message": "Pre-priming triggered"}
+    except Exception as e:
+        print(f"❌ Error pre-priming forecasts: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to pre-prime forecasts: {str(e)}")
+
+
 @app.post("/admin/send-daily-notifications")
 async def trigger_daily_notifications(
     admin_key_header: Optional[str] = Header(None, alias="X-Admin-Key"),
