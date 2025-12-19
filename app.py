@@ -34,13 +34,16 @@ try:
         RevokeFreeAccessRequest,
         FreeAccessResponse,
         AccessStatusResponse,
-        LinkSubscriptionRequest
+        LinkSubscriptionRequest,
+        PushTokenRequest,
+        NotificationSettingsRequest,
+        DailyForecastResponse
     )
     from logic import calculate_correlations, generate_correlation_summary, get_upcoming_pressure_change
     from ai import generate_insight_with_papers, generate_flare_risk_assessment, generate_weekly_forecast_insight, _choose_forecast, _analyze_pressure_window
     from rag.query import query_rag
     from paper_search import search_papers, format_papers_for_prompt
-    from database import get_db, init_db, User, InsightFeedback, PasswordReset, SubscriptionEntitlement
+    from database import get_db, init_db, User, InsightFeedback, PasswordReset, SubscriptionEntitlement, DailyForecast
     from access_utils import has_active_access, get_access_status
     from mailgun_service import send_password_reset_email
     from auth import (
@@ -1632,3 +1635,251 @@ async def get_subscription_stats(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get subscription stats: {str(e)}"
         )
+
+
+@app.post("/user/push-token")
+async def register_push_token(
+    request: PushTokenRequest,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Register push notification token for the current user.
+    """
+    try:
+        user = db.query(User).filter(User.id == current_user["user_id"]).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        user.push_notification_token = request.push_token
+        user.updated_at = datetime.utcnow()
+        db.commit()
+        
+        print(f"✅ Registered push token for user {user.email or user.id}")
+        
+        return {"success": True, "message": "Push token registered"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error registering push token: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to register push token: {str(e)}")
+
+
+@app.put("/user/notification-settings")
+async def update_notification_settings(
+    request: NotificationSettingsRequest,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Update notification settings for the current user.
+    """
+    try:
+        user = db.query(User).filter(User.id == current_user["user_id"]).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        user.push_notifications_enabled = request.enabled
+        user.updated_at = datetime.utcnow()
+        db.commit()
+        
+        print(f"✅ Updated notification settings for user {user.email or user.id}: {request.enabled}")
+        
+        return {"success": True, "enabled": request.enabled}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error updating notification settings: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to update notification settings: {str(e)}")
+
+
+@app.get("/user/daily-forecast/{date}", response_model=DailyForecastResponse)
+async def get_daily_forecast(
+    date: str,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get pre-primed daily forecast for a specific date.
+    Date format: YYYY-MM-DD
+    """
+    try:
+        from datetime import date as date_type
+        
+        # Parse date
+        try:
+            forecast_date = datetime.strptime(date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+        
+        user = db.query(User).filter(User.id == current_user["user_id"]).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Get forecast
+        forecast = db.query(DailyForecast).filter(
+            DailyForecast.user_id == user.id,
+            DailyForecast.forecast_date == forecast_date
+        ).first()
+        
+        if not forecast:
+            return DailyForecastResponse(
+                forecast_date=date,
+                available=False
+            )
+        
+        return DailyForecastResponse(
+            forecast_date=date,
+            daily_risk_level=forecast.daily_risk_level,
+            daily_forecast_summary=forecast.daily_forecast_summary,
+            daily_why_explanation=forecast.daily_why_explanation,
+            daily_comfort_tip=forecast.daily_comfort_tip,
+            weekly_forecast_insight=forecast.weekly_forecast_insight,
+            current_weather=forecast.current_weather,
+            hourly_forecast=forecast.hourly_forecast,
+            daily_forecast=forecast.daily_forecast,
+            available=True
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error getting daily forecast: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to get daily forecast: {str(e)}")
+
+
+@app.get("/user/daily-forecast", response_model=DailyForecastResponse)
+async def get_today_forecast(
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get today's pre-primed daily forecast.
+    """
+    from datetime import date
+    today = date.today()
+    return await get_daily_forecast(today.strftime("%Y-%m-%d"), current_user, db)
+
+
+@app.get("/admin/notification-stats")
+async def get_notification_stats(
+    date: Optional[str] = Query(None, description="Date to check (YYYY-MM-DD), defaults to today"),
+    admin_key_header: Optional[str] = Header(None, alias="X-Admin-Key"),
+    admin_key: Optional[str] = Query(None, description="Admin API key (alternative to header)"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get push notification delivery statistics.
+    Shows which users received notifications and which failed.
+    Requires ADMIN_API_KEY header (X-Admin-Key) or query parameter.
+    """
+    key = admin_key_header or admin_key
+    
+    if not verify_admin_key(key):
+        raise HTTPException(status_code=401, detail="Invalid admin API key")
+    
+    try:
+        from datetime import date as date_type
+        
+        # Parse date or use today
+        if date:
+            check_date = datetime.strptime(date, "%Y-%m-%d").date()
+        else:
+            check_date = date_type.today()
+        
+        # Get all forecasts for the date
+        forecasts = db.query(DailyForecast).filter(
+            DailyForecast.forecast_date == check_date
+        ).all()
+        
+        # Get user info for each forecast
+        stats = {
+            "date": check_date.isoformat(),
+            "total_forecasts": len(forecasts),
+            "notifications_sent": 0,
+            "notifications_failed": 0,
+            "users_without_tokens": 0,
+            "users_with_notifications_disabled": 0,
+            "details": []
+        }
+        
+        for forecast in forecasts:
+            user = db.query(User).filter(User.id == forecast.user_id).first()
+            if not user:
+                continue
+            
+            detail = {
+                "user_id": user.id,
+                "user_email": user.email,
+                "has_push_token": bool(user.push_notification_token),
+                "notifications_enabled": user.push_notifications_enabled,
+                "notification_sent": forecast.notification_sent,
+                "notification_sent_at": forecast.notification_sent_at.isoformat() if forecast.notification_sent_at else None
+            }
+            
+            if not user.push_notification_token:
+                stats["users_without_tokens"] += 1
+            elif not user.push_notifications_enabled:
+                stats["users_with_notifications_disabled"] += 1
+            elif forecast.notification_sent:
+                stats["notifications_sent"] += 1
+            else:
+                stats["notifications_failed"] += 1
+            
+            stats["details"].append(detail)
+        
+        # Get overall user stats
+        total_users = db.query(User).count()
+        users_with_tokens = db.query(User).filter(User.push_notification_token.isnot(None)).count()
+        users_with_notifications_enabled = db.query(User).filter(User.push_notifications_enabled == True).count()
+        
+        stats["overall_stats"] = {
+            "total_users": total_users,
+            "users_with_push_tokens": users_with_tokens,
+            "users_with_notifications_enabled": users_with_notifications_enabled
+        }
+        
+        return stats
+        
+    except Exception as e:
+        print(f"❌ Error getting notification stats: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to get notification stats: {str(e)}")
+
+
+@app.post("/admin/send-daily-notifications")
+async def trigger_daily_notifications(
+    admin_key_header: Optional[str] = Header(None, alias="X-Admin-Key"),
+    admin_key: Optional[str] = Query(None, description="Admin API key (alternative to header)"),
+    db: Session = Depends(get_db)
+):
+    """
+    Trigger sending of daily forecast notifications.
+    Called by cron job at 8:00 AM EST.
+    Requires ADMIN_API_KEY header (X-Admin-Key) or query parameter.
+    """
+    key = admin_key_header or admin_key
+    
+    if not verify_admin_key(key):
+        raise HTTPException(status_code=401, detail="Invalid admin API key")
+    
+    try:
+        from send_daily_notifications import send_daily_notifications
+        
+        # Run the notification sending
+        send_daily_notifications()
+        
+        return {"success": True, "message": "Daily notifications triggered"}
+    except Exception as e:
+        print(f"❌ Error sending daily notifications: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to send notifications: {str(e)}")
