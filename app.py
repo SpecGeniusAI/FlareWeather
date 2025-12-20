@@ -1703,9 +1703,7 @@ async def update_notification_settings(
 
 @app.post("/user/location")
 async def update_user_location(
-    latitude: float,
-    longitude: float,
-    location_name: Optional[str] = None,
+    request: LocationUpdateRequest,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -1718,14 +1716,14 @@ async def update_user_location(
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
-        user.last_location_latitude = latitude
-        user.last_location_longitude = longitude
-        if location_name:
-            user.last_location_name = location_name
+        user.last_location_latitude = request.latitude
+        user.last_location_longitude = request.longitude
+        if request.location_name:
+            user.last_location_name = request.location_name
         user.updated_at = datetime.utcnow()
         db.commit()
         
-        print(f"✅ Updated location for user {user.email or user.id}: {location_name or f'{latitude}, {longitude}'}")
+        print(f"✅ Updated location for user {user.email or user.id}: {request.location_name or f'{request.latitude}, {request.longitude}'}")
         
         return {"success": True, "message": "Location updated"}
     except HTTPException:

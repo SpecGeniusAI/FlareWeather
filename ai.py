@@ -2045,34 +2045,35 @@ def generate_weekly_forecast_insight(
                 risk_score += 1
         
         # Convert risk score to risk level
-        # More aggressive thresholds to ensure variation in risk levels
-        if risk_score >= 3:  # High risk threshold
+        # Extremely aggressive thresholds to ensure variation in risk levels
+        if risk_score >= 2:  # Lowered from 3 - High risk threshold (more aggressive)
             risk_level = "High"
-        elif risk_score >= 1:  # Any change = at least Moderate (lowered from 2)
+        elif risk_score >= 0.5:  # Lowered from 1 - Any small change = at least Moderate (very aggressive)
             risk_level = "Moderate"
         else:
             # risk_score == 0: No changes detected, but check absolute conditions
             # Even "stable" conditions can be problematic if they're stable at bad levels
-            if humidity >= 75:  # Consistently high humidity is problematic
+            # More aggressive: lower thresholds for absolute conditions
+            if humidity >= 70:  # Lowered from 75 - high humidity is problematic
                 risk_level = "Moderate"
                 risk_factors.append("consistently high humidity")
-            elif humidity <= 35:  # Consistently very dry
+            elif humidity <= 40:  # Lowered from 35 - very dry (more sensitive)
                 risk_level = "Moderate"
                 risk_factors.append("very dry conditions")
-            elif temp <= 5 and humidity >= 65:  # Cold and damp
+            elif temp <= 8 and humidity >= 60:  # Lowered thresholds - Cold and damp
                 risk_level = "Moderate"
                 risk_factors.append("cold, damp conditions")
-            elif temp >= 30:  # Very hot
+            elif temp >= 28:  # Lowered from 30 - Very hot
                 risk_level = "Moderate"
                 risk_factors.append("very warm conditions")
-            elif pressure <= 1000:  # Consistently low pressure
+            elif pressure <= 1005:  # Lowered from 1000 - Low pressure (more sensitive)
                 risk_level = "Moderate"
                 risk_factors.append("low pressure conditions")
-            elif pressure >= 1030:  # Consistently very high pressure
+            elif pressure >= 1025:  # Lowered from 1030 - High pressure (more sensitive)
                 risk_level = "Moderate"
                 risk_factors.append("high pressure conditions")
             else:
-                # Truly stable and comfortable conditions
+                # Truly stable and comfortable conditions - but still try to force variation elsewhere
                 risk_level = "Low"
         
         print(f"🔍 calculate_day_risk result: risk_score={risk_score} → risk_level={risk_level}, factors={risk_factors}")
@@ -2197,8 +2198,9 @@ def generate_weekly_forecast_insight(
     moderate_count = sum(1 for _, risk, _, _ in calculated_risks if risk == "Moderate")
     high_count = sum(1 for _, risk, _, _ in calculated_risks if risk == "High")
     
-    # Force variation if we have fewer than 4 Moderate/High days (very aggressive - ensure meaningful variation)
-    needs_variation = (moderate_count + high_count) < 4
+    # Force variation if we have fewer than 5 Moderate/High days (extremely aggressive - ensure meaningful variation)
+    # Only allow 2 Low days max out of 7 days
+    needs_variation = (moderate_count + high_count) < 5
     
     print(f"📊 Risk summary: {high_count} High, {moderate_count} Moderate, {low_count} Low. Needs variation: {needs_variation}")
     
@@ -2238,21 +2240,21 @@ def generate_weekly_forecast_insight(
         # Sort by change magnitude (descending)
         sorted_by_change = sorted(calculated_risks, key=calculate_change_magnitude, reverse=True)
         
-        # Force 4-5 days to Moderate/High (very aggressive - ensure meaningful variation)
-        # For 7 days, force at least 4 to be Moderate or High
+        # Force 5-6 days to Moderate/High (extremely aggressive - ensure meaningful variation)
+        # For 7 days, force at least 5 to be Moderate or High (only 2 Low days max)
         # Calculate how many we need to force
         current_moderate_high = moderate_count + high_count
-        needed = max(4 - current_moderate_high, 0)  # Need at least 4 total
-        forced_count = min(max(needed, 4), len(sorted_by_change))  # Force at least 4, up to 5 days max
+        needed = max(5 - current_moderate_high, 0)  # Need at least 5 total (only 2 Low max)
+        forced_count = min(max(needed, 5), len(sorted_by_change))  # Force at least 5, up to 6 days max
         print(f"🔧 Forcing {forced_count} days to Moderate/High risk (currently have {current_moderate_high} Moderate/High)")
         
         for i in range(forced_count):
             label, _, _, day_data = sorted_by_change[i]
             change_mag = calculate_change_magnitude(sorted_by_change[i])
             
-            # Update the risk hint for this day - very aggressive
-            # Make it High if change is moderate; otherwise Moderate (lowered threshold significantly)
-            forced_risk = "High" if change_mag > 4 else "Moderate"  # Lowered threshold from 6 to 4 for much more variation
+            # Update the risk hint for this day - extremely aggressive
+            # Make it High if change is even small; otherwise Moderate (very low threshold)
+            forced_risk = "High" if change_mag > 2 else "Moderate"  # Lowered threshold from 4 to 2 for maximum variation
             
             # Find and update in context_lines and day_risk_hints
             for j, (orig_label, orig_risk, _, _) in enumerate(calculated_risks):
@@ -2592,9 +2594,24 @@ BAD EXAMPLE (repeating):
     # Also check for "steady conditions" in descriptors - this is forbidden
     has_steady_conditions = any("steady conditions" in str(entry.get("descriptor", "")).lower() for entry in patterns)
     
-    # If AI returned all Low OR too many Low (more than 3), OR used forbidden "steady conditions", AND we have forced Moderate/High hints, replace
-    # More aggressive: replace if more than 3 Low days (since we force 4 Moderate/High)
-    should_replace = (all_low_in_response or low_count_in_response > 3 or has_steady_conditions) and len(day_risk_hints) > 0 and (moderate_hints > 0 or high_hints > 0)
+    # CRITICAL: If we have forced hints, ALWAYS validate and replace if AI ignored them
+    # More aggressive: replace if more than 2 Low days (since we force 5 Moderate/High)
+    # Also replace if AI didn't match the forced risk hints
+    ai_ignored_hints = False
+    if len(day_risk_hints) > 0 and len(patterns) == len(day_risk_hints):
+        # Check if AI risk levels match forced hints
+        mismatches = 0
+        for i, (hint, pattern) in enumerate(zip(day_risk_hints, patterns)):
+            pattern_risk = pattern.get("risk", "Low").strip()
+            if hint == "High" and pattern_risk.lower() != "high":
+                mismatches += 1
+            elif hint == "Moderate" and pattern_risk.lower() != "moderate":
+                mismatches += 1
+        if mismatches > 2:  # If AI ignored more than 2 forced hints, replace
+            ai_ignored_hints = True
+            print(f"⚠️ AI ignored {mismatches} forced risk hints - will replace")
+    
+    should_replace = (all_low_in_response or low_count_in_response > 2 or has_steady_conditions or ai_ignored_hints) and len(day_risk_hints) > 0 and (moderate_hints > 0 or high_hints > 0)
     
     if should_replace:
         reason = []
