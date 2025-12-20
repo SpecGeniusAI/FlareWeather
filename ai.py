@@ -1393,6 +1393,26 @@ Style: Grade 12 vocab. Tentative language (may, might). Short sentences. NO 'mil
                 else:
                     # Track this tip as used today
                     _track_comfort_tip(normalized_tip)
+        
+        # FALLBACK: If comfort tip was rejected or not provided, always provide one
+        if not daily_comfort_tip:
+            print("⚠️ No comfort tip from AI or tip was rejected - providing fallback")
+            # Get recent tips to avoid duplicates
+            recent_tips_list = _get_recent_tips(days=30, db_session=db_session)
+            recent_tips_lower = [t.lower() for t in recent_tips_list]
+            
+            # Find an unused tip from ALLOWED_COMFORT_TIPS
+            available_tips = [tip for tip in ALLOWED_COMFORT_TIPS if tip.lower() not in recent_tips_lower]
+            
+            if available_tips:
+                # Use an unused tip
+                daily_comfort_tip = random.choice(available_tips)
+                _track_comfort_tip(daily_comfort_tip)
+                print(f"✅ Selected fallback comfort tip: {daily_comfort_tip[:50]}...")
+            else:
+                # All tips used recently, use a random one anyway (better than nothing)
+                daily_comfort_tip = random.choice(ALLOWED_COMFORT_TIPS)
+                print(f"✅ All tips used recently, using random tip: {daily_comfort_tip[:50]}...")
     except Exception as exc:  # noqa: BLE001
         print(f"❌ Error generating daily insight JSON: {exc}")
         import traceback
@@ -1414,6 +1434,13 @@ Style: Grade 12 vocab. Tentative language (may, might). Short sentences. NO 'mil
         daily_comfort_tip = ""
         daily_sign_off = None
         sources = []
+        
+        # FALLBACK: Always provide a comfort tip even on error
+        if not daily_comfort_tip:
+            recent_tips_list = _get_recent_tips(days=30, db_session=db_session)
+            recent_tips_lower = [t.lower() for t in recent_tips_list]
+            available_tips = [tip for tip in ALLOWED_COMFORT_TIPS if tip.lower() not in recent_tips_lower]
+            daily_comfort_tip = random.choice(available_tips) if available_tips else random.choice(ALLOWED_COMFORT_TIPS)
 
     if not daily_summary:
         # Generate summary based on calculated risk and conditions
@@ -1577,6 +1604,15 @@ Style: Grade 12 vocab. Tentative language (may, might). Short sentences. NO 'mil
 
     daily_sign_off = daily_sign_off or _choose_sign_off(user_diagnoses, location)
 
+    # FINAL FALLBACK: Ensure we always have a comfort tip before formatting
+    if not daily_comfort_tip:
+        print("⚠️ Still no comfort tip before formatting - providing final fallback")
+        recent_tips_list = _get_recent_tips(days=30, db_session=db_session)
+        recent_tips_lower = [t.lower() for t in recent_tips_list]
+        available_tips = [tip for tip in ALLOWED_COMFORT_TIPS if tip.lower() not in recent_tips_lower]
+        daily_comfort_tip = random.choice(available_tips) if available_tips else random.choice(ALLOWED_COMFORT_TIPS)
+        _track_comfort_tip(daily_comfort_tip)
+    
     filtered_summary = _filter_app_messages(daily_summary) or daily_summary
     filtered_why_line = _filter_app_messages(daily_why_line) or daily_why_line
     filtered_comfort = _filter_app_messages(daily_comfort_tip) or daily_comfort_tip
