@@ -3,6 +3,7 @@ import CoreData
 import CoreLocation
 import MapKit
 import Combine
+import Security
 #if canImport(RevenueCat)
 import RevenueCat
 import RevenueCatUI
@@ -1051,8 +1052,76 @@ struct LocationSettingsView: View {
                 // Also reload to ensure it's properly set
                 self.locationManager.loadManualLocation()
                 print("✅ Saved manual location: \(locationToSave) at \(location.coordinate.latitude), \(location.coordinate.longitude)")
+                
+                // Send location to backend if user is logged in
+                Task {
+                    await self.sendLocationToBackend(location: location, locationName: locationToSave)
+                }
             }
         }
+    }
+    
+    // Send location to backend
+    private func sendLocationToBackend(location: CLLocation, locationName: String) async {
+        guard let authToken = loadAuthToken() else {
+            print("⏭️ No auth token - skipping location update to backend")
+            return
+        }
+        
+        guard let backendURL = Bundle.main.object(forInfoDictionaryKey: "BackendURL") as? String,
+              let url = URL(string: "\(backendURL)/user/location") else {
+            print("❌ Invalid backend URL for location update")
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        
+        let body: [String: Any] = [
+            "latitude": location.coordinate.latitude,
+            "longitude": location.coordinate.longitude,
+            "location_name": locationName
+        ]
+        
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let httpResponse = response as? HTTPURLResponse {
+                if httpResponse.statusCode == 200 {
+                    print("✅ Location sent to backend: \(locationName)")
+                } else {
+                    let responseBody = String(data: data, encoding: .utf8) ?? "No response body"
+                    print("⚠️ Failed to send location: HTTP \(httpResponse.statusCode) - \(responseBody)")
+                }
+            }
+        } catch {
+            print("❌ Error sending location to backend: \(error.localizedDescription)")
+        }
+    }
+    
+    // Load auth token from keychain
+    private func loadAuthToken() -> String? {
+        let tokenKey = "flareweather_access_token"
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: tokenKey,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        
+        guard status == errSecSuccess,
+              let data = result as? Data,
+              let token = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+        
+        return token
     }
 }
 

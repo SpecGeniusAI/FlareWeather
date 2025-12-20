@@ -37,6 +37,7 @@ try:
         LinkSubscriptionRequest,
         PushTokenRequest,
         NotificationSettingsRequest,
+        LocationUpdateRequest,
         DailyForecastResponse
     )
     from logic import calculate_correlations, generate_correlation_summary, get_upcoming_pressure_change
@@ -1698,6 +1699,43 @@ async def update_notification_settings(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to update notification settings: {str(e)}")
+
+
+@app.post("/user/location")
+async def update_user_location(
+    latitude: float,
+    longitude: float,
+    location_name: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Update user's location (latitude, longitude, and optional location name).
+    Used by the app when user changes location.
+    """
+    try:
+        user = db.query(User).filter(User.id == current_user["user_id"]).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        user.last_location_latitude = latitude
+        user.last_location_longitude = longitude
+        if location_name:
+            user.last_location_name = location_name
+        user.updated_at = datetime.utcnow()
+        db.commit()
+        
+        print(f"✅ Updated location for user {user.email or user.id}: {location_name or f'{latitude}, {longitude}'}")
+        
+        return {"success": True, "message": "Location updated"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error updating location: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to update location: {str(e)}")
 
 
 @app.get("/user/daily-forecast/{date}", response_model=DailyForecastResponse)

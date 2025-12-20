@@ -218,6 +218,13 @@ class NotificationSettingsRequest(BaseModel):
     enabled: bool
 
 
+class LocationUpdateRequest(BaseModel):
+    """Request model for updating user location"""
+    latitude: float
+    longitude: float
+    location_name: Optional[str] = None
+
+
 class DailyForecastResponse(BaseModel):
     """Response model for pre-primed daily forecast"""
     forecast_date: str

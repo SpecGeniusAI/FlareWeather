@@ -179,18 +179,70 @@ struct HomeView: View {
     // Handle location change
     private func handleLocationChange(_ new: CLLocation?) {
         guard let location = new else { return }
-        
-        // Don't trigger if we already have analysis (prevents retrigger on login/navigation)
-        guard !hasInitialAnalysis && !hasGeneratedDailyInsightSession else {
-            print("⏭️ HomeView: Already have analysis, skipping location change handler")
-            return
+
+        // Check if location actually changed significantly (more than 1km)
+        if let oldLocation = locationManager.location {
+            let distance = location.distance(from: oldLocation)
+            if distance < 1000 {
+                print("⏭️ HomeView: Location change too small (\(Int(distance))m), skipping")
+                return
+            }
         }
-        
+
         print("🌤️ HomeView: Location changed to \(location.coordinate.latitude), \(location.coordinate.longitude), fetching weather...")
         Task {
             // Force refresh when location changes to ensure we get fresh data
             await weatherService.fetchWeatherData(for: location, forceRefresh: true)
-            // Analysis will be triggered by handleWeatherDataChange when weather arrives
+            // Also fetch hourly forecast for new location
+            await weatherService.fetchHourlyForecast(for: location)
+            // Refresh analysis with new location
+            await refreshAnalysis(force: true, includeWeeklyForecast: false)
+            // Send location to backend if user is logged in
+            await sendLocationToBackend(location: location)
+        }
+    }
+    
+    // Send location to backend
+    private func sendLocationToBackend(location: CLLocation) async {
+        guard authManager.isAuthenticated,
+              let authToken = authManager.authToken else {
+            return
+        }
+        
+        guard let backendURL = Bundle.main.object(forInfoDictionaryKey: "BackendURL") as? String,
+              let url = URL(string: "\(backendURL)/user/location") else {
+            print("❌ Invalid backend URL for location update")
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        
+        // Get location name
+        let locationName = locationManager.manualLocationName ?? locationManager.deviceLocationName ?? "Unknown"
+        
+        let body: [String: Any] = [
+            "latitude": location.coordinate.latitude,
+            "longitude": location.coordinate.longitude,
+            "location_name": locationName
+        ]
+        
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let httpResponse = response as? HTTPURLResponse {
+                if httpResponse.statusCode == 200 {
+                    print("✅ Location sent to backend: \(locationName)")
+                } else {
+                    let responseBody = String(data: data, encoding: .utf8) ?? "No response body"
+                    print("⚠️ Failed to send location: HTTP \(httpResponse.statusCode) - \(responseBody)")
+                }
+            }
+        } catch {
+            print("❌ Error sending location to backend: \(error.localizedDescription)")
         }
     }
     
