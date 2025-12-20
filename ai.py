@@ -45,24 +45,67 @@ def _get_today_date_string() -> str:
     return datetime.now().strftime("%Y-%m-%d")
 
 
-def _get_recent_tips(days: int = 30) -> List[str]:
+def _get_recent_tips(days: int = 30, db_session=None) -> List[str]:
     """
     Get all comfort tips used in the last N days.
+    Queries database if db_session is provided, otherwise uses in-memory cache.
     
     Args:
         days: Number of days to look back (default 30)
+        db_session: Optional database session to query from DailyForecast table
         
     Returns:
         List of all tips used in the specified time period
     """
-    today = datetime.now()
     recent_tips = []
     
-    for i in range(days):
-        check_date = today - timedelta(days=i)
-        date_str = check_date.strftime("%Y-%m-%d")
-        if date_str in _comfort_tip_history:
-            recent_tips.extend(_comfort_tip_history[date_str])
+    # If database session is provided, query from database (persistent across restarts)
+    if db_session:
+        try:
+            from database import DailyForecast
+            from sqlalchemy import func
+            
+            cutoff_date = datetime.now().date() - timedelta(days=days)
+            
+            # Query all unique comfort tips from the last N days
+            results = db_session.query(DailyForecast.daily_comfort_tip).filter(
+                DailyForecast.forecast_date >= cutoff_date,
+                DailyForecast.daily_comfort_tip.isnot(None),
+                DailyForecast.daily_comfort_tip != ""
+            ).distinct().all()
+            
+            # Extract tips from query results
+            recent_tips = [tip[0] for tip in results if tip[0]]
+            
+            # Also update in-memory cache for faster subsequent lookups
+            today = datetime.now()
+            for i in range(days):
+                check_date = today - timedelta(days=i)
+                date_str = check_date.strftime("%Y-%m-%d")
+                # Query tips for this specific date
+                date_results = db_session.query(DailyForecast.daily_comfort_tip).filter(
+                    func.date(DailyForecast.forecast_date) == check_date.date(),
+                    DailyForecast.daily_comfort_tip.isnot(None),
+                    DailyForecast.daily_comfort_tip != ""
+                ).distinct().all()
+                if date_results:
+                    if date_str not in _comfort_tip_history:
+                        _comfort_tip_history[date_str] = []
+                    for tip in date_results:
+                        if tip[0] and tip[0] not in _comfort_tip_history[date_str]:
+                            _comfort_tip_history[date_str].append(tip[0])
+        except Exception as e:
+            print(f"⚠️  Error querying database for recent tips: {e}")
+            # Fall back to in-memory cache
+    
+    # Fallback to in-memory cache if no db_session or query failed
+    if not recent_tips:
+        today = datetime.now()
+        for i in range(days):
+            check_date = today - timedelta(days=i)
+            date_str = check_date.strftime("%Y-%m-%d")
+            if date_str in _comfort_tip_history:
+                recent_tips.extend(_comfort_tip_history[date_str])
     
     return recent_tips
 
@@ -349,21 +392,51 @@ FORECAST_VARIANTS = {
         "Take advantage — conditions are steady and may support your plans today.",
         "Good window ahead — low risk means you can plan with more confidence.",
         "Stable conditions — this may be a day to tackle what matters most.",
-        "Low flare risk — weather has settled into a gentler pattern for you."
+        "Low flare risk — weather has settled into a gentler pattern for you.",
+        "Green light — atmospheric conditions are calm and body-friendly today.",
+        "Smooth sailing — pressure is holding steady, giving your body a break.",
+        "Favorable day — the atmosphere is cooperating, so lean into it.",
+        "Calm weather pattern — your body may feel more predictable today.",
+        "Steady barometer — take this opportunity while conditions stay gentle.",
+        "Weather is on your side today — make the most of this stable window.",
+        "Low-stress atmosphere — a good day to catch up on things you've postponed.",
+        "Pressure holding flat — your joints and muscles may thank you today.",
+        "Quiet weather day — fewer atmospheric triggers to navigate.",
+        "Stable front — conditions favor feeling more like yourself today."
     ],
     "MODERATE": [
         "Plan ahead — moderate risk with pressure shifts expected today.",
         "Stay flexible — weather changes may require adjusting your pace.",
         "Moderate flare risk — consider lighter activities and comfort measures.",
         "Weather shifts ahead — pacing yourself may help manage any discomfort.",
-        "Moderate conditions — keep plans adaptable as patterns change."
+        "Moderate conditions — keep plans adaptable as patterns change.",
+        "Mixed signals — the atmosphere is shifting, so listen to your body.",
+        "Weather in transition — some wobble expected, stay prepared.",
+        "Pressure fluctuating — your body may notice the atmospheric changes.",
+        "Changeable day ahead — build in buffer time for how you're feeling.",
+        "Moderate activity — the barometer is restless, so pace accordingly.",
+        "Weather on the move — flexibility in your schedule may help today.",
+        "Shifting patterns — not the worst, but worth being mindful.",
+        "Some turbulence — atmospheric changes may bring mild symptoms.",
+        "Middle ground — conditions aren't extreme but warrant attention.",
+        "Variable pressure — your body might feel the ups and downs today."
     ],
     "HIGH": [
         "Prioritize rest — high flare risk with significant weather shifts expected.",
         "Scale back plans — high risk means focusing on essentials today.",
         "High flare risk — rapid weather changes may trigger symptoms.",
         "Take it easy — high risk conditions call for extra self-care.",
-        "High risk ahead — consider rescheduling non-essential activities."
+        "High risk ahead — consider rescheduling non-essential activities.",
+        "Storm signals — major pressure swings may amplify symptoms today.",
+        "Red flag day — the atmosphere is volatile, protect your energy.",
+        "Significant shifts — your body may react strongly to today's changes.",
+        "High alert — rapid barometric movement expected, go gentle on yourself.",
+        "Challenging conditions — this is a day for essential tasks only.",
+        "Weather upheaval — prioritize comfort and recovery measures.",
+        "Intense pressure changes — scale back and give your body space.",
+        "Atmospheric turmoil — symptoms may spike, so plan for rest.",
+        "Major front moving through — expect your body to feel it.",
+        "Demanding weather day — conserve energy and lean into support."
     ]
 }
 
@@ -373,35 +446,110 @@ SUPPORT_NOTE_VARIANTS = {
         "Give your muscles room to loosen slowly—comfort matters.",
         "Stretch gently and avoid rushing—your body deserves grace.",
         "Balance rest and warmth to stay ahead of any tightness.",
-        "Even light movement might help—listen closely to how you feel."
+        "Even light movement might help—listen closely to how you feel.",
+        "Warm layers and slow transitions can ease fibro sensitivity.",
+        "Your nervous system may be extra reactive—gentle inputs help.",
+        "Consider a warm bath or heating pad to preempt muscle tension.",
+        "Soft textures and calm environments can reduce sensory overload.",
+        "Pace your activities with rest breaks to prevent flare buildup.",
+        "Light stretching before bed might help muscles settle overnight.",
+        "Keep a warm drink nearby—internal warmth can soothe from within."
     ],
     "migraine": [
         "Dim light and hydration can help buffer sensory load.",
         "Find quiet where you can, and avoid pressure triggers if possible.",
         "Prep a cozy, low-sensory zone in case you need to retreat.",
         "Take breaks in calm spaces—bright screens or noise may add to load.",
-        "Stay hydrated and consider limiting abrupt exposure to the elements."
+        "Stay hydrated and consider limiting abrupt exposure to the elements.",
+        "Blue light filters and sunglasses may help on pressure-shift days.",
+        "Keep rescue remedies accessible in case symptoms escalate.",
+        "Caffeine timing matters—too much or too little can trigger.",
+        "Cool compresses on the neck may help when pressure climbs.",
+        "Avoid skipping meals—blood sugar dips can compound sensitivity.",
+        "White noise or silence can give your brain a break from processing.",
+        "Gentle neck stretches may release tension before it builds."
     ],
     "chronic fatigue syndrome": [
         "Layer in gentle rest before the weather shifts demand it.",
         "Micro-rests and steady nourishment can help conserve energy.",
         "Plan for brief pauses—slow pacing can head off payback.",
         "Keep essentials within reach to spare extra effort.",
-        "Prioritize restorative moments; small breaks can soften the strain."
+        "Prioritize restorative moments; small breaks can soften the strain.",
+        "Front-load rest today to buffer against post-exertional crashes.",
+        "Low-effort nutrition like smoothies can fuel without draining.",
+        "Horizontal rest, even brief, can help your system recalibrate.",
+        "Batch tasks and delegate where possible to protect your reserves.",
+        "Accept that today's capacity may be different—adjust expectations.",
+        "Gentle movement like slow walking may help without depleting.",
+        "Keep stimulation low—sensory overload compounds fatigue."
     ],
     "pots": [
         "Compression, salted hydration, and unrushed transitions may support circulation.",
         "Keep fluids close and rise slowly—steady pacing helps the autonomic system.",
         "Consider electrolyte support and seated breaks to stay level.",
         "Gentle movement paired with rest can keep blood flow steadier.",
-        "Cool cloths and mindful breathing can temper sudden head rushes."
+        "Cool cloths and mindful breathing can temper sudden head rushes.",
+        "Avoid standing still for long periods—shift weight or sit when possible.",
+        "Counter-maneuvers like crossing legs can help during upright moments.",
+        "Eating smaller, more frequent meals may prevent blood pooling.",
+        "Cool environments can help—heat exacerbates POTS symptoms.",
+        "Keep a water bottle with electrolytes within arm's reach today.",
+        "Leg exercises while seated can help pump blood back to the heart.",
+        "Morning symptoms often peak—build in extra transition time."
     ],
     "arthritis": [
         "Warmth, gentle mobility, and trusted comfort tools can settle joints.",
         "Keep layers or heat packs handy if stiffness creeps in.",
         "Easing into movement may help joints stay happier as weather shifts.",
         "Slow stretches and supportive footwear can soften jolts.",
-        "Give yourself permission to rest the joints that grumble first."
+        "Give yourself permission to rest the joints that grumble first.",
+        "Warm showers in the morning can help loosen overnight stiffness.",
+        "Anti-inflammatory foods like turmeric or ginger may offer gentle support.",
+        "Supportive braces or compression can stabilize reactive joints.",
+        "Avoid repetitive motions that stress already-sensitive joints.",
+        "Gentle range-of-motion exercises can keep joints from locking up.",
+        "Warmth before activity and cold after can manage inflammation.",
+        "Listen to which joints speak loudest and protect those first."
+    ],
+    "lupus": [
+        "Sun protection and rest are extra important on high-risk days.",
+        "Pace activities and avoid overexertion—fatigue can sneak up.",
+        "Keep inflammation in check with gentle movement and hydration.",
+        "Monitor for any new symptoms and rest at the first sign of flare.",
+        "Stress management is key—consider breathing exercises or meditation.",
+        "Indoor time may be wise if UV exposure compounds your symptoms.",
+        "Anti-inflammatory nutrition can provide gentle background support.",
+        "Listen to early warning signs—your body often signals before flares."
+    ],
+    "endometriosis": [
+        "Heat on the lower abdomen can ease cramping during pressure shifts.",
+        "Gentle movement may help, but rest if pain increases.",
+        "Anti-inflammatory support through diet may provide background relief.",
+        "Pacing and rest are key—don't push through if symptoms spike.",
+        "Warm baths or heating pads can soothe pelvic tension.",
+        "Loose, comfortable clothing reduces pressure on sensitive areas.",
+        "Hydration and avoiding inflammatory foods may help today.",
+        "Listen to your body's signals and adjust activities accordingly."
+    ],
+    "multiple sclerosis": [
+        "Heat sensitivity may be heightened—stay cool where possible.",
+        "Fatigue management is key—build in rest before you need it.",
+        "Gentle stretching can help with spasticity without overexertion.",
+        "Pace cognitive tasks as well as physical ones today.",
+        "Cool environments and cold drinks can help manage symptoms.",
+        "Balance exercises may feel harder—use support as needed.",
+        "Energy envelope pacing can prevent crash cycles.",
+        "Listen to both physical and cognitive fatigue signals."
+    ],
+    "ehlers-danlos syndrome": [
+        "Joint support and compression may help stabilize hypermobile joints.",
+        "Avoid end-range stretching—protect your connective tissue today.",
+        "Gentle proprioceptive exercises can help with body awareness.",
+        "Pace activities to prevent subluxations and dislocations.",
+        "Supportive bracing may help on high-symptom days.",
+        "Hydration supports connective tissue health—drink plenty of water.",
+        "Rest positions that don't stress joints can prevent overnight issues.",
+        "Listen to early warning signs of joint instability."
     ]
 }
 
@@ -411,14 +559,42 @@ COMBO_SUPPORT_VARIANTS = {
         "Both fibro flare-ups and migraine sensitivity can stir here—balance gentle stretches with low-stimulus rest breaks.",
         "Expect both muscles and senses to react—pair warmth and slow movement with quiet, shaded pockets.",
         "Hydration, soft attire, and calm lighting can support both tender muscles and sensitive nerves.",
-        "Layer warmth for fibro while guarding against sensory overload—slow pacing keeps both systems happier."
+        "Layer warmth for fibro while guarding against sensory overload—slow pacing keeps both systems happier.",
+        "The fibro-migraine combo can be intense on days like this—create a calm sanctuary and move gently.",
+        "Both conditions share nervous system sensitivity—deep breaths and reduced stimulation can help both.",
+        "Consider this a rest day if possible—both muscle and sensory symptoms may compound each other."
     ],
     frozenset({"chronic fatigue syndrome", "pots"}): [
         "Pressure {direction} can tap both energy reserves and autonomic balance—salted hydration, compression, and pre-planned rest can help.",
         "When weather swings arrive, both fatigue and circulation may wobble—schedule micro-rests and unrushed transitions.",
         "Keep electrolytes, compression, and gentle pacing in play to support both stamina and blood flow.",
         "Layer seated breaks with fluids and supportive stockings to steady both symptoms.",
-        "A mix of calm pacing, hydration, and compressive support can cushion both fatigue and POTS responses."
+        "A mix of calm pacing, hydration, and compressive support can cushion both fatigue and POTS responses.",
+        "Both conditions drain energy differently—protect your reserves with extra horizontal rest today.",
+        "Slow morning starts with salt loading can help both systems find their footing.",
+        "Avoid prolonged standing and pace cognitive work—both CFS and POTS benefit from strategic rest."
+    ],
+    frozenset({"fibromyalgia", "arthritis"}): [
+        "Both muscle and joint pain may flare today—warmth, gentle movement, and patience are your allies.",
+        "The fibro-arthritis combination responds well to heat therapy and very slow stretching.",
+        "Expect both widespread achiness and joint stiffness—layer comfort measures throughout the day.",
+        "Anti-inflammatory support through warmth and gentle mobility can ease both conditions.",
+        "Both systems may be reactive—prioritize comfort over productivity today.",
+        "Warm baths or showers may help both muscle tension and joint stiffness simultaneously."
+    ],
+    frozenset({"migraine", "pots"}): [
+        "Both head and circulation may feel the pressure shifts—stay hydrated and move slowly.",
+        "The migraine-POTS combo benefits from dim, cool environments and steady salt/fluid intake.",
+        "Sensory sensitivity and blood flow irregularities may both act up—create a calm, supportive space.",
+        "Avoid sudden position changes and bright lights—both conditions appreciate gradual transitions.",
+        "Extra electrolytes may help both the autonomic and migraine symptoms today."
+    ],
+    frozenset({"chronic fatigue syndrome", "fibromyalgia"}): [
+        "Both energy depletion and muscle pain may compound—rest is genuinely productive today.",
+        "The CFS-fibro overlap means pacing is doubly important—protect against post-exertional crashes.",
+        "Warmth for fibro comfort combined with energy-conserving strategies for CFS can help.",
+        "Both conditions share nervous system dysregulation—calming inputs benefit both.",
+        "Consider this a conservation day—both systems need gentle handling during weather shifts."
     ]
 }
 
@@ -427,7 +603,17 @@ GENERIC_SUPPORT_VARIANTS = [
     "Line up comfort items and low-effort meals so you can respond softly.",
     "Gentle movement, rest breaks, and warm layers can cushion the day.",
     "Keep plans flexible and energy-friendly—you're allowed to adjust as needed.",
-    "Small comforts—tea, calm music, or grounding breaths—can go a long way."
+    "Small comforts—tea, calm music, or grounding breaths—can go a long way.",
+    "Your body is doing its best to adapt—support it with patience.",
+    "Prioritize the essentials and let go of what can wait.",
+    "Warmth, hydration, and rest are your allies on days like this.",
+    "Give yourself permission to move slower and ask for help.",
+    "Focus on nourishment—your body needs fuel to handle the shifts.",
+    "Create a calm environment to give your nervous system a break.",
+    "Remember: bad weather days pass, and so will these symptoms.",
+    "Lean into comfort rituals that have helped you before.",
+    "Your capacity may be different today—and that's okay.",
+    "Simple self-care can prevent symptoms from compounding."
 ]
 
 STRONG_CONDITIONAL = "Many in your situation may want to preemptively scale back or buffer the day."
@@ -436,17 +622,46 @@ PERSONAL_ANECDOTES = {
     "fibromyalgia": [
         "Some users with fibromyalgia say evenings hit harder after fast pressure drops.",
         "When the pressure drops like this, many people with fibro notice extra muscle tightness.",
-        "Fibro flare-ups often follow days like this—gentle pacing could help."
+        "Fibro flare-ups often follow days like this—gentle pacing could help.",
+        "Many fibro warriors report that weather shifts amplify their baseline pain.",
+        "Users with fibromyalgia often find mornings after pressure changes particularly challenging.",
+        "Widespread achiness after atmospheric shifts is a common fibro pattern.",
+        "Some fibro sufferers notice increased fatigue before the pressure actually drops.",
+        "Weather-sensitive fibromyalgia often responds well to preemptive warmth and rest."
     ],
     "migraine": [
         "People with migraines often report sharper sensory spikes when pressure shifts quickly.",
         "Past users with migraines said storm fronts were the most triggering.",
-        "This kind of drop has historically flared migraines—hydration and quiet can go a long way."
+        "This kind of drop has historically flared migraines—hydration and quiet can go a long way.",
+        "Many migraine sufferers can predict storms before the weather apps do.",
+        "Barometric migraines often start with neck tension or visual disturbances.",
+        "Users report that staying ahead of dehydration helps buffer pressure-triggered migraines.",
+        "Some migraine sufferers find relief by treating early, before symptoms fully develop.",
+        "Weather-related migraines often respond to darkness, cold compresses, and stillness."
     ],
     "arthritis": [
         "Some users with arthritis mention stiffness on cooler, low-pressure mornings.",
         "When humidity rises after a pressure drop, joint soreness is a common report.",
-        "Fast-moving fronts often bring joint aches—warmth and rest might ease it."
+        "Fast-moving fronts often bring joint aches—warmth and rest might ease it.",
+        "Many arthritis sufferers feel like human barometers—their joints know before they do.",
+        "Morning stiffness often lingers longer on pressure-drop days.",
+        "Users with arthritis frequently report that warmth before activity helps significantly.",
+        "Cold, damp weather tends to be the most aggravating combination for arthritic joints.",
+        "Some find that gentle movement helps more than complete rest during flares."
+    ],
+    "chronic fatigue syndrome": [
+        "CFS users often report that weather shifts deplete their already limited reserves.",
+        "Post-exertional malaise can be triggered more easily on high-pressure-change days.",
+        "Many with ME/CFS find that preemptive rest before weather shifts helps prevent crashes.",
+        "Brain fog often worsens during atmospheric instability for those with CFS.",
+        "Users report that pacing becomes even more critical during weather transitions."
+    ],
+    "pots": [
+        "POTS users often notice worse symptoms during low-pressure weather patterns.",
+        "Heat combined with pressure drops can make POTS symptoms particularly challenging.",
+        "Many with POTS report that extra salt and fluids help buffer weather-related dips.",
+        "Morning symptoms may be amplified on days with significant pressure changes.",
+        "Users find that compression garments become even more important during weather shifts."
     ]
 }
 
@@ -456,7 +671,16 @@ BEHAVIOR_PROMPTS = [
     "Planning lighter activities may give your body more space.",
     "Taking breaks and pacing yourself can make a difference.",
     "Gentle movement and staying warm often help during changes.",
-    "Listening to your body and adjusting plans as needed supports you."
+    "Listening to your body and adjusting plans as needed supports you.",
+    "A slower morning routine can set a gentler tone for the day.",
+    "Consider front-loading rest to buffer against later fatigue.",
+    "Keeping rescue remedies accessible provides peace of mind.",
+    "Gentle stretching before transitions can ease your body along.",
+    "Nourishing meals and snacks help fuel your body's adaptation.",
+    "Creating a cozy environment can reduce stress on your system.",
+    "Brief outdoor time (if manageable) can help your body calibrate.",
+    "Compression wear or supportive gear may stabilize sensitive areas.",
+    "Breathing exercises can calm your nervous system during shifts."
 ]
 
 
@@ -920,6 +1144,7 @@ def generate_flare_risk_assessment(
     weather_factor: str = "pressure",
     papers: List[Dict[str, str]] = None,
     user_diagnoses: Optional[List[str]] = None,
+    db_session=None,
     user_sensitivities: Optional[List[str]] = None,
     location: Optional[str] = None,
     hourly_forecast: Optional[List[Dict[str, float]]] = None
@@ -1119,8 +1344,8 @@ Style: Grade 12 vocab. Tentative language (may, might). Short sentences."""
                 # Track AI-generated tips to prevent duplicates - check last 30 days
                 # Normalize for comparison (case-insensitive)
                 tip_lower = normalized_tip.lower()
-                # Get all tips used in the last 30 days
-                recent_tips_list = _get_recent_tips(days=30)
+                # Get all tips used in the last 30 days (query database if available)
+                recent_tips_list = _get_recent_tips(days=30, db_session=db_session)
                 # Check if this exact tip (or very similar) was recently used
                 if any(tip_lower == existing.lower() for existing in recent_tips_list):
                     # This tip was recently used (within last 30 days), regenerate it
@@ -1151,27 +1376,95 @@ Style: Grade 12 vocab. Tentative language (may, might). Short sentences."""
         sources = []
 
     if not daily_summary:
+        summary_variants_high = [
+            "Fast swings keep the day feeling more reactive.",
+            "The atmosphere is restless—your body may feel the turbulence.",
+            "Significant pressure shifts are moving through.",
+            "Weather patterns are volatile—expect your body to notice.",
+            "A challenging atmospheric day lies ahead.",
+            "The barometer is on a rollercoaster today.",
+            "Major weather transitions are underway.",
+            "Stormy patterns may amplify symptoms today."
+        ]
+        summary_variants_low = [
+            "Weather settles into a gentler groove.",
+            "A calm atmospheric day ahead.",
+            "The barometer is holding steady—take advantage.",
+            "Stable conditions give your body a break.",
+            "Weather patterns are cooperating today.",
+            "A rare window of atmospheric calm.",
+            "Conditions are favorable for feeling more like yourself.",
+            "The weather is on your side today."
+        ]
+        summary_variants_moderate = [
+            "Weather wobbles softly through the day.",
+            "Some atmospheric fluctuation expected.",
+            "The weather is in transition mode.",
+            "Moderate changes are moving through.",
+            "Expect some ups and downs atmospherically.",
+            "The barometer is gently shifting.",
+            "Weather patterns are finding a new equilibrium.",
+            "Conditions are changeable but manageable."
+        ]
+        
         if risk == "HIGH":
-            daily_summary = "Fast swings keep the day feeling more reactive."
+            daily_summary = random.choice(summary_variants_high)
         elif risk == "LOW":
-            daily_summary = "Weather settles into a gentler groove."
+            daily_summary = random.choice(summary_variants_low)
         else:
-            daily_summary = "Weather wobbles softly through the day."
+            daily_summary = random.choice(summary_variants_moderate)
 
     if not daily_why_line:
+        why_variants_sharp = [
+            "Rapid pressure changes cause joint tissues to expand and contract quickly, which can press against nerve endings and create stiffness or tension.",
+            "When barometric pressure drops fast, tissues swell slightly and nerves become more sensitive, amplifying pain signals.",
+            "Sharp atmospheric shifts trigger inflammatory responses in the body, making chronic conditions more reactive.",
+            "Fast-moving weather fronts destabilize the body's internal pressure equilibrium, often felt as increased joint or muscle discomfort.",
+            "Dramatic pressure swings affect blood flow and nerve sensitivity, which can intensify existing symptoms.",
+            "The body struggles to adapt when pressure changes rapidly, leading to heightened inflammation and pain perception.",
+            "Significant atmospheric turbulence activates the nervous system's stress response, which can amplify chronic symptoms.",
+            "When pressure plummets quickly, fluid shifts in tissues can compress nerves and increase stiffness.",
+            "Rapid weather changes don't give the body time to recalibrate, leaving pain pathways more active.",
+            "Storm systems create pressure gradients that the body senses through baroreceptors, often triggering symptom flares."
+        ]
+        why_variants_moderate = [
+            "Weather shifts can cause subtle changes in body fluid retention and circulation, which may make joints or muscles feel less stable.",
+            "Moderate pressure fluctuations affect how tissues hold fluid, creating a sense of heaviness or instability.",
+            "The body's baroreceptors notice atmospheric changes and can trigger low-level inflammatory responses.",
+            "Shifting weather patterns affect blood vessel dilation and tissue hydration, contributing to discomfort.",
+            "When pressure is unstable, the nervous system stays slightly on alert, which can lower pain thresholds.",
+            "Moderate atmospheric changes affect oxygen delivery to tissues, which some bodies feel as fatigue or achiness.",
+            "Weather transitions cause the body to continuously readjust, which requires extra energy and may feel draining.",
+            "Fluctuating conditions can disrupt sleep quality, which compounds next-day symptom sensitivity.",
+            "The body expends energy adapting to changing pressure, leaving less reserve for managing chronic symptoms.",
+            "Unsettled atmospheric conditions affect serotonin and other neurotransmitters that influence pain perception."
+        ]
+        why_variants_low = [
+            "Stable weather patterns allow the body's systems to maintain consistent fluid balance and circulation, which often feels more comfortable.",
+            "When pressure holds steady, the body isn't expending energy on constant adaptation, leaving more reserve for healing.",
+            "Calm atmospheric conditions let the nervous system rest in a more parasympathetic state, reducing symptom sensitivity.",
+            "Stable barometric pressure means tissues maintain consistent volume, reducing pressure on nerves and joints.",
+            "Gentle weather patterns support better sleep quality, which helps the body recover and manage symptoms.",
+            "When the atmosphere is calm, blood flow and oxygen delivery stay predictable, supporting overall comfort.",
+            "Steady conditions allow inflammation levels to settle, often providing a window of reduced symptoms.",
+            "The body thrives on predictability—stable weather gives your systems a chance to find equilibrium.",
+            "Low atmospheric variability means fewer triggers for the body's stress and inflammatory responses.",
+            "Calm weather days often correlate with improved mood and energy, which can buffer against symptom perception."
+        ]
+        
         if severity_label == "sharp":
-            daily_why_line = "Rapid pressure changes cause joint tissues to expand and contract quickly, which can press against nerve endings and create stiffness or tension."
+            daily_why_line = random.choice(why_variants_sharp)
         elif severity_label == "moderate":
-            daily_why_line = "Weather shifts can cause subtle changes in body fluid retention and circulation, which may make joints or muscles feel less stable."
+            daily_why_line = random.choice(why_variants_moderate)
         else:
-            daily_why_line = "Stable weather patterns allow the body's systems to maintain consistent fluid balance and circulation, which often feels more comfortable."
+            daily_why_line = random.choice(why_variants_low)
 
     if not daily_comfort_tip:
         # Always generate a comfort tip - PRIORITIZE Eastern medicine (Chinese medicine, Ayurveda)
         # Exclude tips used in the last 30 days to prevent repeats
         
-        # Get all tips used in the last 30 days
-        recent_tips = _get_recent_tips(days=30)
+        # Get all tips used in the last 30 days (query database if available)
+        recent_tips = _get_recent_tips(days=30, db_session=db_session)
         
         # Get Eastern medicine tips, excluding recently used ones (last 30 days)
         eastern_tips = [tip for tip in ALLOWED_COMFORT_TIPS 
@@ -1180,7 +1473,7 @@ Style: Grade 12 vocab. Tentative language (may, might). Short sentences."""
         
         if not eastern_tips:
             # If all Eastern tips were recently used, expand to 60 days or use all if still none
-            recent_tips_60 = _get_recent_tips(days=60)
+            recent_tips_60 = _get_recent_tips(days=60, db_session=db_session)
             eastern_tips = [tip for tip in ALLOWED_COMFORT_TIPS 
                            if any(source in tip.lower() for source in ["chinese medicine", "ayurveda", "tcm"])
                            and tip.lower() not in [t.lower() for t in recent_tips_60]]
@@ -1202,7 +1495,7 @@ Style: Grade 12 vocab. Tentative language (may, might). Short sentences."""
             
             if not tips_with_sources:
                 # Expand to 60 days if needed
-                recent_tips_60 = _get_recent_tips(days=60)
+                recent_tips_60 = _get_recent_tips(days=60, db_session=db_session)
                 tips_with_sources = [tip for tip in ALLOWED_COMFORT_TIPS
                                     if any(source in tip.lower() for source in ["western medicine", "chinese medicine", "ayurveda"])
                                     and tip.lower() not in [t.lower() for t in recent_tips_60]]
@@ -1221,7 +1514,7 @@ Style: Grade 12 vocab. Tentative language (may, might). Short sentences."""
                                 if tip.lower() not in [t.lower() for t in recent_tips]]
                 if not available_tips:
                     # If all tips were used, expand to 60 days
-                    recent_tips_60 = _get_recent_tips(days=60)
+                    recent_tips_60 = _get_recent_tips(days=60, db_session=db_session)
                     available_tips = [tip for tip in ALLOWED_COMFORT_TIPS 
                                     if tip.lower() not in [t.lower() for t in recent_tips_60]]
                     # If still none, use all tips (extremely rare)

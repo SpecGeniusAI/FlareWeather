@@ -111,7 +111,8 @@ def fetch_weather_openweather(latitude: float, longitude: float) -> Optional[Dic
 
 def generate_daily_insight_for_user(
     weather_data: Dict[str, Any],
-    user: User
+    user: User,
+    db_session=None
 ) -> Optional[Dict[str, Any]]:
     """Generate daily insight using existing AI functions."""
     try:
@@ -153,7 +154,8 @@ def generate_daily_insight_for_user(
             user_diagnoses=diagnoses,
             user_sensitivities=sensitivities,
             location=None,
-            hourly_forecast=hourly_forecast
+            hourly_forecast=hourly_forecast,
+            db_session=db_session  # Pass database session for tip history tracking
         )
         
         # Build insight result dict
@@ -369,8 +371,8 @@ def pre_prime_forecasts():
                     error_count += 1
                     continue
                 
-                # Generate daily insight
-                daily_insight = generate_daily_insight_for_user(weather_data, user)
+                # Generate daily insight (pass db session for tip history tracking)
+                daily_insight = generate_daily_insight_for_user(weather_data, user, db_session=db)
                 if not daily_insight:
                     print(f"❌ Failed to generate daily insight for {user.email or user.id}")
                     error_count += 1

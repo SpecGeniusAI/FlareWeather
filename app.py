@@ -1165,7 +1165,8 @@ async def analyze_data(request: CorrelationRequest, background_tasks: Background
                 user_diagnoses=user_diagnoses,
                 user_sensitivities=user_sensitivities,
                 location=None,  # Could extract from request if available
-                hourly_forecast=hourly_forecast_data
+                hourly_forecast=hourly_forecast_data,
+                db_session=db  # Pass database session for tip history tracking
             )
             
             # Use quick values as fallback if AI didn't return them
