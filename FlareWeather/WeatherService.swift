@@ -33,11 +33,6 @@ class WeatherService: ObservableObject {
     func fetchWeatherData(for location: CLLocation, forceRefresh: Bool = false) async {
         print("🌤️ WeatherService: fetchWeatherData called for location: \(location.coordinate.latitude), \(location.coordinate.longitude) (forceRefresh: \(forceRefresh))")
         
-        await MainActor.run {
-            isLoading = true
-            errorMessage = nil
-        }
-        
         let latitude = location.coordinate.latitude
         let longitude = location.coordinate.longitude
         
@@ -59,14 +54,40 @@ class WeatherService: ObservableObject {
         lastLocation = location
         
         // Check cache first (unless forcing refresh)
-        if !forceRefresh, let cache = weatherCache, !cache.isExpired {
+        // If we have cached data, show it immediately and refresh in background
+        let hasCachedData = !forceRefresh && weatherCache != nil && !weatherCache!.isExpired
+        
+        if hasCachedData {
+            // Show cached data immediately without loading spinner
             await MainActor.run {
-                self.weatherData = cache.data
+                self.weatherData = weatherCache!.data
                 self.isLoading = false
+                self.errorMessage = nil
+            }
+            
+            // Refresh in background if data is getting old (but not expired yet)
+            let age = Date().timeIntervalSince(weatherCache!.timestamp)
+            if age > 10 * 60 { // Refresh if older than 10 minutes (but cache is valid for 30)
+                print("🌤️ WeatherService: Cached data is \(Int(age / 60)) minutes old, refreshing in background...")
+                // Refresh in background without blocking UI
+                Task.detached(priority: .background) {
+                    await self.fetchWeatherDataInBackground(for: location)
+                }
             }
             return
         }
         
+        // No cached data or forcing refresh - show loading spinner
+        await MainActor.run {
+            isLoading = true
+            errorMessage = nil
+        }
+        
+        await fetchWeatherDataFromAPI(for: location, latitude: latitude, longitude: longitude)
+    }
+    
+    // Internal method to fetch weather from API (used by both foreground and background fetches)
+    private func fetchWeatherDataFromAPI(for location: CLLocation, latitude: Double, longitude: Double) async {
         print("🌤️ WeatherService: Fetching weather from WeatherKit for \(latitude), \(longitude)")
         
         do {
@@ -136,42 +157,48 @@ class WeatherService: ObservableObject {
             
             await MainActor.run {
                 self.isLoading = false
-                
-                // Provide user-friendly error messages
-                // WeatherKit errors are typically URLError or WeatherServiceError
-                let errorMessage: String
-                if let urlError = error as? URLError {
-                    switch urlError.code {
-                    case .notConnectedToInternet, .networkConnectionLost:
-                        errorMessage = "Network error. Please check your internet connection."
-                    case .timedOut:
-                        errorMessage = "Request timed out. Please try again."
-                    case .cannotFindHost, .cannotConnectToHost:
-                        errorMessage = "Cannot connect to weather service. Please check your internet connection."
-                    default:
-                        errorMessage = "Network error: \(urlError.localizedDescription)"
-                    }
-                } else {
-                    // Check for WeatherKit authentication errors
-                    let errorDescription = error.localizedDescription.lowercased()
-                    if errorDescription.contains("jwt") || errorDescription.contains("authservice") || errorDescription.contains("weatherkit") {
-                        errorMessage = "WeatherKit authentication error. Please ensure WeatherKit is properly configured in Apple Developer Portal."
-                    } else {
-                        // Generic error message for other WeatherKit errors
-                        errorMessage = "Unable to fetch weather data: \(error.localizedDescription)"
-                    }
-                }
-                
-                self.errorMessage = errorMessage
-                
-                // Keep existing data if available
+
+                // Only show error if we don't have cached data to fall back to
                 if self.weatherData == nil {
+                    // Provide user-friendly error messages
+                    // WeatherKit errors are typically URLError or WeatherServiceError
+                    let errorMessage: String
+                    if let urlError = error as? URLError {
+                        switch urlError.code {
+                        case .notConnectedToInternet, .networkConnectionLost:
+                            errorMessage = "Network error. Please check your internet connection."
+                        case .timedOut:
+                            errorMessage = "Request timed out. Please try again."
+                        case .cannotFindHost, .cannotConnectToHost:
+                            errorMessage = "Cannot connect to weather service. Please check your internet connection."
+                        default:
+                            errorMessage = "Network error: \(urlError.localizedDescription)"
+                        }
+                    } else {
+                        // Check for WeatherKit authentication errors
+                        let errorDescription = error.localizedDescription.lowercased()
+                        if errorDescription.contains("jwt") || errorDescription.contains("authservice") || errorDescription.contains("weatherkit") {
+                            errorMessage = "WeatherKit authentication error. Please ensure WeatherKit is properly configured in Apple Developer Portal."
+                        } else {
+                            // Generic error message for other WeatherKit errors
+                            errorMessage = "Unable to fetch weather data: \(error.localizedDescription)"
+                        }
+                    }
+                    self.errorMessage = errorMessage
                     print("⚠️ WeatherService: No cached weather data available")
                 } else {
-                    print("ℹ️ WeatherService: Keeping existing weather data due to error")
+                    // We have cached data, so don't show error - just log it
+                    print("⚠️ WeatherService: Failed to refresh, but using cached data")
                 }
             }
         }
+    }
+    
+    // Background fetch method - doesn't show loading spinner
+    private func fetchWeatherDataInBackground(for location: CLLocation) async {
+        let latitude = location.coordinate.latitude
+        let longitude = location.coordinate.longitude
+        await fetchWeatherDataFromAPI(for: location, latitude: latitude, longitude: longitude)
     }
     
     func fetchWeatherData(for city: String) async {

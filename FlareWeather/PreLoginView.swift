@@ -9,8 +9,12 @@ struct PreLoginView: View {
     @StateObject private var weatherService = WeatherService()
     @StateObject private var locationManager = LocationManager()
     @State private var showingLogin = false
+    @State private var showingOnboarding = false
+    @State private var showingBanner = false
     @State private var usingFallbackWeather = false
     @State private var weatherFetchTask: Task<Void, Never>?
+    @AppStorage("lastPopupDate") private var lastPopupDateString: String = ""
+    @AppStorage("firstAppOpenDate") private var firstAppOpenDateString: String = ""
     
     // Fallback location: Seattle, WA
     private let fallbackLocation = CLLocation(latitude: 47.6062, longitude: -122.3321)
@@ -62,24 +66,19 @@ struct PreLoginView: View {
     
     var body: some View {
         NavigationView {
-            ScrollView {
-                VStack(spacing: 16) {
-                    // Logo and Welcome Section (inline layout)
-                    HStack(spacing: 12) {
-                        // Logo (small, inline)
-                        Image("AppLogo")
+            ZStack(alignment: .top) {
+                ScrollView {
+                    VStack(spacing: 16) {
+                        // Logo - centered
+                        Image(colorScheme == .dark ? "LogoLight" : "LogoDark")
                             .resizable()
                             .scaledToFit()
-                            .frame(width: 36, height: 36) // Slightly smaller
-                        
-                        // Welcome Text
-                        Text("Welcome to FlareWeather")
-                            .font(.interBody) // Smaller font
-                            .foregroundColor(Color.adaptiveText)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 16) // Reduced top padding
-                    .padding(.horizontal)
+                            .frame(height: 28)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.top, 16)
+                            .padding(.horizontal)
+                            .opacity(showingBanner ? 0 : 1)
+                            .animation(.easeInOut(duration: 0.3), value: showingBanner)
                     
                     // WEATHER CARDS (always shown - real or fallback)
                     // 1. Current Weather Card
@@ -106,19 +105,38 @@ struct PreLoginView: View {
                     }) {
                         Text("Login / Sign Up")
                             .font(.interBody.weight(.semibold))
-                            .foregroundColor(.white)
+                            .foregroundColor(colorScheme == .dark ? Color(hex: "#2d3240") : .white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14) // Slightly reduced
-                            .background(Color(hex: "#888779"))
+                            .background(Color.adaptiveAccent)
                             .cornerRadius(12)
                     }
                     .padding(.horizontal)
                     .padding(.top, 4) // Reduced spacing
                     .padding(.bottom, 16) // Reduced bottom padding
+                    }
+                    .padding(.vertical, 12) // Reduced vertical padding
                 }
-                .padding(.vertical, 12) // Reduced vertical padding
+                .background(Color.adaptiveBackground.ignoresSafeArea())
+                
+                // Green subscription banner - overlays welcome header position exactly
+                if showingBanner {
+                    HStack(alignment: .top, spacing: 0) {
+                        SubscriptionBannerView {
+                            showingOnboarding = true
+                        }
+                        .padding(.top, 16)
+                        .padding(.horizontal)
+                        
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .top).combined(with: .opacity),
+                        removal: .move(edge: .top).combined(with: .opacity)
+                    ))
+                }
             }
-            .background(Color.adaptiveBackground.ignoresSafeArea())
             .navigationBarHidden(true)
             .toolbar {
                 ToolbarItem(placement: .principal) {
@@ -132,6 +150,12 @@ struct PreLoginView: View {
                 // Request location and fetch real weather
                 locationManager.requestLocation()
                 loadWeatherWithTimeout()
+                
+                // Check if it's a popup day first, then show banner or popup accordingly
+                let isPopupDay = checkIfPopupDay()
+                if !isPopupDay {
+                    checkAndShowBanner()
+                }
             }
             .onChange(of: locationManager.location) { _, new in
                 guard let location = new else { return }
@@ -153,6 +177,69 @@ struct PreLoginView: View {
             .fullScreenCover(isPresented: $showingLogin) {
                 LoginView()
                     .environmentObject(authManager)
+            }
+            .fullScreenCover(isPresented: $showingOnboarding) {
+                OnboardingFlowView()
+                    .environmentObject(authManager)
+                    .environmentObject(subscriptionManager)
+            }
+        }
+    }
+    
+    private func checkIfPopupDay() -> Bool {
+        // Only check for non-authenticated users
+        guard !authManager.isAuthenticated else {
+            return false
+        }
+        
+        let today = Date()
+        let calendar = Calendar.current
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        let todayString = dateFormatter.string(from: today)
+        
+        // Set first app open date if not set
+        if firstAppOpenDateString.isEmpty {
+            firstAppOpenDateString = todayString
+            return false // Don't show popup on first day
+        }
+        
+        guard let firstAppOpenDate = dateFormatter.date(from: firstAppOpenDateString) else {
+            return false
+        }
+        
+        // Calculate days since first app open
+        let daysSinceFirstOpen = calendar.dateComponents([.day], from: firstAppOpenDate, to: today).day ?? 0
+        
+        // Popup shows on day 3, then every 2nd day after (3, 5, 7, 9, etc.)
+        if daysSinceFirstOpen >= 3 {
+            let isPopupDay = (daysSinceFirstOpen - 3) % 2 == 0
+            
+            // Check if we already showed popup today
+            if let lastPopupDateString = lastPopupDateString.isEmpty ? nil : lastPopupDateString,
+               lastPopupDateString == todayString {
+                return false
+            }
+            
+            return isPopupDay
+        }
+        
+        return false
+    }
+    
+    private func checkAndShowBanner() {
+        // Only show banner for non-authenticated users on non-popup days
+        guard !authManager.isAuthenticated else {
+            return
+        }
+        
+        // Show banner after 3 second delay with smooth animation
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds delay
+            if !authManager.isAuthenticated {
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
+                    showingBanner = true
+                }
             }
         }
     }
@@ -237,17 +324,25 @@ private struct SampleDailyInsightCardView: View {
                 Spacer()
             }
             
-            // Summary only (no why or comfort tip for pre-login)
+            // Summary
             Text("Steady weather today with mild shifts that most people experience as low impact.")
                 .font(.interBody)
                 .foregroundColor(Color.adaptiveText)
                 .lineSpacing(6)
                 .fixedSize(horizontal: false, vertical: true)
             
-            Text("Sign in for personalized flare forecasts based on your diagnoses and sensitivities.")
-                .font(.interCaption)
-                .foregroundColor(Color.adaptiveMuted)
-                .padding(.top, 4)
+            // Comfort tip (Eastern medicine style)
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "hands.sparkles.fill")
+                    .font(.interBody)
+                    .foregroundColor(Color.adaptiveText)
+                Text("Comfort tip: Chinese medicine suggests gentle qigong movements to ease joint stiffness during weather shifts.")
+                    .font(.interBody)
+                    .foregroundColor(Color.adaptiveText)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.top, 4)
             
             Text("Flare isn't a substitute for medical professionals, just a weather-aware wellness guide.")
                 .font(.interSmall)
@@ -350,22 +445,22 @@ private struct SampleWeeklyInsightCardView: View {
                             let riskColor: Color = {
                                 switch riskLevel {
                                 case "High": 
-                                    return colorScheme == .dark ? Color(hex: "#FF4444") : Color(hex: "#CC0000")
+                                    return Color.riskHigh
                                 case "Moderate": 
-                                    return colorScheme == .dark ? Color(hex: "#FF9500") : Color(hex: "#E67E00")
+                                    return Color.riskModerate
                                 default: 
-                                    return colorScheme == .dark ? Color(hex: "#4ECDC4") : Color(hex: "#888779")
+                                    return Color.riskLow
                                 }
                             }()
                             
                             let backgroundColor: Color = {
                                 switch riskLevel {
                                 case "High": 
-                                    return colorScheme == .dark ? Color(hex: "#FF4444").opacity(0.2) : Color(hex: "#CC0000").opacity(0.15)
+                                    return Color.riskHighBackground
                                 case "Moderate": 
-                                    return colorScheme == .dark ? Color(hex: "#FF9500").opacity(0.2) : Color(hex: "#E67E00").opacity(0.15)
+                                    return Color.riskModerateBackground
                                 default: 
-                                    return colorScheme == .dark ? Color(hex: "#4ECDC4").opacity(0.2) : Color(hex: "#888779").opacity(0.15)
+                                    return Color.riskLowBackground
                                 }
                             }()
                             
@@ -433,7 +528,7 @@ private struct AppleWeatherAttributionView: View {
             // Legal attribution link
             Link("Legal Attribution", destination: URL(string: "https://weatherkit.apple.com/legal-attribution.html")!)
                 .font(.interSmall)
-                .foregroundColor(colorScheme == .dark ? Color(hex: "#4ECDC4") : Color(hex: "#888779"))
+                .foregroundColor(Color.adaptiveAccent)
                 .underline()
         }
         .padding(.vertical, 8)
@@ -444,21 +539,14 @@ private struct AppleWeatherAttributionView: View {
 
 // Reuse the Logo Wordmark View from HomeView
 private struct LogoWordmarkView: View {
+    @Environment(\.colorScheme) var colorScheme
+    
     var body: some View {
-        HStack(spacing: 8) {
-            Image("AppLogo")
-                .resizable()
-                .renderingMode(.template)
-                .scaledToFit()
-                .frame(height: 24)
-                .foregroundColor(Color.adaptiveText)
-            Text("FlareWeather")
-                .font(.interHeadline)
-                .fontWeight(.semibold)
-                .foregroundColor(Color.adaptiveText)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("FlareWeather")
+        Image(colorScheme == .dark ? "LogoLight" : "LogoDark")
+            .resizable()
+            .scaledToFit()
+            .frame(height: 22)
+            .accessibilityLabel("FlareWeather")
     }
 }
 

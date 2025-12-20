@@ -168,6 +168,12 @@ class SubscriptionManager: ObservableObject {
             let (_, info, _) = try await Purchases.shared.purchase(package: package)
             customerInfo = info
             updateEntitlementStatus(from: info)
+            
+            // ✅ Link subscription to backend
+            Task {
+                await linkSubscriptionFromStoreKit(productId: package.storeProduct.productIdentifier)
+            }
+            
             print("✅ Purchase successful")
         } catch {
             print("❌ Purchase failed: \(error)")
@@ -195,6 +201,15 @@ class SubscriptionManager: ObservableObject {
             let info = try await Purchases.shared.customerInfo()
             customerInfo = info
             updateEntitlementStatus(from: info)
+            
+            // ✅ Link subscription if user has active subscription
+            if isProUser, let activeEntitlement = info.entitlements[entitlementID] {
+                let productId = activeEntitlement.productIdentifier
+                Task {
+                    await linkSubscriptionFromStoreKit(productId: productId)
+                }
+            }
+            
             print("✅ Customer info refreshed - isProUser: \(isProUser)")
         } catch {
             print("❌ Error fetching customer info: \(error)")
@@ -400,6 +415,20 @@ class SubscriptionManager: ObservableObject {
             switch result {
             case .success(let verification):
                 let transaction = try checkVerified(verification)
+                
+                // ✅ Link subscription to backend
+                let originalTransactionId = String(transaction.originalID)
+                Task {
+                    do {
+                        try await SubscriptionLinkingService.shared.linkSubscription(
+                            originalTransactionId: originalTransactionId,
+                            productId: transaction.productID
+                        )
+                    } catch {
+                        print("⚠️ Failed to link subscription: \(error.localizedDescription)")
+                    }
+                }
+                
                 await transaction.finish()
                 await checkEntitlementsViaStoreKit()
                 return isSubscribed
@@ -462,6 +491,40 @@ class SubscriptionManager: ObservableObject {
             throw error
         case .verified(let safe):
             return safe
+        }
+    }
+    
+    /// Link subscription to backend by getting originalTransactionId from StoreKit
+    /// RevenueCat doesn't expose originalTransactionId, so we query StoreKit directly
+    private func linkSubscriptionFromStoreKit(productId: String) async {
+        // Query StoreKit for current entitlements
+        for await result in Transaction.currentEntitlements {
+            do {
+                let transaction = try checkVerified(result)
+                
+                // Check if this transaction matches the product
+                if transaction.productID == productId || 
+                   transaction.productID.contains(productId) ||
+                   productId.contains(transaction.productID) {
+                    
+                    let originalTransactionId = String(transaction.originalID)
+                    
+                    // Link it to backend
+                    do {
+                        try await SubscriptionLinkingService.shared.linkSubscription(
+                            originalTransactionId: originalTransactionId,
+                            productId: transaction.productID
+                        )
+                        print("✅ Linked subscription: \(originalTransactionId)")
+                    } catch {
+                        print("⚠️ Failed to link subscription: \(error.localizedDescription)")
+                        // Don't fail - just log the error
+                    }
+                    break // Found matching transaction
+                }
+            } catch {
+                print("⚠️ Transaction verification error: \(error.localizedDescription)")
+            }
         }
     }
     

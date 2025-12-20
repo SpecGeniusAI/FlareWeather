@@ -132,6 +132,7 @@ extension LocationSearchManager: MKLocalSearchCompleterDelegate {
 
 struct SettingsView: View {
     @Environment(\.managedObjectContext) private var viewContext
+    @Environment(\.dismiss) private var dismiss
     @FetchRequest(
         sortDescriptors: [NSSortDescriptor(keyPath: \UserProfile.createdAt, ascending: false)],
         animation: .default)
@@ -542,6 +543,18 @@ struct SettingsView: View {
             }
             .background(Color.adaptiveBackground.ignoresSafeArea())
             .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 22))
+                            .foregroundColor(Color.adaptiveMuted)
+                    }
+                }
+            }
             .toolbarBackground(Color.adaptiveCardBackground.opacity(0.95), for: .navigationBar)
             .tint(Color.adaptiveText)
             .sheet(isPresented: $showingOnboarding) {

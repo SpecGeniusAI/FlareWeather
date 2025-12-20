@@ -19,11 +19,30 @@ struct AuthResponse: Codable {
     let name: String?
 }
 
-struct UserResponse: Codable {
+struct UserResponse: Codable, Equatable {
     let user_id: String
     let email: String
     let name: String?
     let created_at: String
+    let has_access: Bool?
+    let access_type: String?
+    let access_expires_at: String?
+    let access_required: Bool?
+    let access_expired: Bool?
+    let logout_message: String?
+    
+    static func == (lhs: UserResponse, rhs: UserResponse) -> Bool {
+        return lhs.user_id == rhs.user_id &&
+               lhs.email == rhs.email &&
+               lhs.name == rhs.name &&
+               lhs.created_at == rhs.created_at &&
+               lhs.has_access == rhs.has_access &&
+               lhs.access_type == rhs.access_type &&
+               lhs.access_expires_at == rhs.access_expires_at &&
+               lhs.access_required == rhs.access_required &&
+               lhs.access_expired == rhs.access_expired &&
+               lhs.logout_message == rhs.logout_message
+    }
 }
 
 struct ForgotPasswordResponsePayload: Codable {

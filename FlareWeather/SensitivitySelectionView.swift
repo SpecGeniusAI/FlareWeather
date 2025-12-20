@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SensitivitySelectionView: View {
     @Binding var selectedSensitivities: Set<String>
+    var onBack: () -> Void
     var onContinue: () -> Void
     var onSkip: () -> Void
     
@@ -15,6 +16,22 @@ struct SensitivitySelectionView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
+                // Back button - top left
+                HStack {
+                    Button(action: onBack) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 16, weight: .medium))
+                            Text("Back")
+                                .font(.interBody)
+                        }
+                        .foregroundColor(Color.adaptiveText)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 16)
+                
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Any known weather sensitivities?")
                         .font(.interTitle)
@@ -27,7 +44,7 @@ struct SensitivitySelectionView: View {
                         .lineSpacing(4)
                 }
                 .padding(.horizontal, 24)
-                .padding(.top, 24)
+                .padding(.top, 8)
                 
                 VStack(spacing: 12) {
                     ForEach(factors, id: \.self) { factor in
@@ -64,8 +81,7 @@ struct SensitivitySelectionView: View {
             }
         }
         .background(Color.adaptiveBackground.ignoresSafeArea())
-        .navigationTitle("Sensitivities")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
     }
     
     private func toggle(_ factor: String) {
@@ -112,6 +128,7 @@ private struct SelectionRow: View {
 #Preview {
     SensitivitySelectionView(
         selectedSensitivities: .constant(["Pressure shifts"]),
+        onBack: {},
         onContinue: {},
         onSkip: {}
     )

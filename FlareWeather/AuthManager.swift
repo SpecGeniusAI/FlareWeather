@@ -68,12 +68,21 @@ final class AuthManager: ObservableObject {
             user_id: response.user_id,
             email: response.email,
             name: response.name,
-            created_at: ""
+            created_at: "",
+            has_access: nil,
+            access_type: nil,
+            access_expires_at: nil,
+            access_required: nil,
+            access_expired: nil,
+            logout_message: nil
         )
         isAuthenticated = true
         print("✅ AuthManager: Set isAuthenticated = true")
         saveToken(response.access_token)
         saveUser(currentUser)
+        
+        // Send push token to backend now that user is authenticated
+        AppDelegate.sendPushTokenIfNeeded()
         
         // Verify token by fetching user info
         do {
@@ -82,6 +91,9 @@ final class AuthManager: ObservableObject {
                 currentUser = userInfo
                 saveUser(userInfo)
                 print("✅ AuthManager: User info fetched successfully")
+                if let accessRequired = userInfo.access_required, accessRequired {
+                    print("⚠️  Access required - user needs to subscribe or logout")
+                }
             }
         } catch {
             print("⚠️  Failed to fetch user info: \(error)")
@@ -108,6 +120,9 @@ final class AuthManager: ObservableObject {
                         let userInfo = try await authService.getCurrentUser(token: token)
                         currentUser = userInfo
                         saveUser(userInfo)
+                        if let accessRequired = userInfo.access_required, accessRequired {
+                            print("⚠️  Access required - user needs to subscribe or logout")
+                        }
                     }
                 } catch {
                     // Token invalid, logout

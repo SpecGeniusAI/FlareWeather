@@ -1,0 +1,59 @@
+TRIAL USER POPUP - COPY OPTIONS
+================================
+
+OPTION 1: Direct & Value-Focused
+---------------------------------
+Title: "Get Personalized Forecasts"
+Body: "Sign up to receive daily insights tailored to your specific conditions and sensitivities. Your forecast will be customized based on your diagnoses."
+CTA: "Sign Up" / "Maybe Later"
+
+OPTION 2: Benefit-Driven
+---------------------------------
+Title: "Make Your Forecast Personal"
+Body: "Right now you're seeing general weather insights. Sign up to get forecasts customized to your conditions—we'll factor in your diagnoses and sensitivities for more accurate guidance."
+CTA: "Personalize My Forecast" / "Continue as Guest"
+
+OPTION 3: Question-Based (Softer)
+---------------------------------
+Title: "Want More Personalized Insights?"
+Body: "Sign up to customize your forecast based on your specific conditions. We'll use your diagnoses and sensitivities to give you more accurate, relevant guidance."
+CTA: "Yes, Sign Me Up" / "Not Right Now"
+
+OPTION 4: Educational & Gentle
+---------------------------------
+Title: "Your Forecast, Tailored to You"
+Body: "Every body responds differently to weather. Sign up to receive insights personalized to your conditions and sensitivities, so you get guidance that's truly relevant to you."
+CTA: "Get Personalized Insights" / "Maybe Later"
+
+OPTION 5: Short & Sweet
+---------------------------------
+Title: "Personalize Your Forecast"
+Body: "Sign up to get insights tailored to your conditions and sensitivities."
+CTA: "Sign Up" / "Later"
+
+OPTION 6: Curiosity-Driven
+---------------------------------
+Title: "See What's Different"
+Body: "Sign up to see how your forecast changes when we factor in your specific conditions and sensitivities. Get insights that are truly personalized to you."
+CTA: "Show Me" / "Not Now"
+
+OPTION 7: Empathetic & Supportive
+---------------------------------
+Title: "Get Insights That Understand You"
+Body: "Your weather sensitivity is unique. Sign up to receive forecasts that consider your specific conditions and sensitivities, giving you more accurate and helpful guidance."
+CTA: "Personalize My Experience" / "Continue Browsing"
+
+OPTION 8: Action-Oriented
+---------------------------------
+Title: "Unlock Personalized Forecasts"
+Body: "Sign up to customize your daily insights based on your diagnoses and sensitivities. Get forecasts that are specifically designed for your needs."
+CTA: "Unlock Personalization" / "Skip"
+
+---
+
+RECOMMENDED: Option 4 or Option 7
+- Matches the app's calm, compassionate tone
+- Educational without being pushy
+- Clear value proposition
+- Respects user choice with friendly dismiss option
+

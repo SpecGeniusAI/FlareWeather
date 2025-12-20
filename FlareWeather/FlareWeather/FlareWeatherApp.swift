@@ -1,16 +1,22 @@
 import SwiftUI
 import CoreData
+import UserNotifications
+import UIKit
 #if canImport(RevenueCat)
 import RevenueCat
 #endif
 
 @main
 struct FlareWeatherApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    
     let persistenceController = PersistenceController.shared
     @StateObject private var authManager = AuthManager()
     @StateObject private var subscriptionManager = SubscriptionManager.shared
     
     init() {
+        // Request notification permissions on launch
+        requestNotificationPermissions()
         #if canImport(RevenueCat)
         #if DEBUG
         Purchases.logLevel = .debug
@@ -45,6 +51,30 @@ struct FlareWeatherApp: App {
                     // Debug: Check RevenueCat offerings
                     await subscriptionManager.checkOfferings()
                 }
+                .onAppear {
+                    // Send push token if user is logged in and token exists
+                    AppDelegate.checkAndSendTokenOnLaunch()
+                }
+        }
+    }
+    
+    private func requestNotificationPermissions() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
+            if granted {
+                print("✅ Notification permissions granted")
+                // Register for remote notifications on main thread
+                DispatchQueue.main.async {
+                    UIApplication.shared.registerForRemoteNotifications()
+                }
+                // Also send token if user is already logged in
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    AppDelegate.sendPushTokenIfNeeded()
+                }
+            } else if let error = error {
+                print("❌ Notification permission error: \(error.localizedDescription)")
+            } else {
+                print("⚠️ Notification permissions denied")
+            }
         }
     }
 }

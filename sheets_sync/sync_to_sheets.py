@@ -139,6 +139,19 @@ def get_all_users(db: Session) -> List[Dict[str, Any]]:
             else:
                 access_type = "free_lifetime"
         
+        # Parse diagnoses JSON to check if user has any diagnoses
+        has_diagnoses = False
+        if user.diagnoses:
+            try:
+                diagnoses_list = json.loads(user.diagnoses) if isinstance(user.diagnoses, str) else user.diagnoses
+                # Check if it's a non-empty list
+                if isinstance(diagnoses_list, list) and len(diagnoses_list) > 0:
+                    has_diagnoses = True
+            except (json.JSONDecodeError, TypeError):
+                # If parsing fails, check if it's a non-empty string
+                if isinstance(user.diagnoses, str) and user.diagnoses.strip() and user.diagnoses.strip() != "[]":
+                    has_diagnoses = True
+        
         user_data.append({
             "id": user.id,
             "email": user.email or "N/A",
@@ -149,7 +162,7 @@ def get_all_users(db: Session) -> List[Dict[str, Any]]:
             "access_type": access_type,
             "free_access_enabled": "Yes" if user.free_access_enabled else "No",
             "free_access_expires_at": user.free_access_expires_at.strftime("%Y-%m-%d %H:%M:%S") if user.free_access_expires_at else "Never",
-            "has_diagnoses": "Yes" if user.diagnoses else "No",
+            "has_diagnoses": "Yes" if has_diagnoses else "No",
             "apple_user_id": user.apple_user_id or "N/A",
         })
     

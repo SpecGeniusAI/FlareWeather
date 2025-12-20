@@ -1,8 +1,10 @@
 import SwiftUI
 
 struct InsightPreviewView: View {
+    @Environment(\.colorScheme) var colorScheme
     let diagnoses: [String]
     let sensitivities: [String]
+    var onBack: () -> Void
     var onContinue: () -> Void
     
     private var formattedDiagnoses: String {
@@ -87,8 +89,20 @@ Move at a pace that feels kind to you.
             }
         }
         .background(Color.adaptiveBackground.ignoresSafeArea())
-        .navigationTitle("Preview")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(action: onBack) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 16, weight: .medium))
+                        Text("Back")
+                            .font(.interBody)
+                    }
+                    .foregroundColor(Color.adaptiveText)
+                }
+            }
+        }
     }
 }
 
@@ -96,6 +110,7 @@ Move at a pace that feels kind to you.
     InsightPreviewView(
         diagnoses: ["Migraines"],
         sensitivities: ["Pressure shifts"],
+        onBack: {},
         onContinue: {}
     )
 }

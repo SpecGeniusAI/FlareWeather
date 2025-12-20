@@ -99,7 +99,7 @@ struct WeatherDataCache {
     let timestamp: Date
     
     var isExpired: Bool {
-        Date().timeIntervalSince(timestamp) > 300 // 5 minutes
+        Date().timeIntervalSince(timestamp) > 1800 // 30 minutes - matches foreground refresh threshold
     }
 }
 

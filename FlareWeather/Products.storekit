@@ -1,4 +1,14 @@
 {
+  "appPolicies" : {
+    "eula" : "",
+    "policies" : [
+      {
+        "locale" : "en_US",
+        "policyText" : "",
+        "policyURL" : ""
+      }
+    ]
+  },
   "identifier" : "Products",
   "nonRenewingSubscriptions" : [
 
@@ -7,7 +17,56 @@
 
   ],
   "settings" : {
-    "_failTransactionsEnabled" : false
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Load Products"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Purchase"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Verification"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Store Sync"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Subscription Status"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Transaction"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Manage Subscriptions Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Refund Request Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Offer Code Redeem Sheet"
+      }
+    ]
   },
   "subscriptionGroups" : [
     {
@@ -28,6 +87,13 @@
           "familyShareable" : false,
           "groupNumber" : 1,
           "internalID" : "F212D02C",
+          "introductoryOffer" : {
+            "displayPrice" : "0.00",
+            "internalID" : "INTRO_MONTHLY",
+            "numberOfPeriods" : 1,
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1W"
+          },
           "localizations" : [
             {
               "description" : "Monthly subscription to FlareWeather Plus",
@@ -40,13 +106,9 @@
           "referenceName" : "monthly",
           "subscriptionGroupID" : "8C8E3DC5",
           "type" : "RecurringSubscription",
-          "introductoryOffer" : {
-            "displayPrice" : "0.00",
-            "internalID" : "INTRO_MONTHLY",
-            "numberOfPeriods" : 1,
-            "paymentMode" : "free",
-            "subscriptionPeriod" : "P1W"
-          }
+          "winbackOffers" : [
+
+          ]
         },
         {
           "adHocOffers" : [
@@ -59,6 +121,7 @@
           "familyShareable" : false,
           "groupNumber" : 1,
           "internalID" : "5E9622FD",
+          "introductoryOffer" : null,
           "localizations" : [
             {
               "description" : "Yearly subscription to FlareWeather Plus",
@@ -70,13 +133,16 @@
           "recurringSubscriptionPeriod" : "P1Y",
           "referenceName" : "Yearly",
           "subscriptionGroupID" : "8C8E3DC5",
-          "type" : "RecurringSubscription"
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
         }
       ]
     }
   ],
   "version" : {
-    "major" : 2,
+    "major" : 4,
     "minor" : 0
   }
 }

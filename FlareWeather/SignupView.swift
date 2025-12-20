@@ -7,6 +7,7 @@ struct SignupView: View {
     @Environment(\.colorScheme) var colorScheme
     @EnvironmentObject var authManager: AuthManager
     @StateObject private var authService = AuthService()
+    @FocusState private var focusedField: Field?
     @State private var name = ""
     @State private var email = ""
     @State private var password = ""
@@ -14,193 +15,16 @@ struct SignupView: View {
     @State private var errorMessage: String? = nil
     @State private var isLoading = false
     
+    enum Field {
+        case name, email, password, confirmPassword
+    }
+    
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 24) {
-                    // Logo/Header
-                    VStack(spacing: 16) {
-                        // App Logo
-                        Image("AppLogo")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 120, height: 120)
-                        
-                        Text("FlareWeather")
-                            .font(.interTitle)
-                            .foregroundColor(Color.adaptiveText)
-                        
-                        Text("Create your account to get started")
-                            .font(.interBody)
-                            .foregroundColor(Color.adaptiveMuted)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                    }
-                    .padding(.top, 40)
-                    
-                    // Signup Form
-                    VStack(spacing: 20) {
-                        // Name Field
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Name (Optional)")
-                                .font(.interBody)
-                                .foregroundColor(Color.adaptiveText)
-                            
-                            ZStack(alignment: .leading) {
-                                if name.isEmpty {
-                                    Text("Your name")
-                                        .font(.interBody)
-                                        .foregroundColor(Color.muted)
-                                        .padding(.horizontal, 12)
-                                }
-                                TextField("", text: $name)
-                                    .font(.interBody)
-                                    .foregroundColor(Color.adaptiveText)
-                                    .tint(Color.adaptiveText)
-                                    .textContentType(.name)
-                                    .padding(12)
-                            }
-                            .background(Color.adaptiveBackground)
-                            .cornerRadius(12)
-                        }
-                        
-                        // Email Field
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Email")
-                                .font(.interBody)
-                                .foregroundColor(Color.adaptiveText)
-                            
-                            ZStack(alignment: .leading) {
-                                if email.isEmpty {
-                                    Text("your@email.com")
-                                        .font(.interBody)
-                                        .foregroundColor(Color.muted)
-                                        .padding(.horizontal, 12)
-                                }
-                                TextField("", text: $email)
-                                    .font(.interBody)
-                                    .foregroundColor(Color.adaptiveText)
-                                    .tint(Color.adaptiveText)
-                                    .keyboardType(.emailAddress)
-                                    .autocapitalization(.none)
-                                    .textContentType(.emailAddress)
-                                    .padding(12)
-                            }
-                            .background(Color.adaptiveBackground)
-                            .cornerRadius(12)
-                        }
-                        
-                        // Password Field
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Password")
-                                .font(.interBody)
-                                .foregroundColor(Color.adaptiveText)
-                            
-                            ZStack(alignment: .leading) {
-                                if password.isEmpty {
-                                    Text("Password (min 8 characters)")
-                                        .font(.interBody)
-                                        .foregroundColor(Color.muted)
-                                        .padding(.horizontal, 12)
-                                }
-                                SecureField("", text: $password)
-                                    .font(.interBody)
-                                    .foregroundColor(Color.adaptiveText)
-                                    .tint(Color.adaptiveText)
-                                    .textContentType(.newPassword)
-                                    .padding(12)
-                            }
-                            .background(Color.adaptiveBackground)
-                            .cornerRadius(12)
-                        }
-                        
-                        // Confirm Password Field
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Confirm Password")
-                                .font(.interBody)
-                                .foregroundColor(Color.adaptiveText)
-                            
-                            ZStack(alignment: .leading) {
-                                if confirmPassword.isEmpty {
-                                    Text("Confirm password")
-                                        .font(.interBody)
-                                        .foregroundColor(Color.muted)
-                                        .padding(.horizontal, 12)
-                                }
-                                SecureField("", text: $confirmPassword)
-                                    .font(.interBody)
-                                    .foregroundColor(Color.adaptiveText)
-                                    .tint(Color.adaptiveText)
-                                    .textContentType(.newPassword)
-                                    .padding(12)
-                            }
-                            .background(Color.adaptiveBackground)
-                            .cornerRadius(12)
-                        }
-                        
-                        // Error Message
-                        if let errorMessage = errorMessage {
-                            Text(errorMessage)
-                                .font(.interCaption)
-                                .foregroundColor(.red)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        
-                        // Signup Button
-                        Button(action: {
-                            Task {
-                                await signup()
-                            }
-                        }) {
-                            HStack {
-                                if authService.isLoading || isLoading {
-                                    ProgressView()
-                                        .tint(Color.adaptiveText)
-                                } else {
-                                    Text("Sign Up")
-                                        .font(.interBody.weight(.semibold))
-                                }
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                        }
-                        .buttonStyle(PrimaryButtonStyle())
-                        .disabled(authService.isLoading || isLoading || !isFormValid)
-                        
-                        // Divider
-                        HStack {
-                            Rectangle()
-                                .fill(Color.adaptiveMuted.opacity(0.3))
-                                .frame(height: 1)
-                            Text("or")
-                                .font(.interCaption)
-                                .foregroundColor(Color.adaptiveMuted)
-                                .padding(.horizontal, 12)
-                            Rectangle()
-                                .fill(Color.adaptiveMuted.opacity(0.3))
-                                .frame(height: 1)
-                        }
-                        .padding(.vertical, 8)
-                        
-                        // Apple Sign In Button
-                        SignInWithAppleButton(
-                            onRequest: { request in
-                                request.requestedScopes = [.fullName, .email]
-                            },
-                            onCompletion: { result in
-                                Task { @MainActor in
-                                    await handleAppleSignIn(result)
-                                }
-                            }
-                        )
-                        .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
-                        .frame(height: 50)
-                        .cornerRadius(12)
-                        .disabled(authService.isLoading || isLoading)
-                    }
-                    .padding(20)
-                    .cardStyle()
-                    .padding(.horizontal)
+                    headerView
+                    signupForm
                 }
                 .padding(.vertical)
             }
@@ -210,22 +34,229 @@ struct SignupView: View {
             .toolbarBackground(Color.adaptiveCardBackground.opacity(0.95), for: .navigationBar)
             .tint(Color.adaptiveText)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         dismiss()
                     }
-                    .foregroundColor(Color.adaptiveText)
                 }
             }
+            .tint(Color.adaptiveText)
+            .scrollDismissesKeyboard(.interactively)
         }
-        .tint(Color.adaptiveText)
-        .onAppear {
-            // Set placeholder text color to muted (grey) instead of blue
-            UITextField.appearance().attributedPlaceholder = NSAttributedString(
-                string: "",
-                attributes: [NSAttributedString.Key.foregroundColor: UIColor(Color.muted)]
+    }
+    
+    private var headerView: some View {
+        VStack(spacing: 20) {
+            Image(colorScheme == .dark ? "LogoLight" : "LogoDark")
+                .resizable()
+                .scaledToFit()
+                .frame(height: 32)
+            
+            Text("Create your account to get started")
+                .font(.interBody)
+                .foregroundColor(Color.adaptiveMuted)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+        }
+        .padding(.top, 40)
+    }
+    
+    private var signupForm: some View {
+        VStack(spacing: 20) {
+            nameField
+            emailField
+            passwordField
+            confirmPasswordField
+            
+            if let errorMessage = errorMessage {
+                Text(errorMessage)
+                    .font(.interCaption)
+                    .foregroundColor(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            
+            signupButton
+            dividerView
+            appleSignInButton
+        }
+        .padding(20)
+        .background(cardBackground)
+        .padding(.horizontal)
+    }
+    
+    private var nameField: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Name (Optional)")
+                .font(.interBody)
+                .foregroundColor(Color.adaptiveText)
+            
+            TextField("Your name", text: $name)
+                .font(.interBody)
+                .foregroundColor(Color.adaptiveText)
+                .tint(Color.adaptiveText)
+                .textContentType(.name)
+                .textFieldStyle(.plain)
+                .focused($focusedField, equals: .name)
+                .submitLabel(.next)
+                .onSubmit {
+                    focusedField = .email
+                }
+                .padding(12)
+                .background(Color.adaptiveBackground)
+                .cornerRadius(12)
+                .allowsHitTesting(true)
+        }
+    }
+    
+    private var emailField: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Email")
+                .font(.interBody)
+                .foregroundColor(Color.adaptiveText)
+            
+            TextField("your@email.com", text: $email)
+                .font(.interBody)
+                .foregroundColor(Color.adaptiveText)
+                .tint(Color.adaptiveText)
+                .keyboardType(.emailAddress)
+                .autocapitalization(.none)
+                .textContentType(.emailAddress)
+                .textFieldStyle(.plain)
+                .focused($focusedField, equals: .email)
+                .submitLabel(.next)
+                .onSubmit {
+                    focusedField = .password
+                }
+                .padding(12)
+                .background(Color.adaptiveBackground)
+                .cornerRadius(12)
+                .allowsHitTesting(true)
+        }
+    }
+    
+    private var passwordField: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Password")
+                .font(.interBody)
+                .foregroundColor(Color.adaptiveText)
+            
+            SecureField("Password (min 8 characters)", text: $password)
+                .font(.interBody)
+                .foregroundColor(Color.adaptiveText)
+                .tint(Color.adaptiveText)
+                .textContentType(.newPassword)
+                .textFieldStyle(.plain)
+                .focused($focusedField, equals: .password)
+                .submitLabel(.next)
+                .onSubmit {
+                    focusedField = .confirmPassword
+                }
+                .padding(12)
+                .background(Color.adaptiveBackground)
+                .cornerRadius(12)
+                .allowsHitTesting(true)
+        }
+    }
+    
+    private var confirmPasswordField: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Confirm Password")
+                .font(.interBody)
+                .foregroundColor(Color.adaptiveText)
+            
+            SecureField("Confirm password", text: $confirmPassword)
+                .font(.interBody)
+                .foregroundColor(Color.adaptiveText)
+                .tint(Color.adaptiveText)
+                .textContentType(.newPassword)
+                .textFieldStyle(.plain)
+                .focused($focusedField, equals: .confirmPassword)
+                .submitLabel(.done)
+                .onSubmit {
+                    if isFormValid {
+                        Task { @MainActor in
+                            await signup()
+                        }
+                    }
+                }
+                .padding(12)
+                .background(Color.adaptiveBackground)
+                .cornerRadius(12)
+                .allowsHitTesting(true)
+        }
+    }
+    
+    private var signupButton: some View {
+        Button(action: {
+            Task {
+                await signup()
+            }
+        }) {
+            HStack {
+                if authService.isLoading || isLoading {
+                    ProgressView()
+                        .tint(Color.adaptiveText)
+                } else {
+                    Text("Sign Up")
+                        .font(.interBody.weight(.semibold))
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+        }
+        .buttonStyle(PrimaryButtonStyle())
+        .disabled(authService.isLoading || isLoading || !isFormValid)
+    }
+    
+    private var dividerView: some View {
+        HStack {
+            Rectangle()
+                .fill(Color.adaptiveMuted.opacity(0.3))
+                .frame(height: 1)
+            Text("or")
+                .font(.interCaption)
+                .foregroundColor(Color.adaptiveMuted)
+                .padding(.horizontal, 12)
+            Rectangle()
+                .fill(Color.adaptiveMuted.opacity(0.3))
+                .frame(height: 1)
+        }
+        .padding(.vertical, 8)
+    }
+    
+    private var appleSignInButton: some View {
+        SignInWithAppleButton(
+            onRequest: { request in
+                request.requestedScopes = [.fullName, .email]
+            },
+            onCompletion: { result in
+                Task { @MainActor in
+                    await handleAppleSignIn(result)
+                }
+            }
+        )
+        .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
+        .frame(height: 50)
+        .cornerRadius(12)
+        .disabled(authService.isLoading || isLoading)
+    }
+    
+    private var cardBackground: some View {
+        RoundedRectangle(cornerRadius: 24)
+            .fill(
+                colorScheme == .dark
+                    ? AnyShapeStyle(Color.adaptiveCardBackground)
+                    : AnyShapeStyle(
+                        LinearGradient(
+                            colors: [
+                                Color.white,
+                                Color(hex: "#697797").opacity(0.08)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
             )
-        }
     }
     
     private var isFormValid: Bool {

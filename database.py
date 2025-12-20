@@ -1,7 +1,7 @@
 """
 Database models and connection for FlareWeather API
 """
-from sqlalchemy import create_engine, Column, String, DateTime, Text, Boolean, Float, Integer, Index
+from sqlalchemy import create_engine, Column, String, DateTime, Text, Boolean, Float, Integer, Index, Date, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
@@ -73,6 +73,11 @@ class User(Base):
     free_access_expires_at = Column(DateTime, nullable=True)  # When free access expires (None = never expires)
     subscription_status = Column(String, nullable=True)  # Subscription status: "active", "expired", "revoked", "none"
     subscription_plan = Column(String, nullable=True)  # Subscription plan/product_id (e.g., "monthly", "yearly")
+    push_notification_token = Column(String, nullable=True)  # APNs device token
+    push_notifications_enabled = Column(Boolean, default=True, nullable=False)  # Whether user has notifications enabled
+    last_location_latitude = Column(Float, nullable=True)  # User's last known location
+    last_location_longitude = Column(Float, nullable=True)
+    last_location_name = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -148,6 +153,47 @@ class PasswordReset(Base):
     __table_args__ = (
         Index("ix_password_resets_email", "email"),
         Index("ix_password_resets_code_hash", "code_hash"),
+    )
+
+
+class DailyForecast(Base):
+    """Pre-primed daily forecasts for push notifications."""
+    __tablename__ = "daily_forecasts"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, nullable=False, index=True)
+    forecast_date = Column(Date, nullable=False)  # YYYY-MM-DD
+    
+    # Location
+    location_latitude = Column(Float, nullable=False)
+    location_longitude = Column(Float, nullable=False)
+    location_name = Column(String, nullable=True)
+    
+    # Weather data (from WeatherKit - stored as JSON)
+    current_weather = Column(JSON, nullable=True)  # Today's current conditions
+    hourly_forecast = Column(JSON, nullable=True)  # Next 24 hours
+    daily_forecast = Column(JSON, nullable=True)   # Next 7 days (all days)
+    
+    # Today's daily insight (from AI)
+    daily_risk_level = Column(String, nullable=True)  # "LOW", "MODERATE", "HIGH"
+    daily_forecast_summary = Column(Text, nullable=True)
+    daily_why_explanation = Column(Text, nullable=True)
+    daily_insight = Column(JSON, nullable=True)  # Full daily insight object
+    daily_comfort_tip = Column(Text, nullable=True)
+    
+    # Weekly summary insight (from AI)
+    weekly_forecast_insight = Column(Text, nullable=True)  # Weekly summary text
+    weekly_insight_sources = Column(JSON, nullable=True)  # Sources/citations
+    
+    # Notification
+    notification_sent = Column(Boolean, default=False, nullable=False)
+    notification_sent_at = Column(DateTime, nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("ix_daily_forecasts_user_date", "user_id", "forecast_date"),
     )
 
 
@@ -273,6 +319,65 @@ def init_db():
                 with engine.begin() as conn:
                     conn.execute(text("ALTER TABLE users ADD COLUMN subscription_plan VARCHAR"))
                 print("✅ Migration complete: subscription_plan column added")
+            except Exception as e:
+                print(f"⚠️  Migration error: {e}")
+        
+        # Add push notification columns if they don't exist
+        if 'push_notification_token' not in columns:
+            print("🔄 Migrating database: Adding push_notification_token column...")
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN push_notification_token VARCHAR"))
+                print("✅ Migration complete: push_notification_token column added")
+            except Exception as e:
+                print(f"⚠️  Migration error: {e}")
+        
+        if 'push_notifications_enabled' not in columns:
+            print("🔄 Migrating database: Adding push_notifications_enabled column...")
+            try:
+                db_type = engine.dialect.name
+                with engine.begin() as conn:
+                    if db_type == 'postgresql':
+                        conn.execute(text("ALTER TABLE users ADD COLUMN push_notifications_enabled BOOLEAN DEFAULT TRUE"))
+                    else:
+                        conn.execute(text("ALTER TABLE users ADD COLUMN push_notifications_enabled BOOLEAN DEFAULT 1"))
+                print("✅ Migration complete: push_notifications_enabled column added")
+            except Exception as e:
+                print(f"⚠️  Migration error: {e}")
+        
+        # Add location columns if they don't exist
+        if 'last_location_latitude' not in columns:
+            print("🔄 Migrating database: Adding last_location_latitude column...")
+            try:
+                db_type = engine.dialect.name
+                with engine.begin() as conn:
+                    if db_type == 'postgresql':
+                        conn.execute(text("ALTER TABLE users ADD COLUMN last_location_latitude FLOAT"))
+                    else:
+                        conn.execute(text("ALTER TABLE users ADD COLUMN last_location_latitude REAL"))
+                print("✅ Migration complete: last_location_latitude column added")
+            except Exception as e:
+                print(f"⚠️  Migration error: {e}")
+        
+        if 'last_location_longitude' not in columns:
+            print("🔄 Migrating database: Adding last_location_longitude column...")
+            try:
+                db_type = engine.dialect.name
+                with engine.begin() as conn:
+                    if db_type == 'postgresql':
+                        conn.execute(text("ALTER TABLE users ADD COLUMN last_location_longitude FLOAT"))
+                    else:
+                        conn.execute(text("ALTER TABLE users ADD COLUMN last_location_longitude REAL"))
+                print("✅ Migration complete: last_location_longitude column added")
+            except Exception as e:
+                print(f"⚠️  Migration error: {e}")
+        
+        if 'last_location_name' not in columns:
+            print("🔄 Migrating database: Adding last_location_name column...")
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN last_location_name VARCHAR"))
+                print("✅ Migration complete: last_location_name column added")
             except Exception as e:
                 print(f"⚠️  Migration error: {e}")
                 

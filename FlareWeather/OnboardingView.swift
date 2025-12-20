@@ -21,9 +21,17 @@ final class NotificationManager: ObservableObject {
     
     func requestAuthorization() async {
         await withCheckedContinuation { continuation in
-            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
                 Task { @MainActor in
                     self.refreshAuthorizationStatus()
+                    // Register for remote notifications if granted
+                    if granted {
+                        UIApplication.shared.registerForRemoteNotifications()
+                        // Send token after a brief delay to ensure it's registered
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            AppDelegate.sendPushTokenIfNeeded()
+                        }
+                    }
                 }
                 continuation.resume()
             }
@@ -213,7 +221,7 @@ struct AnimatedGradientBackground: View {
             let size = proxy.size
             let gradientColors: [Color] = colorScheme == .dark 
                 ? [Color(hex: "#1A1A1A"), Color(hex: "#2A2A2A"), Color(hex: "#1E1E1E")]
-                : [Color(hex: "#E7D6CA"), Color(hex: "#F1F1EF"), Color(hex: "#DEE7F5")]
+                : [Color(hex: "#E7D6CA"), Color(hex: "#f3f2ef"), Color(hex: "#DEE7F5")]
             
             LinearGradient(
                 gradient: Gradient(colors: gradientColors),
@@ -234,21 +242,15 @@ struct AnimatedGradientBackground: View {
 }
 
 struct WelcomeStepView: View {
+    @Environment(\.colorScheme) var colorScheme
+    
     var body: some View {
-        VStack(spacing: 20) {
-            Image("AppLogo")
+        VStack(spacing: 24) {
+            Image(colorScheme == .dark ? "LogoLight" : "LogoDark")
                 .resizable()
                 .scaledToFit()
-                .frame(width: 90, height: 90)
-                .shadow(color: Color.adaptiveText.opacity(0.08), radius: 8, x: 0, y: 6)
+                .frame(height: 36)
                 .padding(.top, 8)
-            
-            Text("Welcome to FlareWeather")
-                .font(.largeTitle)
-                .fontWeight(.bold)
-                .multilineTextAlignment(.center)
-                .foregroundColor(Color.adaptiveText)
-                .transition(.opacity.combined(with: .scale))
             
             Text("Discover how weather patterns affect your health with AI-powered insights.")
                 .font(.body)

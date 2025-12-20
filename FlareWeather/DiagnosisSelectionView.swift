@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DiagnosisSelectionView: View {
     @Binding var selectedDiagnoses: Set<String>
+    var onBack: () -> Void
     var onContinue: () -> Void
     var onSkip: () -> Void
     
@@ -20,6 +21,22 @@ struct DiagnosisSelectionView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
+                // Back button - top left
+                HStack {
+                    Button(action: onBack) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 16, weight: .medium))
+                            Text("Back")
+                                .font(.interBody)
+                        }
+                        .foregroundColor(Color.adaptiveText)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 16)
+                
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Which conditions should we consider?")
                         .font(.interTitle)
@@ -85,8 +102,7 @@ struct DiagnosisSelectionView: View {
             }
         }
         .background(Color.adaptiveBackground.ignoresSafeArea())
-        .navigationTitle("Personalization")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
     }
     
     private func toggle(_ diagnosis: String) {
@@ -131,37 +147,22 @@ struct CompactCardStyle: ViewModifier {
     func body(content: Content) -> some View {
         content
             .padding(.horizontal, 20)
-            .padding(.vertical, 12) // Reduced from 20
+            .padding(.vertical, 12)
             .background(
-                ZStack {
-                    RoundedRectangle(cornerRadius: 20)
-                        .fill(Color.adaptiveCardBackground)
-                        .shadow(color: .black.opacity(colorScheme == .dark ? 0.45 : 0.18), radius: 18, x: 0, y: 14)
-                    RoundedRectangle(cornerRadius: 20)
-                        .strokeBorder(
-                            LinearGradient(
-                                gradient: Gradient(colors: [Color.white.opacity(colorScheme == .dark ? 0.03 : 0.25), Color.black.opacity(0.04)]),
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 1.4
-                        )
-                        .blendMode(.overlay)
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(
-                            LinearGradient(
-                                gradient: Gradient(colors: [
-                                    Color.white.opacity(colorScheme == .dark ? 0.05 : 0.18),
-                                    Color.white.opacity(colorScheme == .dark ? 0.01 : 0.05)
-                                ]),
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .padding(.top, 0.6)
-                        .padding(.leading, 0.6)
-                        .blendMode(.plusLighter)
-                }
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(
+                        colorScheme == .dark
+                            ? AnyShapeStyle(Color.adaptiveCardBackground)
+                            : AnyShapeStyle(Color.white)
+                    )
+            )
+            .shadow(
+                color: colorScheme == .dark 
+                    ? Color.black.opacity(0.3)
+                    : Color.black.opacity(0.05),
+                radius: colorScheme == .dark ? 8 : 4,
+                x: 0,
+                y: colorScheme == .dark ? 4 : 2
             )
     }
 }
@@ -199,6 +200,6 @@ private struct SelectionRow: View {
 }
 
 #Preview {
-    DiagnosisSelectionView(selectedDiagnoses: .constant(["Fibromyalgia"]), onContinue: {}, onSkip: {})
+    DiagnosisSelectionView(selectedDiagnoses: .constant(["Fibromyalgia"]), onBack: {}, onContinue: {}, onSkip: {})
 }
 

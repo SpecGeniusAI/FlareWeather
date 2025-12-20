@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct OnboardingValueView: View {
+    @Environment(\.colorScheme) var colorScheme
     struct ValueCard: Identifiable {
         let id = UUID()
         let icon: String
@@ -14,13 +15,30 @@ struct OnboardingValueView: View {
         .init(icon: "person.fill.checkmark", title: "Personalized to You", description: "Tailored to your diagnoses and sensitivities.")
     ]
     
+    var onBack: () -> Void
     var onContinue: () -> Void
     
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
+                // Back button - top left
+                HStack {
+                    Button(action: onBack) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 16, weight: .medium))
+                            Text("Back")
+                                .font(.interBody)
+                        }
+                        .foregroundColor(Color.adaptiveText)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 16)
+                
                 VStack(spacing: 12) {
-                    Text("What you’ll receive")
+                    Text("What you'll receive")
                         .font(.interTitle)
                         .foregroundColor(Color.adaptiveText)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -75,13 +93,13 @@ struct OnboardingValueView: View {
                 .padding(.bottom, 24)
             }
         }
-        .background(Color.adaptiveBackground.ignoresSafeArea())
+        .background((colorScheme == .dark ? Color.darkBackground : Color.primaryBackground).ignoresSafeArea())
         .navigationBarBackButtonHidden(true)
     }
 }
 
 #Preview {
-    OnboardingValueView(onContinue: {})
+    OnboardingValueView(onBack: {}, onContinue: {})
         .environment(\.colorScheme, .light)
 }
 

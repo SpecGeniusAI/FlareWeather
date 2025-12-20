@@ -8,6 +8,7 @@ import RevenueCatUI
 #endif
 
 struct PaywallPlaceholderView: View {
+    @Environment(\.colorScheme) var colorScheme
     @EnvironmentObject var subscriptionManager: SubscriptionManager
     #if canImport(RevenueCat)
     @State private var packages: [Package] = []
@@ -123,14 +124,7 @@ struct PaywallPlaceholderView: View {
         .navigationTitle("Your Personal Insights")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            #if canImport(RevenueCat) && canImport(RevenueCatUI)
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Test RC Paywall") {
-                    useRevenueCatPaywall = true
-                }
-                .font(.caption)
-            }
-            #endif
+            // RC Paywall test button removed for cleaner UI
         }
         .task {
             await loadOfferings()
@@ -139,11 +133,13 @@ struct PaywallPlaceholderView: View {
             await loadOfferings()
         }
         .onChange(of: subscriptionManager.currentOffering) { oldValue, newValue in
+            #if DEBUG
             #if canImport(RevenueCat) && canImport(RevenueCatUI)
             // Auto-switch to RevenueCat paywall if offering loads successfully
             if newValue != nil && packages.isEmpty && !useRevenueCatPaywall {
                 print("✅ Offering loaded - you can test RevenueCat paywall by tapping 'Test RC Paywall' button")
             }
+            #endif
             #endif
         }
     }
@@ -280,10 +276,10 @@ struct PaywallPlaceholderView: View {
                     }) {
                         Text("Retry")
                             .font(.interBody.weight(.semibold))
-                            .foregroundColor(.white)
+                            .foregroundColor(colorScheme == .dark ? Color(hex: "#2d3240") : .white)
                             .padding(.horizontal, 24)
                             .padding(.vertical, 12)
-                            .background(Color(hex: "#888779"))
+                            .background(Color.adaptiveAccent)
                             .cornerRadius(12)
                     }
                 }
@@ -562,7 +558,7 @@ struct BenefitRow: View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: icon)
                 .font(.interBody)
-                .foregroundColor(colorScheme == .dark ? .white : Color(hex: "#888779"))
+                .foregroundColor(Color.adaptiveAccent)
                 .frame(width: 24)
             Text(text)
                 .font(.interBody)
@@ -584,11 +580,11 @@ struct PlanSelectionRow: View {
     let action: () -> Void
     
     private var accentColor: Color {
-        colorScheme == .dark ? Color.adaptiveMuted : Color(hex: "#888779")
+        Color.adaptiveAccent
     }
-    
+
     private var savingsColor: Color {
-        colorScheme == .dark ? Color(hex: "#4ECDC4") : Color(hex: "#1A6B5A")
+        colorScheme == .dark ? Color(hex: "#86efac") : Color(hex: "#166534")
     }
     
     var body: some View {

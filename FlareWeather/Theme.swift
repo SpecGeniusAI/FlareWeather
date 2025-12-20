@@ -2,26 +2,26 @@ import SwiftUI
 
 /// Design System Colors
 extension Color {
-    // Primary background color
-    static let primaryBackground = Color(hex: "#F1F1EF")
+    // Primary background color - soft warm gray
+    static let primaryBackground = Color(hex: "#f5f5f7")
     
-    // Alternate background (cards, panels, section breaks)
-    static let altBackground = Color(hex: "#E7D6CA")
+    // Alternate background (cards) - pure white for light mode
+    static let altBackground = Color(hex: "#ffffff")
     
-    // Dark mode background
-    static let darkBackground = Color(hex: "#000000")
+    // Dark mode background - rich dark blue-gray
+    static let darkBackground = Color(hex: "#2d3040")
     
     // Dark mode text color
-    static let darkText = Color(hex: "#F1F1EF")
+    static let darkText = Color(hex: "#f5f5f7")
     
-    // Muted text, icons, borders (light mode)
-    static let muted = Color(hex: "#888576")
+    // Muted text, icons (light mode) - subtle blue-gray
+    static let muted = Color(hex: "#697797")
     
-    // Dark mode card background - darker pink matching light mode pink (#E7D6CA)
-    static let darkCardBackground = Color(hex: "#7A6B62")
+    // Dark mode card background - elevated surface
+    static let darkCardBackground = Color(hex: "#3a3d4d")
     
-    // Dark mode muted color - white for text/icons in dark mode
-    static let darkMuted = Color.white
+    // Dark mode muted color
+    static let darkMuted = Color(hex: "#98989d")
     
     // Helper to create Color from hex string
     init(hex: String) {
@@ -50,13 +50,15 @@ extension Color {
 }
 
 /// Typography Styles
-/// Using system fonts that match Inter's characteristics
+/// Premium typography - Merriweather for headers, SF Pro for body
 extension Font {
-    static let interTitle = Font.system(size: 28, weight: .bold, design: .default)
-    static let interHeadline = Font.system(size: 20, weight: .semibold, design: .default)
-    static let interBody = Font.system(size: 16, weight: .regular, design: .default)
-    static let interCaption = Font.system(size: 14, weight: .regular, design: .default)
-    static let interSmall = Font.system(size: 12, weight: .regular, design: .default)
+    // Serif headers using Merriweather
+    static let interTitle = Font.custom("Merriweather", size: 26).weight(.bold)
+    static let interHeadline = Font.custom("Merriweather", size: 17).weight(.regular)
+    // System font for body text
+    static let interBody = Font.system(size: 15, weight: .regular, design: .default)
+    static let interCaption = Font.system(size: 13, weight: .medium, design: .default)
+    static let interSmall = Font.system(size: 11, weight: .medium, design: .default)
 }
 
 /// View Modifiers for consistent styling
@@ -67,35 +69,29 @@ struct CardStyle: ViewModifier {
         content
             .padding(20)
             .background(
-                ZStack {
-                    RoundedRectangle(cornerRadius: 20)
-                        .fill(Color.adaptiveCardBackground)
-                        .shadow(color: .black.opacity(colorScheme == .dark ? 0.45 : 0.18), radius: 18, x: 0, y: 14)
-                    RoundedRectangle(cornerRadius: 20)
-                        .strokeBorder(
-                            LinearGradient(
-                                gradient: Gradient(colors: [Color.white.opacity(colorScheme == .dark ? 0.03 : 0.25), Color.black.opacity(0.04)]),
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 1.4
-                        )
-                        .blendMode(.overlay)
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(
-                            LinearGradient(
-                                gradient: Gradient(colors: [
-                                    Color.white.opacity(colorScheme == .dark ? 0.05 : 0.18),
-                                    Color.white.opacity(colorScheme == .dark ? 0.01 : 0.05)
-                                ]),
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(
+                        colorScheme == .dark
+                            ? AnyShapeStyle(Color.adaptiveCardBackground)
+                            : AnyShapeStyle(
+                                LinearGradient(
+                                    colors: [
+                                        Color.white,
+                                        Color(hex: "#697797").opacity(0.08)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
                             )
-                        )
-                        .padding(.top, 0.6)
-                        .padding(.leading, 0.6)
-                        .blendMode(.plusLighter)
-                }
+                    )
+            )
+            .shadow(
+                color: colorScheme == .dark 
+                    ? Color.black.opacity(0.4)
+                    : Color.black.opacity(0.06),
+                radius: colorScheme == .dark ? 20 : 16,
+                x: 0,
+                y: colorScheme == .dark ? 8 : 6
             )
     }
 }
@@ -105,23 +101,17 @@ struct PrimaryButtonStyle: ButtonStyle {
     
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .padding(.horizontal, 24)
-            .padding(.vertical, 12)
+            .padding(.horizontal, 28)
+            .padding(.vertical, 16)
             .background(
-                colorScheme == .dark 
-                    ? Color(hex: "#4ECDC4") // Bright teal/green for dark mode (better contrast)
-                    : Color(hex: "#888779") // Brand green in light mode
+                Capsule()
+                    .fill(Color.adaptiveText)
             )
-            .foregroundColor(
-                colorScheme == .dark 
-                    ? .black // Black text on bright teal in dark mode
-                    : .white // White text on brand green in light mode
-            )
-            .font(.interBody.weight(.medium))
-            .cornerRadius(12)
-            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .foregroundColor(Color.adaptiveBackground)
+            .font(.interBody.weight(.semibold))
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
             .opacity(configuration.isPressed ? 0.85 : 1.0)
-            .animation(.spring(response: 0.2, dampingFraction: 0.6), value: configuration.isPressed)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
 
@@ -130,18 +120,19 @@ struct SecondaryButtonStyle: ButtonStyle {
     
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .padding(.horizontal, 24)
-            .padding(.vertical, 12)
-            .background(Color.clear)
-            .foregroundColor(Color.adaptiveText) // White in dark mode, black in light mode
-            .font(.interBody.weight(.medium))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.adaptiveMuted, lineWidth: 2)
+            .padding(.horizontal, 28)
+            .padding(.vertical, 16)
+            .background(
+                Capsule()
+                    .fill(colorScheme == .dark 
+                        ? Color.white.opacity(0.1)
+                        : Color.black.opacity(0.05))
             )
-            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
-            .opacity(configuration.isPressed ? 0.85 : 1.0)
-            .animation(.spring(response: 0.2, dampingFraction: 0.6), value: configuration.isPressed)
+            .foregroundColor(Color.adaptiveText)
+            .font(.interBody.weight(.medium))
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .opacity(configuration.isPressed ? 0.7 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
 
@@ -164,12 +155,26 @@ struct CardEnterAnimationModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .opacity(isVisible ? 1 : 0)
-            .offset(y: isVisible ? 0 : 10)
+            .offset(y: isVisible ? 0 : 16)
+            .scaleEffect(isVisible ? 1 : 0.97)
             .onAppear {
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.8).delay(delay)) {
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.8).delay(delay)) {
                     isVisible = true
                 }
             }
+    }
+}
+
+/// Subtle divider for clean separations
+struct SubtleDivider: View {
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        Rectangle()
+            .fill(colorScheme == .dark 
+                ? Color.white.opacity(0.06) 
+                : Color.black.opacity(0.04))
+            .frame(height: 0.5)
     }
 }
 
@@ -201,7 +206,7 @@ extension Color {
     }
     
     static var adaptiveText: Color {
-        Color(light: .black, dark: .white)
+        Color(light: Color(hex: "#1c1c1e"), dark: Color(hex: "#ffffff"))
     }
     
     // Cards use darker pink (#7A6B62) in dark mode to match light mode pink (#E7D6CA)
@@ -209,11 +214,42 @@ extension Color {
         Color(light: altBackground, dark: darkCardBackground)
     }
     
-    // Adaptive muted color - for text/icons on backgrounds
-    // In dark mode: white for all text
-    // In light mode: muted greenish-gray
+    // Adaptive muted color - for secondary text/icons
+    // In dark mode: soft gray
+    // In light mode: muted gray
     static var adaptiveMuted: Color {
-        Color(light: muted, dark: .white)
+        Color(light: muted, dark: darkMuted)
+    }
+    
+    // Adaptive accent color - for buttons, links, highlights
+    static var adaptiveAccent: Color {
+        Color(light: Color(hex: "#1c1c1e"), dark: Color(hex: "#ffffff"))
+    }
+    
+    // MARK: - Risk Level Colors (Premium, refined palette)
+    
+    // Low risk - elegant green
+    static var riskLow: Color {
+        Color(light: Color(hex: "#34c759"), dark: Color(hex: "#30d158"))
+    }
+    static var riskLowBackground: Color {
+        Color(light: Color(hex: "#34c759").opacity(0.12), dark: Color(hex: "#30d158").opacity(0.18))
+    }
+    
+    // Moderate risk - refined amber
+    static var riskModerate: Color {
+        Color(light: Color(hex: "#ff9500"), dark: Color(hex: "#ffcc00"))
+    }
+    static var riskModerateBackground: Color {
+        Color(light: Color(hex: "#ff9500").opacity(0.12), dark: Color(hex: "#ffcc00").opacity(0.18))
+    }
+    
+    // High risk - refined red
+    static var riskHigh: Color {
+        Color(light: Color(hex: "#ff3b30"), dark: Color(hex: "#ff453a"))
+    }
+    static var riskHighBackground: Color {
+        Color(light: Color(hex: "#ff3b30").opacity(0.12), dark: Color(hex: "#ff453a").opacity(0.18))
     }
     
     // Helper initializer for light/dark mode colors

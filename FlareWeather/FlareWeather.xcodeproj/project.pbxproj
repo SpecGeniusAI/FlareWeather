@@ -30,8 +30,15 @@
 		917AE2292EAAB03000BBB6C0 /* SignupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 917AE2282EAAB03000BBB6C0 /* SignupView.swift */; };
 		917AE22B2EAAB04000BBB6C0 /* BuildMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 917AE22A2EAAB04000BBB6C0 /* BuildMode.swift */; };
 		917AE22D2EAAB05000BBB6C0 /* SubscriptionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 917AE22C2EAAB05000BBB6C0 /* SubscriptionManager.swift */; };
+		917EAC0A2EE92CBA00381047 /* SubscriptionLinkingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 917EAC092EE92CBA00381047 /* SubscriptionLinkingService.swift */; };
+		91D1F61D2EF4B8D000C766FF /* Newsreader-VariableFont_opsz,wght.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 91D1F61C2EF4B8D000C766FF /* Newsreader-VariableFont_opsz,wght.ttf */; };
+		91D1F61F2EF4BA2D00C766FF /* Merriweather-VariableFont_opsz,wdth,wght.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 91D1F61E2EF4BA2D00C766FF /* Merriweather-VariableFont_opsz,wdth,wght.ttf */; };
 		91D57E482EC81B5800191EF9 /* ResetPasswordCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91D57E472EC81B5800191EF9 /* ResetPasswordCodeView.swift */; };
 		91D57E4A2EC81B5900191EF9 /* PreLoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91D57E492EC81B5900191EF9 /* PreLoginView.swift */; };
+		91D57E4C2EC81B5A00191EF9 /* AccessExpiredPopupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91D57E4B2EC81B5A00191EF9 /* AccessExpiredPopupView.swift */; };
+		91D57E4E2EC81B5B00191EF9 /* LocationChangeModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91D57E4D2EC81B5B00191EF9 /* LocationChangeModifier.swift */; };
+		91D57E502EC81B5C00191EF9 /* LocationObserversModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91D57E4F2EC81B5C00191EF9 /* LocationObserversModifier.swift */; };
+		91D57E522EC81B5D00191EF9 /* AccessStatusModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91D57E512EC81B5D00191EF9 /* AccessStatusModifier.swift */; };
 		D0F001C12FE366AA00AAA011 /* OnboardingFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F001A12FE366AA00AAA001 /* OnboardingFlowView.swift */; };
 		D0F002C12FE366AA00AAA013 /* OnboardingHeroView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F002A12FE366AA00AAA003 /* OnboardingHeroView.swift */; };
 		D0F003C12FE366AA00AAA015 /* OnboardingValueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F003A12FE366AA00AAA005 /* OnboardingValueView.swift */; };
@@ -41,6 +48,7 @@
 		D0F007C12FE366AA00AAA01D /* PaywallPlaceholderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F007A12FE366AA00AAA00D /* PaywallPlaceholderView.swift */; };
 		D0F008C12FE366AA00AAA01F /* AccountCreationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F008A12FE366AA00AAA00F /* AccountCreationView.swift */; };
 		D0F009C12FE7F0A100AAA021 /* ForgotPasswordView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F009A12FE7F0A100AAA021 /* ForgotPasswordView.swift */; };
+		D0F00BC12FE366AA00AAA025 /* SubscriptionBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F00BA12FE366AA00AAA025 /* SubscriptionBannerView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -86,8 +94,15 @@
 		917AE2282EAAB03000BBB6C0 /* SignupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignupView.swift; sourceTree = "<group>"; };
 		917AE22A2EAAB04000BBB6C0 /* BuildMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildMode.swift; sourceTree = "<group>"; };
 		917AE22C2EAAB05000BBB6C0 /* SubscriptionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionManager.swift; sourceTree = "<group>"; };
+		917EAC092EE92CBA00381047 /* SubscriptionLinkingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionLinkingService.swift; sourceTree = "<group>"; };
+		91D1F61C2EF4B8D000C766FF /* Newsreader-VariableFont_opsz,wght.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Newsreader-VariableFont_opsz,wght.ttf"; sourceTree = "<group>"; };
+		91D1F61E2EF4BA2D00C766FF /* Merriweather-VariableFont_opsz,wdth,wght.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Merriweather-VariableFont_opsz,wdth,wght.ttf"; sourceTree = "<group>"; };
 		91D57E472EC81B5800191EF9 /* ResetPasswordCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResetPasswordCodeView.swift; sourceTree = "<group>"; };
 		91D57E492EC81B5900191EF9 /* PreLoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreLoginView.swift; sourceTree = "<group>"; };
+		91D57E4B2EC81B5A00191EF9 /* AccessExpiredPopupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessExpiredPopupView.swift; sourceTree = "<group>"; };
+		91D57E4D2EC81B5B00191EF9 /* LocationChangeModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationChangeModifier.swift; sourceTree = "<group>"; };
+		91D57E4F2EC81B5C00191EF9 /* LocationObserversModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationObserversModifier.swift; sourceTree = "<group>"; };
+		91D57E512EC81B5D00191EF9 /* AccessStatusModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessStatusModifier.swift; sourceTree = "<group>"; };
 		D0F001A12FE366AA00AAA001 /* OnboardingFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowView.swift; sourceTree = "<group>"; };
 		D0F002A12FE366AA00AAA003 /* OnboardingHeroView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingHeroView.swift; sourceTree = "<group>"; };
 		D0F003A12FE366AA00AAA005 /* OnboardingValueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingValueView.swift; sourceTree = "<group>"; };
@@ -97,11 +112,25 @@
 		D0F007A12FE366AA00AAA00D /* PaywallPlaceholderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaywallPlaceholderView.swift; sourceTree = "<group>"; };
 		D0F008A12FE366AA00AAA00F /* AccountCreationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountCreationView.swift; sourceTree = "<group>"; };
 		D0F009A12FE7F0A100AAA021 /* ForgotPasswordView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForgotPasswordView.swift; sourceTree = "<group>"; };
+		D0F00BA12FE366AA00AAA025 /* SubscriptionBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionBannerView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		9192C7C82EEB70FA00A6C647 /* Exceptions for "FlareWeather" folder in "FlareWeather" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 917AE1B32EAAE24500BBB6C0 /* FlareWeather */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		917AE1B62EAAE24500BBB6C0 /* FlareWeather */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				9192C7C82EEB70FA00A6C647 /* Exceptions for "FlareWeather" folder in "FlareWeather" target */,
+			);
 			path = FlareWeather;
 			sourceTree = "<group>";
 		};
@@ -148,6 +177,8 @@
 		917AE1AB2EAAE24500BBB6C0 = {
 			isa = PBXGroup;
 			children = (
+				91D1F61C2EF4B8D000C766FF /* Newsreader-VariableFont_opsz,wght.ttf */,
+				917EAC092EE92CBA00381047 /* SubscriptionLinkingService.swift */,
 				916DC2842ED0BA8F00288FF0 /* Products.storekit */,
 				916DC2372ECBA52C00288FF0 /* SIMULATOR_TESTING_STOREKIT.md */,
 				917AE21C2EAAEF9800BBB6C0 /* PersistenceController.swift */,
@@ -163,8 +194,13 @@
 				D0F007A12FE366AA00AAA00D /* PaywallPlaceholderView.swift */,
 				D0F008A12FE366AA00AAA00F /* AccountCreationView.swift */,
 				D0F009A12FE7F0A100AAA021 /* ForgotPasswordView.swift */,
+				D0F00BA12FE366AA00AAA025 /* SubscriptionBannerView.swift */,
 				91D57E472EC81B5800191EF9 /* ResetPasswordCodeView.swift */,
 				91D57E492EC81B5900191EF9 /* PreLoginView.swift */,
+				91D57E4B2EC81B5A00191EF9 /* AccessExpiredPopupView.swift */,
+				91D57E4D2EC81B5B00191EF9 /* LocationChangeModifier.swift */,
+				91D57E4F2EC81B5C00191EF9 /* LocationObserversModifier.swift */,
+				91D57E512EC81B5D00191EF9 /* AccessStatusModifier.swift */,
 				D0F001A12FE366AA00AAA001 /* OnboardingFlowView.swift */,
 				917AE1FC2EAAEAFD00BBB6C0 /* AIInsightsService.swift */,
 				917AE1FA2EAAEAEE00BBB6C0 /* SettingsView.swift */,
@@ -184,6 +220,7 @@
 				917AE1E02EAAE7FF00BBB6C0 /* Frameworks */,
 				917AE1B52EAAE24500BBB6C0 /* Products */,
 				91E129562EC5077D000C9A7D /* Recovered References */,
+				91D1F61E2EF4BA2D00C766FF /* Merriweather-VariableFont_opsz,wdth,wght.ttf */,
 			);
 			sourceTree = "<group>";
 		};
@@ -339,7 +376,9 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				91D1F61F2EF4BA2D00C766FF /* Merriweather-VariableFont_opsz,wdth,wght.ttf in Resources */,
 				916DC2382ECBA52C00288FF0 /* SIMULATOR_TESTING_STOREKIT.md in Resources */,
+				91D1F61D2EF4B8D000C766FF /* Newsreader-VariableFont_opsz,wght.ttf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -368,6 +407,10 @@
 				917AE1E52EAAE84E00BBB6C0 /* FlareWeatherModel.xcdatamodeld in Sources */,
 				91D57E482EC81B5800191EF9 /* ResetPasswordCodeView.swift in Sources */,
 				91D57E4A2EC81B5900191EF9 /* PreLoginView.swift in Sources */,
+				91D57E4C2EC81B5A00191EF9 /* AccessExpiredPopupView.swift in Sources */,
+				91D57E4E2EC81B5B00191EF9 /* LocationChangeModifier.swift in Sources */,
+				91D57E502EC81B5C00191EF9 /* LocationObserversModifier.swift in Sources */,
+				91D57E522EC81B5D00191EF9 /* AccessStatusModifier.swift in Sources */,
 				917AE2172EAAEE7100BBB6C0 /* LocationManager.swift in Sources */,
 				917AE21B2EAAEF7F00BBB6C0 /* WeatherData.swift in Sources */,
 				917AE1FD2EAAEAFD00BBB6C0 /* AIInsightsService.swift in Sources */,
@@ -381,6 +424,7 @@
 				917AE2232EAAB00000BBB6C0 /* AuthService.swift in Sources */,
 				917AE2252EAAB01000BBB6C0 /* AuthManager.swift in Sources */,
 				917AE2272EAAB02000BBB6C0 /* LoginView.swift in Sources */,
+				917EAC0A2EE92CBA00381047 /* SubscriptionLinkingService.swift in Sources */,
 				917AE2292EAAB03000BBB6C0 /* SignupView.swift in Sources */,
 				917AE21D2EAAEF9800BBB6C0 /* PersistenceController.swift in Sources */,
 				917AE22B2EAAB04000BBB6C0 /* BuildMode.swift in Sources */,
@@ -393,6 +437,7 @@
 				D0F007C12FE366AA00AAA01D /* PaywallPlaceholderView.swift in Sources */,
 				D0F008C12FE366AA00AAA01F /* AccountCreationView.swift in Sources */,
 				D0F009C12FE7F0A100AAA021 /* ForgotPasswordView.swift in Sources */,
+				D0F00BC12FE366AA00AAA025 /* SubscriptionBannerView.swift in Sources */,
 				D0F001C12FE366AA00AAA011 /* OnboardingFlowView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -551,7 +596,7 @@
 		917AE1D82EAAE24700BBB6C0 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon 1";
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = FlareWeather/FlareWeather.entitlements;
@@ -561,6 +606,7 @@
 				DEVELOPMENT_TEAM = 5RX7SY5572;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = FlareWeather/Info.plist;
 				INFOPLIST_KEY_AppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_BackendURL = "https://flareweather-production.up.railway.app";
 				INFOPLIST_KEY_CFBundleDisplayName = FlareWeather;
@@ -576,7 +622,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.3;
+				MARKETING_VERSION = 1.10;
 				PRODUCT_BUNDLE_IDENTIFIER = KHUR.FlareWeather;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -593,7 +639,7 @@
 		917AE1D92EAAE24700BBB6C0 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon 1";
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = FlareWeather/FlareWeather.entitlements;
@@ -603,6 +649,7 @@
 				DEVELOPMENT_TEAM = 5RX7SY5572;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = FlareWeather/Info.plist;
 				INFOPLIST_KEY_AppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_BackendURL = "https://flareweather-production.up.railway.app";
 				INFOPLIST_KEY_CFBundleDisplayName = FlareWeather;
@@ -618,7 +665,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.3;
+				MARKETING_VERSION = 1.10;
 				PRODUCT_BUNDLE_IDENTIFIER = KHUR.FlareWeather;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";

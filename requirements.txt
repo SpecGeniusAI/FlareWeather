@@ -15,3 +15,6 @@ sqlalchemy
 psycopg2-binary
 python-multipart
 app-store-server-library
+PyJWT
+cryptography
+pytz

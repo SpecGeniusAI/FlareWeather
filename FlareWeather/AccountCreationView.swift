@@ -11,11 +11,28 @@ struct AccountCreationView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     
+    var onBack: () -> Void
     var onSignupSuccess: (String) -> Void
     
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
+                // Back button - top left
+                HStack {
+                    Button(action: onBack) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 16, weight: .medium))
+                            Text("Back")
+                                .font(.interBody)
+                        }
+                        .foregroundColor(Color.adaptiveText)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 16)
+                
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Create your account")
                         .font(.interTitle)
@@ -93,8 +110,6 @@ struct AccountCreationView: View {
             }
         }
         .background(Color.adaptiveBackground.ignoresSafeArea())
-        .navigationTitle("Account Setup")
-        .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true) // Hide back button to prevent going back to paywall
     }
     
@@ -247,7 +262,7 @@ struct AccountCreationView: View {
 
 #Preview {
     NavigationView {
-        AccountCreationView(onSignupSuccess: { _ in })
+        AccountCreationView(onBack: {}, onSignupSuccess: { _ in })
             .environmentObject(AuthManager())
     }
 }

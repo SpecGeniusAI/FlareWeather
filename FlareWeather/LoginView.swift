@@ -5,6 +5,7 @@ import AuthenticationServices
 struct LoginView: View {
     @EnvironmentObject var authManager: AuthManager
     @Environment(\.colorScheme) var colorScheme
+    @FocusState private var focusedField: Field?
     @State private var email = ""
     @State private var password = ""
     @State private var showingOnboarding = false
@@ -13,30 +14,28 @@ struct LoginView: View {
     @State private var errorMessage: String? = nil
     @State private var isLoading = false
     
+    enum Field {
+        case email, password
+    }
+    
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
                     // Logo/Header
-                    VStack(spacing: 12) {
+                    VStack(spacing: 16) {
                         // App Logo
-                        Image("AppLogo")
+                        Image(colorScheme == .dark ? "LogoLight" : "LogoDark")
                             .resizable()
                             .scaledToFit()
-                            .frame(width: 100, height: 100)
+                            .frame(height: 32)
                         
-                        VStack(spacing: 6) {
-                            Text("FlareWeather")
-                                .font(.interTitle)
-                                .foregroundColor(Color.adaptiveText)
-                            
-                            Text("Discover how weather affects your health")
-                                .font(.interBody)
-                                .foregroundColor(Color.adaptiveMuted)
-                                .multilineTextAlignment(.center)
-                                .lineSpacing(4)
-                                .padding(.horizontal, 16)
-                        }
+                        Text("Discover how weather affects your health")
+                            .font(.interBody)
+                            .foregroundColor(Color.adaptiveMuted)
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(4)
+                            .padding(.horizontal, 16)
                     }
                     .padding(.top, 40)
                     
@@ -48,24 +47,24 @@ struct LoginView: View {
                                 .font(.interBody)
                                 .foregroundColor(Color.adaptiveText)
                             
-                            ZStack(alignment: .leading) {
-                                if email.isEmpty {
-                                    Text("your@email.com")
-                                        .font(.interBody)
-                                        .foregroundColor(Color.muted)
-                                        .padding(.horizontal, 12)
+                            TextField("your@email.com", text: $email)
+                                .font(.interBody)
+                                .foregroundColor(Color.adaptiveText)
+                                .tint(Color.adaptiveText)
+                                .keyboardType(.emailAddress)
+                                .autocapitalization(.none)
+                                .textContentType(.emailAddress)
+                                .focused($focusedField, equals: .email)
+                                .submitLabel(.next)
+                                .onSubmit {
+                                    focusedField = .password
                                 }
-                                TextField("", text: $email)
-                                    .font(.interBody)
-                                    .foregroundColor(Color.adaptiveText)
-                                    .tint(Color.adaptiveText)
-                                    .keyboardType(.emailAddress)
-                                    .autocapitalization(.none)
-                                    .textContentType(.emailAddress)
-                                    .padding(12)
-                            }
-                            .background(Color.adaptiveBackground)
-                            .cornerRadius(12)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(Color.adaptiveBackground)
+                                )
                         }
                         
                         // Password Field
@@ -74,22 +73,26 @@ struct LoginView: View {
                                 .font(.interBody)
                                 .foregroundColor(Color.adaptiveText)
                             
-                            ZStack(alignment: .leading) {
-                                if password.isEmpty {
-                                    Text("Password")
-                                        .font(.interBody)
-                                        .foregroundColor(Color.muted)
-                                        .padding(.horizontal, 12)
+                            SecureField("Password", text: $password)
+                                .font(.interBody)
+                                .foregroundColor(Color.adaptiveText)
+                                .tint(Color.adaptiveText)
+                                .textContentType(.password)
+                                .focused($focusedField, equals: .password)
+                                .submitLabel(.go)
+                                .onSubmit {
+                                    if !email.isEmpty && !password.isEmpty {
+                                        Task { @MainActor in
+                                            await login()
+                                        }
+                                    }
                                 }
-                                SecureField("", text: $password)
-                                    .font(.interBody)
-                                    .foregroundColor(Color.adaptiveText)
-                                    .tint(Color.adaptiveText)
-                                    .textContentType(.password)
-                                    .padding(12)
-                            }
-                            .background(Color.adaptiveBackground)
-                            .cornerRadius(12)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(Color.adaptiveBackground)
+                                )
                         }
                         
                         Button("Forgot password?") {
@@ -185,7 +188,23 @@ struct LoginView: View {
                         }
                     }
                     .padding(20)
-                    .cardStyle()
+                    .background(
+                        RoundedRectangle(cornerRadius: 24)
+                            .fill(
+                                colorScheme == .dark
+                                    ? AnyShapeStyle(Color.adaptiveCardBackground)
+                                    : AnyShapeStyle(
+                                        LinearGradient(
+                                            colors: [
+                                                Color.white,
+                                                Color(hex: "#697797").opacity(0.08)
+                                            ],
+                                            startPoint: .top,
+                                            endPoint: .bottom
+                                        )
+                                    )
+                            )
+                    )
                     .padding(.horizontal)
                 }
                 .padding(.vertical)
@@ -193,6 +212,7 @@ struct LoginView: View {
             .background(Color.adaptiveBackground.ignoresSafeArea())
             .navigationBarHidden(true)
             .tint(Color.adaptiveText)
+            .scrollDismissesKeyboard(.interactively)
             .navigationDestination(isPresented: $showingForgotPassword) {
                 ForgotPasswordView()
             }
@@ -205,13 +225,6 @@ struct LoginView: View {
             }
         }
         .tint(Color.adaptiveText)
-        .onAppear {
-            // Set placeholder text color to muted (grey) instead of blue
-            UITextField.appearance().attributedPlaceholder = NSAttributedString(
-                string: "",
-                attributes: [NSAttributedString.Key.foregroundColor: UIColor(Color.muted)]
-            )
-        }
     }
     
     @MainActor

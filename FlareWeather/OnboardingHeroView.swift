@@ -1,22 +1,39 @@
 import SwiftUI
 
 struct OnboardingHeroView: View {
+    @Environment(\.colorScheme) var colorScheme
+    var onBack: () -> Void
     var onContinue: () -> Void
     @State private var isVisible = false
     
     var body: some View {
         ZStack {
-            Color.adaptiveBackground
+            (colorScheme == .dark ? Color.darkBackground : Color.primaryBackground)
                 .ignoresSafeArea()
             
             VStack(spacing: 32) {
+                // Back button - top left
+                HStack {
+                    Button(action: onBack) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 16, weight: .medium))
+                            Text("Back")
+                                .font(.interBody)
+                        }
+                        .foregroundColor(Color.adaptiveText)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 16)
+                
                 Spacer()
                 
-                Image("AppLogo")
+                Image(colorScheme == .dark ? "LogoLight" : "LogoDark")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 120, height: 120)
-                    .shadow(color: .black.opacity(0.12), radius: 18, x: 0, y: 12)
+                    .frame(height: 40)
                     .opacity(isVisible ? 1 : 0)
                     .scaleEffect(isVisible ? 1 : 0.9)
                     .animation(.spring(response: 0.8, dampingFraction: 0.7), value: isVisible)
@@ -67,7 +84,7 @@ struct OnboardingHeroView: View {
 }
 
 #Preview {
-    OnboardingHeroView(onContinue: {})
+    OnboardingHeroView(onBack: {}, onContinue: {})
         .environment(\.colorScheme, .light)
 }
 

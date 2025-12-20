@@ -1,0 +1,31 @@
+What's New in This Version
+
+We've made FlareWeather faster, smarter, and more helpful:
+
+⚡ Faster Insights
+Daily health insights now generate in seconds, so you get personalized weather guidance when you need it.
+
+🧘 Enhanced Comfort Tips
+Comfort tips now include practices from Chinese medicine, Ayurveda, and Western medicine, with clear sources so you can learn more about each approach.
+
+📚 More Specific Explanations
+"Why" explanations are now more detailed and educational, helping you understand exactly how weather changes affect your body.
+
+🔄 Automatic Updates
+Weather and insights automatically refresh when you return to the app, so you always have the latest information.
+
+📅 Improved Weekly View
+Weekly insights now appear before the forecast, making it easier to plan your week ahead.
+
+🍎 Sign In with Apple
+Quick and secure account creation with Sign In with Apple.
+
+✨ Better Variety
+Insights and comfort tips now offer more variety, so you get fresh, relevant guidance every day—even on low-risk days.
+
+🎯 Loading Indicators
+Clear visual feedback when insights are processing, so you know the app is working for you.
+
+We're constantly improving FlareWeather to help you stay ahead of weather-related symptoms. Thank you for being part of our community!
+
+

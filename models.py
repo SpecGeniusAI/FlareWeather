@@ -206,3 +206,27 @@ class LinkSubscriptionRequest(BaseModel):
     """Request model for linking subscription to user"""
     original_transaction_id: str
     product_id: Optional[str] = None  # Optional: subscription product ID (e.g., "monthly", "yearly")
+
+
+class PushTokenRequest(BaseModel):
+    """Request model for registering push notification token"""
+    push_token: str
+
+
+class NotificationSettingsRequest(BaseModel):
+    """Request model for updating notification settings"""
+    enabled: bool
+
+
+class DailyForecastResponse(BaseModel):
+    """Response model for pre-primed daily forecast"""
+    forecast_date: str
+    daily_risk_level: Optional[str] = None
+    daily_forecast_summary: Optional[str] = None
+    daily_why_explanation: Optional[str] = None
+    daily_comfort_tip: Optional[str] = None
+    weekly_forecast_insight: Optional[str] = None
+    current_weather: Optional[Dict[str, Any]] = None
+    hourly_forecast: Optional[List[Dict[str, Any]]] = None
+    daily_forecast: Optional[List[Dict[str, Any]]] = None
+    available: bool = False

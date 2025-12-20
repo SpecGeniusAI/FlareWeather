@@ -1,6 +1,8 @@
 import SwiftUI
 import CoreLocation
 import CoreData
+import UserNotifications
+import UIKit
 
 // Helper extension for temperature conversion
 extension Double {
@@ -40,9 +42,15 @@ struct HomeView: View {
     @State private var lastForegroundDate: Date? = nil
     @State private var showingPaywall = false
     @State private var showingAccessExpiredPopup = false
+    @State private var showingNotificationPrompt = false
+    @State private var showingFeedbackPrompt = false
+    @State private var showingSettings = false
     @AppStorage("useFahrenheit") private var useFahrenheit = false
     @AppStorage("hasGeneratedDailyInsightSession") private var hasGeneratedDailyInsightSession = false
     @AppStorage("lastInsightDate") private var lastInsightDateString: String = ""
+    @AppStorage("hasSeenNotificationPrompt") private var hasSeenNotificationPrompt = false
+    @AppStorage("hasSeenFeedbackPrompt") private var hasSeenFeedbackPrompt = false
+    @AppStorage("firstAppOpenDate") private var firstAppOpenDateString: String = ""
     
     // Helper function to refresh analysis
     private func refreshAnalysis(force: Bool = false, includeWeeklyForecast: Bool = false) async {
@@ -346,6 +354,8 @@ struct HomeView: View {
             handleForegroundRefresh()
             // Refresh user info and check access status when app comes to foreground
             refreshUserInfoAndCheckAccess()
+            // Send push token if user is logged in and token exists
+            AppDelegate.sendPushTokenIfNeeded()
         } else if newPhase == .background {
             // App went to background - save current insight date
             if let insightDate = aiService.insightMessage.isEmpty ? nil : Date() {
@@ -359,6 +369,9 @@ struct HomeView: View {
     // Refresh user info from server and check access status
     private func refreshUserInfoAndCheckAccess() {
         Task {
+            // First refresh subscription status from StoreKit/RevenueCat
+            await subscriptionManager.refreshCustomerInfo()
+            
             do {
                 if let token = authManager.accessToken {
                     let authService = AuthService()
@@ -402,11 +415,15 @@ struct HomeView: View {
             print("🔄 HomeView: Data is stale, refreshing...")
             Task {
                 if let location = getEffectiveLocation() {
-                    // Refresh weather
+                    // Refresh weather - don't force refresh, let WeatherService handle caching
+                    // This will show cached data immediately and refresh in background if needed
                     if weatherIsStale {
-                        print("🌤️ HomeView: Refreshing stale weather data...")
-                        await weatherService.fetchWeatherData(for: location, forceRefresh: true)
-                        await weatherService.fetchHourlyForecast(for: location)
+                        print("🌤️ HomeView: Refreshing stale weather data (will show cached if available)...")
+                        await weatherService.fetchWeatherData(for: location, forceRefresh: false)
+                        // Only fetch hourly if weather was actually stale (not just refreshing in background)
+                        if weatherIsStale {
+                            await weatherService.fetchHourlyForecast(for: location)
+                        }
                     }
                     
                     // Refresh insights if stale (new day)
@@ -616,9 +633,22 @@ struct HomeView: View {
                     ToolbarItem(placement: .principal) {
                         LogoWordmarkView()
                     }
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            showingSettings = true
+                        } label: {
+                            Image(systemName: "gearshape.fill")
+                                .font(.system(size: 17, weight: .medium))
+                                .foregroundColor(Color.adaptiveMuted)
+                        }
+                    }
                 }
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbarBackground(Color.adaptiveCardBackground.opacity(0.95), for: .navigationBar)
+                .sheet(isPresented: $showingSettings) {
+                    SettingsView()
+                }
                 .refreshable {
                     await handleRefresh()
                 }
@@ -655,10 +685,151 @@ struct HomeView: View {
                 .background(backgroundView)
             
             loadingOverlay
+            
+            // One-time notification prompt overlay
+            if showingNotificationPrompt {
+                NotificationPromptOverlay(
+                    onEnable: {
+                        Task {
+                            await requestNotificationPermission()
+                        }
+                        hasSeenNotificationPrompt = true
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            showingNotificationPrompt = false
+                        }
+                    },
+                    onDismiss: {
+                        hasSeenNotificationPrompt = true
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            showingNotificationPrompt = false
+                        }
+                    }
+                )
+                .transition(.opacity)
+            }
+            
+            // One-time feedback prompt overlay (after 7+ days)
+            if showingFeedbackPrompt {
+                FeedbackPromptOverlay(
+                    onShare: {
+                        hasSeenFeedbackPrompt = true
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            showingFeedbackPrompt = false
+                        }
+                        // Open email to share feedback
+                        openFeedbackEmail()
+                    },
+                    onDismiss: {
+                        hasSeenFeedbackPrompt = true
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            showingFeedbackPrompt = false
+                        }
+                    }
+                )
+                .transition(.opacity)
+            }
+        }
+        .onAppear {
+            checkNotificationPrompt()
+            checkFeedbackPrompt()
         }
     }
     
+    private func checkNotificationPrompt() {
+        // Only show once, and only if user hasn't seen it yet
+        guard !hasSeenNotificationPrompt else { return }
+        
+        // Check notification status
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            DispatchQueue.main.async {
+                // Only show if notifications are not determined or denied
+                if settings.authorizationStatus == .notDetermined || settings.authorizationStatus == .denied {
+                    // Delay slightly so the home view loads first
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        withAnimation(.easeIn(duration: 0.3)) {
+                            showingNotificationPrompt = true
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private func requestNotificationPermission() async {
+        let center = UNUserNotificationCenter.current()
+        do {
+            let granted = try await center.requestAuthorization(options: [.alert, .badge, .sound])
+            if granted {
+                await MainActor.run {
+                    UIApplication.shared.registerForRemoteNotifications()
+                }
+                // Send token after a brief delay to ensure it's registered
+                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second delay
+                AppDelegate.sendPushTokenIfNeeded()
+            }
+        } catch {
+            print("❌ Notification permission error: \(error)")
+        }
+    }
+    
+    private func checkFeedbackPrompt() {
+        // Only show once
+        guard !hasSeenFeedbackPrompt else { return }
+        
+        // Don't show if notification prompt is showing
+        guard !showingNotificationPrompt else { return }
+        
+        // Record first app open date if not set
+        if firstAppOpenDateString.isEmpty {
+            let formatter = ISO8601DateFormatter()
+            firstAppOpenDateString = formatter.string(from: Date())
+            return // Don't show on first day
+        }
+        
+        // Check if 7+ days have passed since first open
+        let formatter = ISO8601DateFormatter()
+        guard let firstOpenDate = formatter.date(from: firstAppOpenDateString) else { return }
+        
+        let daysSinceFirstOpen = Calendar.current.dateComponents([.day], from: firstOpenDate, to: Date()).day ?? 0
+        
+        if daysSinceFirstOpen >= 7 {
+            // Delay to let home view load first
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                // Double-check notification prompt isn't showing
+                if !showingNotificationPrompt && !showingAccessExpiredPopup {
+                    withAnimation(.easeIn(duration: 0.3)) {
+                        showingFeedbackPrompt = true
+                    }
+                }
+            }
+        }
+    }
+    
+    private func openFeedbackEmail() {
+        let email = "noreply@flareweather.app"
+        let subject = "My FlareWeather Story"
+        let body = "Hi FlareWeather team,\n\nI've been using the app and wanted to share my experience:\n\n"
+        
+        let encodedSubject = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let encodedBody = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        
+        if let url = URL(string: "mailto:\(email)?subject=\(encodedSubject)&body=\(encodedBody)") {
+            UIApplication.shared.open(url)
+        }
+    }
+
     private func checkAccessStatus() {
+        // Don't show popup if user has active subscription via StoreKit/RevenueCat
+        if subscriptionManager.isSubscribed || subscriptionManager.isProUser {
+            showingAccessExpiredPopup = false
+            return
+        }
+        
+        // Don't show popup while subscription status is still loading (avoid race condition)
+        if subscriptionManager.isLoading {
+            return
+        }
+        
         if let user = authManager.currentUser, user.access_required == true {
             showingAccessExpiredPopup = true
         }
@@ -817,12 +988,12 @@ private struct LoadingOverlayView: View {
                 // Animated weather icon
                 ZStack {
                     Circle()
-                        .fill(Color(hex: "#888779").opacity(0.1))
+                        .fill(Color.adaptiveAccent.opacity(0.1))
                         .frame(width: 80, height: 80)
                     
                     Image(systemName: "cloud.sun.fill")
                         .font(.system(size: 40))
-                        .foregroundColor(Color(hex: "#888779"))
+                        .foregroundColor(Color.adaptiveAccent)
                         .rotationEffect(.degrees(rotation))
                         .scaleEffect(scale)
                 }
@@ -840,7 +1011,7 @@ private struct LoadingOverlayView: View {
                 
                 // Progress indicator
                 ProgressView()
-                    .tint(Color(hex: "#888779"))
+                    .tint(Color.adaptiveAccent)
                     .scaleEffect(1.2)
             }
             .padding(32)
@@ -863,21 +1034,14 @@ private struct LoadingOverlayView: View {
 }
 
 private struct LogoWordmarkView: View {
+    @Environment(\.colorScheme) var colorScheme
+    
     var body: some View {
-        HStack(spacing: 8) {
-            Image("AppLogo")
-                .resizable()
-                .renderingMode(.template)
-                .scaledToFit()
-                .frame(height: 24)
-                .foregroundColor(Color.adaptiveText)
-            Text("FlareWeather")
-                .font(.interHeadline)
-                .fontWeight(.semibold)
-                .foregroundColor(Color.adaptiveText)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("FlareWeather")
+        Image(colorScheme == .dark ? "LogoLight" : "LogoDark")
+            .resizable()
+            .scaledToFit()
+            .frame(height: 22)
+            .accessibilityLabel("FlareWeather")
     }
 }
 
@@ -1130,7 +1294,7 @@ struct DailyInsightCardView: View {
                         HStack(alignment: .top, spacing: 10) {
                             Image(systemName: "info.circle.fill")
                                 .font(.interBody)
-                                .foregroundColor(colorScheme == .dark ? .white : Color(hex: "#888779"))
+                                .foregroundColor(Color.adaptiveAccent)
                             Text("Why: \(why)")
                                 .font(.interBody)
                                 .foregroundColor(Color.adaptiveText)
@@ -1144,7 +1308,7 @@ struct DailyInsightCardView: View {
                         HStack(alignment: .top, spacing: 10) {
                             Image(systemName: "hands.sparkles.fill")
                                 .font(.interBody)
-                                .foregroundColor(colorScheme == .dark ? .white : Color(hex: "#888779"))
+                                .foregroundColor(Color.adaptiveAccent)
                             Text("Comfort tip: \(comfort)")
                                 .font(.interBody)
                                 .foregroundColor(Color.adaptiveText)
@@ -1448,11 +1612,11 @@ struct PressureAlertCardView: View {
     private var accentColor: Color {
         switch alert.alertLevel.lowercased() {
         case "high":
-            return colorScheme == .dark ? Color(hex: "#FF6B6B") : Color(hex: "#8B1A1A")
+            return Color.riskHigh
         case "moderate":
-            return colorScheme == .dark ? Color(hex: "#FFB84D") : Color(hex: "#B8681A")
+            return Color.riskModerate
         default:
-            return colorScheme == .dark ? Color(hex: "#4ECDC4") : Color(hex: "#1A6B5A")
+            return Color.riskLow
         }
     }
     
@@ -1678,19 +1842,13 @@ struct FlareRiskCardView: View {
     private var riskColor: Color {
         guard let risk = risk else { return Color.adaptiveMuted }
         
-        // Use brighter colors in dark mode for better contrast
-        let isDarkMode = colorScheme == .dark
-        
         switch risk.uppercased() {
         case "HIGH":
-            // Light red/orange in dark mode, deep burgundy in light mode
-            return isDarkMode ? Color(hex: "#FF6B6B") : Color(hex: "#8B1A1A")
+            return Color.riskHigh
         case "MODERATE":
-            // Brighter amber/yellow in dark mode for visibility, deep rust in light mode
-            return isDarkMode ? Color(hex: "#FFA500") : Color(hex: "#B8681A")
+            return Color.riskModerate
         case "LOW":
-            // Light teal/green in dark mode, deep teal in light mode
-            return isDarkMode ? Color(hex: "#4ECDC4") : Color(hex: "#1A6B5A")
+            return Color.riskLow
         default:
             return Color.adaptiveMuted
         }
@@ -1872,13 +2030,13 @@ struct HourlyForecastRow: View {
                     // Pressure dropping
                     Image(systemName: "arrow.down.circle.fill")
                         .font(.caption)
-                        .foregroundColor(Color(hex: "#8B1A1A"))
+                        .foregroundColor(Color.riskHigh)
                         .frame(width: 16, height: 16)
                 } else {
                     // Pressure rising
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.caption)
-                        .foregroundColor(Color(hex: "#1A6B5A"))
+                        .foregroundColor(Color.riskLow)
                         .frame(width: 16, height: 16)
                 }
             } else {
@@ -2103,29 +2261,23 @@ struct WeeklyForecastInsightCardView: View {
                                 let riskLevel = extractRiskLevel(day.detail)
                                 let riskColor: Color = {
                                     switch riskLevel {
-                                    case "High": 
-                                        // Brighter red for dark mode, darker red for light mode for better contrast
-                                        return colorScheme == .dark ? Color(hex: "#FF4444") : Color(hex: "#CC0000")
-                                    case "Moderate": 
-                                        // Brighter orange for dark mode, darker orange for light mode
-                                        return colorScheme == .dark ? Color(hex: "#FF9500") : Color(hex: "#E67E00")
-                                    default: 
-                                        // Low - brighter green for dark mode, maintain brand green for light mode
-                                        return colorScheme == .dark ? Color(hex: "#4ECDC4") : Color(hex: "#888779")
+                                    case "High":
+                                        return Color.riskHigh
+                                    case "Moderate":
+                                        return Color.riskModerate
+                                    default:
+                                        return Color.riskLow
                                     }
                                 }()
                                 
                                 let backgroundColor: Color = {
                                     switch riskLevel {
-                                    case "High": 
-                                        // Colored box for both light and dark mode
-                                        return colorScheme == .dark ? Color(hex: "#FF4444").opacity(0.2) : Color(hex: "#CC0000").opacity(0.15)
-                                    case "Moderate": 
-                                        // Colored box for both light and dark mode
-                                        return colorScheme == .dark ? Color(hex: "#FF9500").opacity(0.2) : Color(hex: "#E67E00").opacity(0.15)
-                                    default: 
-                                        // Colored box for both light and dark mode
-                                        return colorScheme == .dark ? Color(hex: "#4ECDC4").opacity(0.2) : Color(hex: "#888779").opacity(0.15)
+                                    case "High":
+                                        return Color.riskHighBackground
+                                    case "Moderate":
+                                        return Color.riskModerateBackground
+                                    default:
+                                        return Color.riskLowBackground
                                     }
                                 }()
                                 
@@ -2230,14 +2382,36 @@ private struct SignUpPromptBanner: View {
                     .foregroundColor(colorScheme == .dark ? .black : .white)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
-                    .background(colorScheme == .dark ? Color(hex: "#4ECDC4") : Color(hex: "#888779"))
+                    .background(Color.adaptiveAccent)
                     .cornerRadius(10)
             }
         }
-        .padding(16)
-        .background(Color.adaptiveCardBackground)
-        .cornerRadius(16)
-        .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 4)
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 24)
+                .fill(
+                    colorScheme == .dark
+                        ? AnyShapeStyle(Color.adaptiveCardBackground)
+                        : AnyShapeStyle(
+                            LinearGradient(
+                                colors: [
+                                    Color.white,
+                                    Color(hex: "#697797").opacity(0.08)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                )
+        )
+        .shadow(
+            color: colorScheme == .dark 
+                ? Color.black.opacity(0.4)
+                : Color.black.opacity(0.06),
+            radius: colorScheme == .dark ? 20 : 16,
+            x: 0,
+            y: colorScheme == .dark ? 8 : 6
+        )
     }
 }
 
@@ -2264,12 +2438,192 @@ private struct AppleWeatherAttributionView: View {
             // Legal attribution link
             Link("Legal Attribution", destination: URL(string: "https://weatherkit.apple.com/legal-attribution.html")!)
                 .font(.interSmall)
-                .foregroundColor(colorScheme == .dark ? Color(hex: "#4ECDC4") : Color(hex: "#888779"))
+                .foregroundColor(Color.adaptiveAccent)
                 .underline()
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
         .frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - Notification Prompt Overlay
+struct NotificationPromptOverlay: View {
+    var onEnable: () -> Void
+    var onDismiss: () -> Void
+    
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        ZStack {
+            // Dimmed background
+            Color.black.opacity(0.5)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    onDismiss()
+                }
+            
+            // Popup card
+            VStack(spacing: 20) {
+                // Close button
+                HStack {
+                    Spacer()
+                    Button {
+                        onDismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(Color.adaptiveMuted)
+                            .padding(8)
+                            .background(Color.adaptiveMuted.opacity(0.15))
+                            .clipShape(Circle())
+                    }
+                }
+                
+                // Icon
+                ZStack {
+                    Circle()
+                        .fill(Color.adaptiveAccent.opacity(0.15))
+                        .frame(width: 72, height: 72)
+                    
+                    Image(systemName: "bell.badge.fill")
+                        .font(.system(size: 32))
+                        .foregroundColor(Color.adaptiveAccent)
+                }
+                
+                // Title
+                Text("Get Your Daily Forecast")
+                    .font(.interTitle)
+                    .foregroundColor(Color.adaptiveText)
+                    .multilineTextAlignment(.center)
+                
+                // Description
+                Text("Wake up knowing how you'll feel. Get a personalized flare forecast every morning based on today's weather.")
+                    .font(.interBody)
+                    .foregroundColor(Color.adaptiveMuted)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                
+                // Enable button
+                Button {
+                    onEnable()
+                } label: {
+                    Text("Enable Notifications")
+                        .font(.interBody.weight(.semibold))
+                        .foregroundColor(colorScheme == .dark ? Color(hex: "#2d3240") : .white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.adaptiveAccent)
+                        .cornerRadius(12)
+                }
+                
+                // Skip button
+                Button {
+                    onDismiss()
+                } label: {
+                    Text("Not Now")
+                        .font(.interBody)
+                        .foregroundColor(Color.adaptiveMuted)
+                }
+            }
+            .padding(24)
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(Color.adaptiveCardBackground)
+                    .shadow(color: Color.black.opacity(0.2), radius: 20, x: 0, y: 10)
+            )
+            .padding(.horizontal, 32)
+        }
+    }
+}
+
+// MARK: - Feedback Prompt Overlay
+struct FeedbackPromptOverlay: View {
+    var onShare: () -> Void
+    var onDismiss: () -> Void
+    
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        ZStack {
+            // Dimmed background
+            Color.black.opacity(0.5)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    onDismiss()
+                }
+            
+            // Popup card
+            VStack(spacing: 20) {
+                // Close button
+                HStack {
+                    Spacer()
+                    Button {
+                        onDismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(Color.adaptiveMuted)
+                            .padding(8)
+                            .background(Color.adaptiveMuted.opacity(0.15))
+                            .clipShape(Circle())
+                    }
+                }
+                
+                // Icon
+                ZStack {
+                    Circle()
+                        .fill(Color.adaptiveAccent.opacity(0.15))
+                        .frame(width: 72, height: 72)
+                    
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 32))
+                        .foregroundColor(Color.adaptiveAccent)
+                }
+                
+                // Title
+                Text("Loving FlareWeather?")
+                    .font(.interTitle)
+                    .foregroundColor(Color.adaptiveText)
+                    .multilineTextAlignment(.center)
+                
+                // Description
+                Text("We'd love to hear your story! Your feedback helps us improve and inspires others living with chronic conditions.")
+                    .font(.interBody)
+                    .foregroundColor(Color.adaptiveMuted)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                
+                // Share button
+                Button {
+                    onShare()
+                } label: {
+                    Text("Share My Story")
+                        .font(.interBody.weight(.semibold))
+                        .foregroundColor(colorScheme == .dark ? Color(hex: "#2d3240") : .white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.adaptiveAccent)
+                        .cornerRadius(12)
+                }
+                
+                // Skip button
+                Button {
+                    onDismiss()
+                } label: {
+                    Text("Maybe Later")
+                        .font(.interBody)
+                        .foregroundColor(Color.adaptiveMuted)
+                }
+            }
+            .padding(24)
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(Color.adaptiveCardBackground)
+                    .shadow(color: Color.black.opacity(0.2), radius: 20, x: 0, y: 10)
+            )
+            .padding(.horizontal, 32)
+        }
     }
 }
 
