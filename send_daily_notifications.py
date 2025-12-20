@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from database import SessionLocal, User, DailyForecast, init_db
+from access_utils import has_active_access
 import pytz
 import requests
 
