@@ -1225,23 +1225,42 @@ def generate_flare_risk_assessment(
     if sensitivities_str:
         sensitivities_context = f"\n- Triggers: {sensitivities_str}"
 
+    # Calculate risk based on weather conditions BEFORE prompting AI
+    # Force Moderate/High for extreme conditions
+    calculated_risk = "LOW"
+    if humidity >= 80:  # Very high humidity
+        calculated_risk = "MODERATE"
+    if humidity >= 90:  # Extremely high humidity
+        calculated_risk = "HIGH"
+    if pressure < 1000:  # Very low pressure
+        calculated_risk = "HIGH" if calculated_risk == "LOW" else calculated_risk
+    if pressure < 1005:  # Low pressure
+        calculated_risk = "MODERATE" if calculated_risk == "LOW" else calculated_risk
+    if pressure_trend and "drop" in pressure_trend.lower():
+        calculated_risk = "HIGH" if calculated_risk != "HIGH" else calculated_risk
+        calculated_risk = "MODERATE" if calculated_risk == "LOW" else calculated_risk
+    
     # Optimized prompt - balanced for speed and quality
     prompt = f"""FlareWeather Assistant. Weather: {weather_descriptor}. Hourly: {hourly_note}. User: {diagnoses_str}{sensitivities_context}
 
+CRITICAL RISK GUIDANCE: Based on weather conditions, the calculated risk is {calculated_risk}. You MUST use this risk level or higher. DO NOT use LOW risk if conditions warrant MODERATE or HIGH.
+
+FORBIDDEN LANGUAGE: Never use "mild" in the summary_sentence. For high humidity (80%+), use stronger language like "heavy humidity", "damp conditions", "moisture-laden air". For extreme humidity (90%+), use "very heavy humidity", "saturated air", "intense moisture". Avoid weak descriptors.
+
 Generate JSON:
 {{
-  "risk": "LOW | MODERATE | HIGH",
-  "forecast": "Actionable headline. No numbers.",
+  "risk": "{calculated_risk} | MODERATE | HIGH",
+  "forecast": "Actionable headline. No numbers. No 'mild' language.",
   "why": "Brief why bodies may notice.",
   "daily_insight": {{
-    "summary_sentence": "[Weather] which could [impact].",
+    "summary_sentence": "[Weather] which could [impact]. NO 'mild' language - use stronger descriptors for high humidity/pressure changes.",
     "why_line": "Explain mechanism briefly.",
     "comfort_tip": "Up to 20 words. Eastern medicine. Include source like 'Chinese medicine recommends...'",
     "sign_off": "One calm sentence."
   }}
 }}
 
-Style: Grade 12 vocab. Tentative language (may, might). Short sentences."""
+Style: Grade 12 vocab. Tentative language (may, might). Short sentences. NO 'mild' descriptors."""
 
     risk = "MODERATE"
     forecast_from_model: Optional[str] = None
@@ -1315,7 +1334,13 @@ Style: Grade 12 vocab. Tentative language (may, might). Short sentences."""
             raise Exception("No AI provider available (Claude and OpenAI both failed)")
 
         # Parse response (same format for both Claude and OpenAI)
-        risk = response_json.get("risk", "MODERATE").upper()
+        risk = response_json.get("risk", calculated_risk).upper()
+        # Ensure risk is at least as high as calculated risk
+        risk_levels = {"LOW": 1, "MODERATE": 2, "HIGH": 3}
+        if risk_levels.get(risk, 1) < risk_levels.get(calculated_risk, 1):
+            risk = calculated_risk
+            print(f"⚠️ AI returned {response_json.get('risk')} but conditions warrant {calculated_risk} - forcing {calculated_risk}")
+        
         forecast_from_model = response_json.get("forecast")
         why_from_model = response_json.get("why")
         sources = response_json.get("sources", []) or []
@@ -1325,6 +1350,21 @@ Style: Grade 12 vocab. Tentative language (may, might). Short sentences."""
         daily_why_line = daily_json.get("why_line")
         daily_comfort_tip = daily_json.get("comfort_tip") or ""
         daily_sign_off = daily_json.get("sign_off")
+        
+        # VALIDATION: Reject "mild" language in daily_summary, especially for high humidity
+        if daily_summary and "mild" in daily_summary.lower():
+            if humidity >= 80:
+                print(f"⚠️ Rejecting 'mild' language in daily summary for high humidity ({humidity}%) - replacing")
+                # Replace with stronger language
+                if humidity >= 90:
+                    daily_summary = f"Heavy humidity and {_describe_temperature(temperature)} which could create noticeable physiological tension."
+                else:
+                    daily_summary = f"High humidity and {_describe_temperature(temperature)} which could create some physiological tension."
+            else:
+                # Even for lower humidity, avoid "mild" - use neutral language
+                daily_summary = daily_summary.replace("mild", "").replace("Mild", "").strip()
+                if daily_summary.startswith("air"):
+                    daily_summary = f"{_describe_temperature(temperature)} and {_describe_humidity(humidity)} which could create some physiological tension."
 
         # Validate comfort tip: allow generated tips with medical tradition sources (up to 20 words)
         if daily_comfort_tip:
@@ -1376,27 +1416,28 @@ Style: Grade 12 vocab. Tentative language (may, might). Short sentences."""
         sources = []
 
     if not daily_summary:
-        summary_variants_high = [
-            "Fast swings keep the day feeling more reactive.",
-            "The atmosphere is restless—your body may feel the turbulence.",
-            "Significant pressure shifts are moving through.",
-            "Weather patterns are volatile—expect your body to notice.",
-            "A challenging atmospheric day lies ahead.",
-            "The barometer is on a rollercoaster today.",
-            "Major weather transitions are underway.",
-            "Stormy patterns may amplify symptoms today."
-        ]
-        summary_variants_low = [
-            "Weather settles into a gentler groove.",
-            "A calm atmospheric day ahead.",
-            "The barometer is holding steady—take advantage.",
-            "Stable conditions give your body a break.",
-            "Weather patterns are cooperating today.",
-            "A rare window of atmospheric calm.",
-            "Conditions are favorable for feeling more like yourself.",
-            "The weather is on your side today."
-        ]
-        summary_variants_moderate = [
+        # Generate summary based on calculated risk and conditions
+        if humidity >= 90:
+            daily_summary = f"Very heavy humidity and {_describe_temperature(temperature)} which could create significant physiological tension."
+        elif humidity >= 80:
+            daily_summary = f"Heavy humidity and {_describe_temperature(temperature)} which could create noticeable physiological tension."
+        elif calculated_risk == "HIGH":
+            summary_variants_high = [
+                "Fast swings keep the day feeling more reactive.",
+                "The atmosphere is restless—your body may feel the turbulence.",
+                "Significant pressure shifts are moving through.",
+                "Weather patterns are volatile—expect your body to notice.",
+                "A challenging atmospheric day lies ahead.",
+                "The barometer is on a rollercoaster today.",
+                "Major weather transitions are underway.",
+                "Stormy patterns may amplify symptoms today."
+            ]
+            daily_summary = random.choice(summary_variants_high)
+        elif calculated_risk == "MODERATE":
+            if humidity >= 75:
+                daily_summary = f"High humidity and {_describe_temperature(temperature)} which could create some physiological tension."
+            else:
+                summary_variants_moderate = [
             "Weather wobbles softly through the day.",
             "Some atmospheric fluctuation expected.",
             "The weather is in transition mode.",
