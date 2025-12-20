@@ -1968,8 +1968,29 @@ def generate_weekly_forecast_insight(
         elif risk_score >= 1:  # Any change = at least Moderate (lowered from 2)
             risk_level = "Moderate"
         else:
-            # risk_score == 0: No changes detected or truly stable conditions
-            risk_level = "Low"
+            # risk_score == 0: No changes detected, but check absolute conditions
+            # Even "stable" conditions can be problematic if they're stable at bad levels
+            if humidity >= 75:  # Consistently high humidity is problematic
+                risk_level = "Moderate"
+                risk_factors.append("consistently high humidity")
+            elif humidity <= 35:  # Consistently very dry
+                risk_level = "Moderate"
+                risk_factors.append("very dry conditions")
+            elif temp <= 5 and humidity >= 65:  # Cold and damp
+                risk_level = "Moderate"
+                risk_factors.append("cold, damp conditions")
+            elif temp >= 30:  # Very hot
+                risk_level = "Moderate"
+                risk_factors.append("very warm conditions")
+            elif pressure <= 1000:  # Consistently low pressure
+                risk_level = "Moderate"
+                risk_factors.append("low pressure conditions")
+            elif pressure >= 1030:  # Consistently very high pressure
+                risk_level = "Moderate"
+                risk_factors.append("high pressure conditions")
+            else:
+                # Truly stable and comfortable conditions
+                risk_level = "Low"
         
         print(f"🔍 calculate_day_risk result: risk_score={risk_score} → risk_level={risk_level}, factors={risk_factors}")
         return risk_level, risk_factors
@@ -2093,15 +2114,15 @@ def generate_weekly_forecast_insight(
     moderate_count = sum(1 for _, risk, _, _ in calculated_risks if risk == "Moderate")
     high_count = sum(1 for _, risk, _, _ in calculated_risks if risk == "High")
     
-    # Force variation if we have fewer than 2 Moderate/High days (less aggressive - allow more Low days)
-    needs_variation = (moderate_count + high_count) < 2
+    # Force variation if we have fewer than 3 Moderate/High days (more aggressive - ensure meaningful variation)
+    needs_variation = (moderate_count + high_count) < 3
     
     print(f"📊 Risk summary: {high_count} High, {moderate_count} Moderate, {low_count} Low. Needs variation: {needs_variation}")
     
     if needs_variation and len(calculated_risks) > 0:
-        print(f"⚠️ Only {moderate_count} Moderate and {high_count} High days - forcing variation (need at least 2)")
-        # Find days with largest absolute changes (pressure, temp, humidity)
-        # Sort by approximate change magnitude
+        print(f"⚠️ Only {moderate_count} Moderate and {high_count} High days - forcing variation (need at least 3)")
+        # Find days with largest absolute changes OR problematic absolute conditions
+        # Sort by approximate change magnitude OR absolute condition severity
         def calculate_change_magnitude(day_data_tuple):
             _, _, _, day_data = day_data_tuple
             temp = day_data.get("temperature", 0)
@@ -2113,27 +2134,42 @@ def generate_weekly_forecast_insight(
             temp_delta = abs(temp - (baseline_temp if baseline_temp else 20))
             humidity_delta = abs(humidity - (baseline_humidity if baseline_humidity else 50))
             
-            # Weighted sum of changes
-            return pressure_delta * 2 + temp_delta * 1.5 + humidity_delta * 0.5
+            # Also consider absolute conditions that are problematic even if stable
+            absolute_severity = 0
+            if humidity >= 75:  # High humidity is problematic
+                absolute_severity += 2
+            elif humidity <= 35:  # Very dry is problematic
+                absolute_severity += 1.5
+            if temp <= 5 and humidity >= 65:  # Cold and damp
+                absolute_severity += 2
+            elif temp >= 30:  # Very hot
+                absolute_severity += 1.5
+            if pressure <= 1000:  # Low pressure
+                absolute_severity += 1.5
+            elif pressure >= 1030:  # Very high pressure
+                absolute_severity += 1
+            
+            # Weighted sum of changes + absolute severity
+            return (pressure_delta * 2 + temp_delta * 1.5 + humidity_delta * 0.5) + absolute_severity
         
         # Sort by change magnitude (descending)
         sorted_by_change = sorted(calculated_risks, key=calculate_change_magnitude, reverse=True)
         
-        # Force 2-3 days to Moderate/High (less aggressive - allow more Low days)
-        # For 7 days, force at least 2 to be Moderate or High (not 3)
+        # Force 3-4 days to Moderate/High (more aggressive - ensure meaningful variation)
+        # For 7 days, force at least 3 to be Moderate or High
         # Calculate how many we need to force
         current_moderate_high = moderate_count + high_count
-        needed = max(2 - current_moderate_high, 0)  # Need at least 2 total (not 3)
-        forced_count = min(max(needed, 2), len(sorted_by_change))  # Force at least 2, up to 3 days max
+        needed = max(3 - current_moderate_high, 0)  # Need at least 3 total
+        forced_count = min(max(needed, 3), len(sorted_by_change))  # Force at least 3, up to 4 days max
         print(f"🔧 Forcing {forced_count} days to Moderate/High risk (currently have {current_moderate_high} Moderate/High)")
         
         for i in range(forced_count):
             label, _, _, day_data = sorted_by_change[i]
             change_mag = calculate_change_magnitude(sorted_by_change[i])
             
-            # Update the risk hint for this day - less aggressive
-            # Only make it High if change is very significant; otherwise Moderate
-            forced_risk = "High" if change_mag > 8 else "Moderate"  # Raised threshold from 5 to 8
+            # Update the risk hint for this day - more aggressive
+            # Make it High if change is significant; otherwise Moderate
+            forced_risk = "High" if change_mag > 6 else "Moderate"  # Lowered threshold from 8 to 6 for more variation
             
             # Find and update in context_lines and day_risk_hints
             for j, (orig_label, orig_risk, _, _) in enumerate(calculated_risks):
@@ -2215,6 +2251,8 @@ ABSOLUTE REQUIREMENT: You MUST use the exact risk level from the [SUGGESTED RISK
 VALIDATION: Before returning your response, verify that you used the exact risk levels from the [SUGGESTED RISK] hints. If you see "Moderate" or "High" in the hints, those days MUST show "Moderate risk" or "High risk" in your output, NOT "Low risk".
 
 DO NOT default to Low risk for all days. The risk calculation considers your specific sensitivities ({diagnoses_str}) and all weather factors, not just pressure. The suggested risks are calculated from real weather data - trust them and use them exactly as provided.
+
+CRITICAL VARIATION REQUIREMENT: Even if weather appears stable, you MUST provide meaningful variation across the week. If you see multiple "Low" risk days, you MUST use different descriptors for each day from the approved list. NEVER use the same descriptor twice. If all days are Low risk, rotate through ALL the Low risk descriptors to ensure each day feels unique and valuable to the user.
 
 CRITICAL: You are generating daily descriptors for weekly insights. Each day must have a risk level (Low, Moderate, or High) and a short descriptor following STRICT rules.
 
