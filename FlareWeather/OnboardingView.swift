@@ -71,7 +71,6 @@ struct OnboardingView: View {
     @State private var selectedDiagnoses: Set<String> = []
     @State private var currentStep = 0
     @State private var stepTransition: AnyTransition = .identity
-    @State private var isAnimatingBackground = false
     
     @StateObject private var notificationManager = NotificationManager()
     
@@ -95,7 +94,7 @@ struct OnboardingView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                AnimatedGradientBackground(isAnimating: $isAnimatingBackground)
+                Color.adaptiveBackground
                     .ignoresSafeArea()
                 VStack(spacing: 30) {
                     stepIndicator
@@ -128,11 +127,6 @@ struct OnboardingView: View {
             }
             .navigationBarHidden(true)
             .tint(.primary)
-            .onAppear {
-                withAnimation(.easeInOut(duration: 6).repeatForever(autoreverses: true)) {
-                    isAnimatingBackground.toggle()
-                }
-            }
         }
         .tint(.primary)
     }
@@ -270,6 +264,7 @@ struct WelcomeStepView: View {
 }
 
 struct ProfileStepView: View {
+    @Environment(\.colorScheme) var colorScheme
     @Binding var name: String
     @Binding var age: Int
     @Binding var location: String
@@ -409,10 +404,12 @@ struct ProfileStepView: View {
             }
             .padding()
         }
+        .background((colorScheme == .dark ? Color.darkBackground : Color.primaryBackground).ignoresSafeArea())
     }
 }
 
 struct PermissionsStepView: View {
+    @Environment(\.colorScheme) var colorScheme
     @ObservedObject var notificationManager: NotificationManager
     var body: some View {
         VStack(spacing: 20) {
@@ -467,6 +464,7 @@ struct PermissionsStepView: View {
             }
         }
         .padding()
+        .background((colorScheme == .dark ? Color.darkBackground : Color.primaryBackground).ignoresSafeArea())
         .onAppear {
             notificationManager.refreshAuthorizationStatus()
         }
@@ -500,23 +498,34 @@ struct FeatureRow: View {
 }
 
 struct PermissionRow: View {
+    @Environment(\.colorScheme) var colorScheme
     let icon: String
     let title: String
     let description: String
     
     var body: some View {
-        HStack {
-            Image(systemName: icon)
-                .font(.title2)
-                .foregroundColor(Color.adaptiveCardBackground)
-                .frame(width: 30)
+        HStack(spacing: 16) {
+            // Icon with background circle for better visibility
+            ZStack {
+                Circle()
+                    .fill(
+                        colorScheme == .dark
+                            ? Color.adaptiveAccent.opacity(0.15)
+                            : Color.adaptiveAccent.opacity(0.1)
+                    )
+                    .frame(width: 44, height: 44)
+                
+                Image(systemName: icon)
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundColor(Color.adaptiveAccent)
+            }
             
-            VStack(alignment: .leading) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.headline)
+                    .font(.interHeadline)
                     .foregroundColor(Color.adaptiveText)
                 Text(description)
-                    .font(.caption)
+                    .font(.interCaption)
                     .foregroundColor(Color.adaptiveMuted)
             }
             

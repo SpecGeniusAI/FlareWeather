@@ -2114,8 +2114,8 @@ def generate_weekly_forecast_insight(
     moderate_count = sum(1 for _, risk, _, _ in calculated_risks if risk == "Moderate")
     high_count = sum(1 for _, risk, _, _ in calculated_risks if risk == "High")
     
-    # Force variation if we have fewer than 3 Moderate/High days (more aggressive - ensure meaningful variation)
-    needs_variation = (moderate_count + high_count) < 3
+    # Force variation if we have fewer than 4 Moderate/High days (very aggressive - ensure meaningful variation)
+    needs_variation = (moderate_count + high_count) < 4
     
     print(f"📊 Risk summary: {high_count} High, {moderate_count} Moderate, {low_count} Low. Needs variation: {needs_variation}")
     
@@ -2155,21 +2155,21 @@ def generate_weekly_forecast_insight(
         # Sort by change magnitude (descending)
         sorted_by_change = sorted(calculated_risks, key=calculate_change_magnitude, reverse=True)
         
-        # Force 3-4 days to Moderate/High (more aggressive - ensure meaningful variation)
-        # For 7 days, force at least 3 to be Moderate or High
+        # Force 4-5 days to Moderate/High (very aggressive - ensure meaningful variation)
+        # For 7 days, force at least 4 to be Moderate or High
         # Calculate how many we need to force
         current_moderate_high = moderate_count + high_count
-        needed = max(3 - current_moderate_high, 0)  # Need at least 3 total
-        forced_count = min(max(needed, 3), len(sorted_by_change))  # Force at least 3, up to 4 days max
+        needed = max(4 - current_moderate_high, 0)  # Need at least 4 total
+        forced_count = min(max(needed, 4), len(sorted_by_change))  # Force at least 4, up to 5 days max
         print(f"🔧 Forcing {forced_count} days to Moderate/High risk (currently have {current_moderate_high} Moderate/High)")
         
         for i in range(forced_count):
             label, _, _, day_data = sorted_by_change[i]
             change_mag = calculate_change_magnitude(sorted_by_change[i])
             
-            # Update the risk hint for this day - more aggressive
-            # Make it High if change is significant; otherwise Moderate
-            forced_risk = "High" if change_mag > 6 else "Moderate"  # Lowered threshold from 8 to 6 for more variation
+            # Update the risk hint for this day - very aggressive
+            # Make it High if change is moderate; otherwise Moderate (lowered threshold significantly)
+            forced_risk = "High" if change_mag > 4 else "Moderate"  # Lowered threshold from 6 to 4 for much more variation
             
             # Find and update in context_lines and day_risk_hints
             for j, (orig_label, orig_risk, _, _) in enumerate(calculated_risks):
@@ -2509,9 +2509,9 @@ BAD EXAMPLE (repeating):
     # Also check for "steady conditions" in descriptors - this is forbidden
     has_steady_conditions = any("steady conditions" in str(entry.get("descriptor", "")).lower() for entry in patterns)
     
-    # If AI returned all Low OR too many Low (more than 5), OR used forbidden "steady conditions", AND we have forced Moderate/High hints, replace
-    # Less aggressive: only replace if more than 5 Low days (was 4)
-    should_replace = (all_low_in_response or low_count_in_response > 5 or has_steady_conditions) and len(day_risk_hints) > 0 and (moderate_hints > 0 or high_hints > 0)
+    # If AI returned all Low OR too many Low (more than 3), OR used forbidden "steady conditions", AND we have forced Moderate/High hints, replace
+    # More aggressive: replace if more than 3 Low days (since we force 4 Moderate/High)
+    should_replace = (all_low_in_response or low_count_in_response > 3 or has_steady_conditions) and len(day_risk_hints) > 0 and (moderate_hints > 0 or high_hints > 0)
     
     if should_replace:
         reason = []
@@ -2520,14 +2520,50 @@ BAD EXAMPLE (repeating):
         if has_steady_conditions: reason.append("forbidden 'steady conditions'")
         print(f"❌ AI ignored forced risks ({moderate_hints} Moderate, {high_hints} High hints provided, but: {', '.join(reason)}). Replacing with fallbacks that respect suggested risks.")
         # Replace patterns with fallbacks that match the forced risk hints
+        # Ensure unique descriptors by tracking used ones
         patterns = []
+        used_fallbacks = set()
+        
+        # Shuffle fallback lists to ensure variety
+        import random
+        shuffled_high = high_fallbacks.copy()
+        shuffled_moderate = moderate_fallbacks.copy()
+        shuffled_low = low_fallbacks.copy()
+        random.shuffle(shuffled_high)
+        random.shuffle(shuffled_moderate)
+        random.shuffle(shuffled_low)
+        
+        high_idx = 0
+        moderate_idx = 0
+        low_idx = 0
+        
         for i, (label, risk_hint) in enumerate(zip(weekday_labels, day_risk_hints)):
             if risk_hint == "High":
-                descriptor = random.choice(high_fallbacks)
+                # Cycle through high fallbacks
+                descriptor = shuffled_high[high_idx % len(shuffled_high)]
+                high_idx += 1
             elif risk_hint == "Moderate":
-                descriptor = random.choice(moderate_fallbacks)
+                # Cycle through moderate fallbacks
+                descriptor = shuffled_moderate[moderate_idx % len(shuffled_moderate)]
+                moderate_idx += 1
             else:
-                descriptor = random.choice(low_fallbacks)
+                # Cycle through low fallbacks
+                descriptor = shuffled_low[low_idx % len(shuffled_low)]
+                low_idx += 1
+            
+            # Ensure uniqueness - if we've used this descriptor, try next one
+            while descriptor in used_fallbacks:
+                if risk_hint == "High":
+                    descriptor = shuffled_high[high_idx % len(shuffled_high)]
+                    high_idx += 1
+                elif risk_hint == "Moderate":
+                    descriptor = shuffled_moderate[moderate_idx % len(shuffled_moderate)]
+                    moderate_idx += 1
+                else:
+                    descriptor = shuffled_low[low_idx % len(shuffled_low)]
+                    low_idx += 1
+            
+            used_fallbacks.add(descriptor)
             patterns.append({"risk": risk_hint, "descriptor": descriptor})
         print(f"✅ Replaced with fallbacks: {sum(1 for p in patterns if p.get('risk') == 'High')} High, {sum(1 for p in patterns if p.get('risk') == 'Moderate')} Moderate")
 
@@ -2577,9 +2613,9 @@ BAD EXAMPLE (repeating):
         descriptor_lower = descriptor.lower()
         if any(vague in descriptor_after_dash for vague in vague_forbidden) or any(vague in descriptor_lower for vague in vague_forbidden):
             print(f"⚠️ Rejecting vague descriptor: '{descriptor}' - replacing with approved fallback")
-            # Replace with approved fallback based on risk
+            # Replace with approved fallback based on risk, ensuring uniqueness
             if risk.upper() == "HIGH":
-                descriptor = random.choice(high_fallbacks)
+                descriptor = random.choice([d for d in high_fallbacks if d not in used_descriptors] or high_fallbacks)
             elif risk.upper() == "MODERATE":
                 descriptor = random.choice(moderate_fallbacks)
             else:
@@ -2715,8 +2751,23 @@ BAD EXAMPLE (repeating):
             else:
                 descriptor = random.choice(low_fallbacks)
         
-        print(f"✅ Daily insight for {label}: {descriptor}")
+        # Ensure descriptor uniqueness - if we've already used this exact descriptor, replace it
+        if descriptor in used_descriptors:
+            print(f"⚠️ Duplicate descriptor detected: '{descriptor}' for {label} - replacing with unique fallback")
+            # Get a unique fallback
+            if risk.upper() == "HIGH":
+                available = [d for d in high_fallbacks if d not in used_descriptors]
+                descriptor = random.choice(available) if available else random.choice(high_fallbacks)
+            elif risk.upper() == "MODERATE":
+                available = [d for d in moderate_fallbacks if d not in used_descriptors]
+                descriptor = random.choice(available) if available else random.choice(moderate_fallbacks)
+            else:
+                available = [d for d in low_fallbacks if d not in used_descriptors]
+                descriptor = random.choice(available) if available else random.choice(low_fallbacks)
         
+        used_descriptors.add(descriptor)
+        print(f"✅ Daily insight for {label}: {descriptor}")
+
         daily_breakdown.append({
             "label": label,
             "insight": descriptor

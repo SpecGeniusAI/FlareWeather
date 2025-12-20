@@ -1320,6 +1320,21 @@ struct ProfileEditView: View {
             .navigationTitle("Edit Profile")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Color.adaptiveCardBackground.opacity(0.95), for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 16, weight: .medium))
+                            Text("Back")
+                                .font(.interBody)
+                        }
+                        .foregroundColor(Color.adaptiveText)
+                    }
+                }
+            }
         }
     }
     
