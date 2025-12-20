@@ -1438,22 +1438,28 @@ Style: Grade 12 vocab. Tentative language (may, might). Short sentences. NO 'mil
                 daily_summary = f"High humidity and {_describe_temperature(temperature)} which could create some physiological tension."
             else:
                 summary_variants_moderate = [
-            "Weather wobbles softly through the day.",
-            "Some atmospheric fluctuation expected.",
-            "The weather is in transition mode.",
-            "Moderate changes are moving through.",
-            "Expect some ups and downs atmospherically.",
-            "The barometer is gently shifting.",
-            "Weather patterns are finding a new equilibrium.",
-            "Conditions are changeable but manageable."
-        ]
-        
-        if risk == "HIGH":
-            daily_summary = random.choice(summary_variants_high)
-        elif risk == "LOW":
+                    "Weather wobbles softly through the day.",
+                    "Some atmospheric fluctuation expected.",
+                    "The weather is in transition mode.",
+                    "Moderate changes are moving through.",
+                    "Expect some ups and downs atmospherically.",
+                    "The barometer is gently shifting.",
+                    "Weather patterns are finding a new equilibrium.",
+                    "Conditions are changeable but manageable."
+                ]
+                daily_summary = random.choice(summary_variants_moderate)
+        else:  # LOW risk
+            summary_variants_low = [
+                "Weather settles into a gentler groove.",
+                "A calm atmospheric day ahead.",
+                "The barometer is holding steady—take advantage.",
+                "Stable conditions give your body a break.",
+                "Weather patterns are cooperating today.",
+                "A rare window of atmospheric calm.",
+                "Conditions are favorable for feeling more like yourself.",
+                "The weather is on your side today."
+            ]
             daily_summary = random.choice(summary_variants_low)
-        else:
-            daily_summary = random.choice(summary_variants_moderate)
 
     if not daily_why_line:
         why_variants_sharp = [
