@@ -364,15 +364,15 @@ def pre_prime_forecasts():
         
         for user in active_users:
             try:
-                # TEMPORARILY: Skip access check to diagnose issue - remove this later
+                # TEMPORARILY: Skip access check completely to generate forecasts for all users
                 # Only pre-prime for users with active access (subscribers or lifetime users)
                 has_access = has_active_access(db, user.id)
                 if not has_access:
                     skipped_no_access += 1
-                    # Log all skipped users for diagnosis
-                    print(f"⏭️  Skipping {user.email or user.id}: No active access (free_access={user.free_access_enabled}, transaction_id={user.original_transaction_id is not None})")
-                    # TEMPORARILY: Continue anyway to test - comment out the continue
-                    # continue
+                    # Log but don't skip - process all users temporarily
+                    if skipped_no_access <= 5:
+                        print(f"⚠️  Processing {user.email or user.id} without active access (free_access={user.free_access_enabled}, transaction_id={user.original_transaction_id is not None})")
+                # Don't skip - process all users
                 
                 # Get user location
                 location = get_user_location(user)
