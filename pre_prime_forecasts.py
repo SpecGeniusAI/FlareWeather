@@ -342,6 +342,9 @@ def pre_prime_forecasts():
         
         print(f"📊 Found {len(active_users)} active users")
         
+        # Count reasons for skipping
+        skipped_no_access = 0
+        skipped_no_location = 0
         success_count = 0
         error_count = 0
         
@@ -349,13 +352,17 @@ def pre_prime_forecasts():
             try:
                 # Only pre-prime for users with active access (subscribers or lifetime users)
                 if not has_active_access(db, user.id):
-                    print(f"⏭️  Skipping {user.email or user.id}: No active access (not subscribed or lifetime)")
+                    skipped_no_access += 1
+                    if skipped_no_access <= 5:  # Only log first 5 to avoid spam
+                        print(f"⏭️  Skipping {user.email or user.id}: No active access (not subscribed or lifetime)")
                     continue
                 
                 # Get user location
                 location = get_user_location(user)
                 if not location:
-                    print(f"⏭️  Skipping {user.email or user.id}: No location stored")
+                    skipped_no_location += 1
+                    if skipped_no_location <= 5:  # Only log first 5 to avoid spam
+                        print(f"⏭️  Skipping {user.email or user.id}: No location stored (users need to open app and grant location permission)")
                     continue
                 
                 print(f"🌤️  Pre-priming for {user.email or user.id}...")
@@ -404,7 +411,16 @@ def pre_prime_forecasts():
         print(f"\n📊 Pre-priming complete:")
         print(f"   ✅ Success: {success_count}")
         print(f"   ❌ Errors: {error_count}")
+        print(f"   ⏭️  Skipped (no access): {skipped_no_access}")
+        print(f"   ⏭️  Skipped (no location): {skipped_no_location}")
         print(f"   📅 Date: {today}")
+        
+        if success_count == 0:
+            print(f"\n⚠️  WARNING: No forecasts generated!")
+            print(f"   - {skipped_no_access} users skipped due to no active access")
+            print(f"   - {skipped_no_location} users skipped due to no location stored")
+            print(f"   - Users need to open the app and grant location permission for forecasts to be generated")
+            print(f"   - Location is saved when users change location in settings or when app launches")
         
     finally:
         db.close()
