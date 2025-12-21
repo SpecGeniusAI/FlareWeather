@@ -2078,11 +2078,12 @@ async def send_test_notification(
             }
         
         # Send test notification
+        from datetime import date as date_type
         title = "FlareWeather Test"
         body = "Good morning! Your personalized weather forecast is waiting for you."
         data = {
             "type": "daily_forecast_reminder",
-            "date": str(date.today())
+            "date": str(date_type.today())
         }
         
         success = send_push_notification(
