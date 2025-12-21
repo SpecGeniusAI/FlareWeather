@@ -2036,3 +2036,81 @@ async def get_user_diagnostics(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to get diagnostics: {str(e)}")
+
+
+@app.post("/admin/send-test-notification")
+async def send_test_notification(
+    email: str = Query(..., description="Email of user to send test notification to"),
+    admin_key_header: Optional[str] = Header(None, alias="X-Admin-Key"),
+    admin_key: Optional[str] = Query(None, description="Admin API key (alternative to header)"),
+    db: Session = Depends(get_db)
+):
+    """
+    Send a test notification to a specific user by email.
+    """
+    key = admin_key_header or admin_key
+    
+    if not verify_admin_key(key):
+        raise HTTPException(status_code=401, detail="Invalid admin API key")
+    
+    try:
+        from send_daily_notifications import send_push_notification
+        
+        # Find user by email
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            raise HTTPException(status_code=404, detail=f"User with email {email} not found")
+        
+        if not user.push_notification_token:
+            return {
+                "success": False,
+                "message": f"User {email} does not have a push token registered. They need to open the app and grant notification permission.",
+                "has_token": False,
+                "notifications_enabled": user.push_notifications_enabled
+            }
+        
+        if not user.push_notifications_enabled:
+            return {
+                "success": False,
+                "message": f"User {email} has notifications disabled.",
+                "has_token": True,
+                "notifications_enabled": False
+            }
+        
+        # Send test notification
+        title = "FlareWeather Test"
+        body = "Good morning! Your personalized weather forecast is waiting for you."
+        data = {
+            "type": "daily_forecast_reminder",
+            "date": str(date.today())
+        }
+        
+        success = send_push_notification(
+            device_token=user.push_notification_token,
+            title=title,
+            body=body,
+            data=data
+        )
+        
+        if success:
+            return {
+                "success": True,
+                "message": f"Test notification sent to {email}",
+                "has_token": True,
+                "notifications_enabled": True
+            }
+        else:
+            return {
+                "success": False,
+                "message": f"Failed to send notification to {email}",
+                "has_token": True,
+                "notifications_enabled": True
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error sending test notification: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to send test notification: {str(e)}")
