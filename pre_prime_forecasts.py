@@ -332,10 +332,18 @@ def pre_prime_forecasts():
     print(f"⏰ Time: {datetime.now(EST).strftime('%Y-%m-%d %H:%M:%S %Z')}")
     
     # Initialize database
-    init_db()
+    try:
+        init_db()
+        print("✅ Database initialized")
+    except Exception as e:
+        print(f"❌ Database initialization failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return
     
     db = SessionLocal()
     today = date.today()
+    print(f"📅 Target date: {today}")
     
     try:
         # Get active users - use multiple criteria to catch all active users:
@@ -396,6 +404,7 @@ def pre_prime_forecasts():
                 print(f"🌤️  Pre-priming for {user.email or user.id}...")
                 
                 # Fetch weather
+                print(f"   Fetching weather for lat={location['latitude']}, lon={location['longitude']}...")
                 weather_data = fetch_weather_openweather(
                     location["latitude"],
                     location["longitude"]
@@ -406,28 +415,42 @@ def pre_prime_forecasts():
                     error_count += 1
                     continue
                 
+                print(f"   ✅ Weather fetched successfully")
+                
                 # Generate daily insight (pass db session for tip history tracking)
+                print(f"   Generating daily insight...")
                 daily_insight = generate_daily_insight_for_user(weather_data, user, db_session=db)
                 if not daily_insight:
                     print(f"❌ Failed to generate daily insight for {user.email or user.id}")
                     error_count += 1
                     continue
                 
+                print(f"   ✅ Daily insight generated")
+                
                 # Generate weekly insight
+                print(f"   Generating weekly insight...")
                 weekly_insight = generate_weekly_insight_for_user(weather_data, user, daily_insight)
+                print(f"   ✅ Weekly insight generated")
                 
                 # Store in database
-                store_daily_forecast(
-                    db=db,
-                    user=user,
-                    forecast_date=today,
-                    weather_data=weather_data,
-                    daily_insight=daily_insight,
-                    weekly_insight=weekly_insight
-                )
-                
-                print(f"✅ Pre-primed forecast for {user.email or user.id}")
-                success_count += 1
+                print(f"   Storing forecast in database...")
+                try:
+                    store_daily_forecast(
+                        db=db,
+                        user=user,
+                        forecast_date=today,
+                        weather_data=weather_data,
+                        daily_insight=daily_insight,
+                        weekly_insight=weekly_insight
+                    )
+                    print(f"✅ Pre-primed forecast for {user.email or user.id}")
+                    success_count += 1
+                except Exception as store_error:
+                    print(f"❌ Failed to store forecast for {user.email or user.id}: {store_error}")
+                    import traceback
+                    traceback.print_exc()
+                    error_count += 1
+                    continue
                 
             except Exception as e:
                 print(f"❌ Error processing {user.email or user.id}: {e}")
