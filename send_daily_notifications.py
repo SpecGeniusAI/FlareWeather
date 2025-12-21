@@ -1,6 +1,7 @@
 """
 Send daily forecast push notifications.
-Runs daily at 8:00 AM EST to send notifications for pre-primed forecasts.
+Runs daily at 8:00 AM EST to prompt users to check their daily forecast.
+Simple approach: just sends a notification to open the app (no pre-priming needed).
 """
 import os
 import sys
@@ -12,8 +13,7 @@ from dotenv import load_dotenv
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from database import SessionLocal, User, DailyForecast, init_db
-from access_utils import has_active_access
+from database import SessionLocal, User, init_db
 import pytz
 import requests
 
@@ -151,7 +151,11 @@ def send_push_notification(
 
 
 def send_daily_notifications():
-    """Main function to send notifications for pre-primed forecasts."""
+    """
+    Main function to send daily forecast notifications.
+    Simple approach: sends notification to all users with notifications enabled.
+    No pre-priming needed - app generates forecast when user opens it.
+    """
     print("📱 Starting daily notification sending...")
     print(f"⏰ Time: {datetime.now(EST).strftime('%Y-%m-%d %H:%M:%S %Z')}")
     
@@ -162,66 +166,30 @@ def send_daily_notifications():
     today = date.today()
     
     try:
-        # Get all forecasts ready to send (not sent yet)
-        ready_forecasts = db.query(DailyForecast).filter(
-            DailyForecast.forecast_date == today,
-            DailyForecast.notification_sent == False
+        # Get all users with notifications enabled and push tokens
+        eligible_users = db.query(User).filter(
+            User.push_notifications_enabled == True,
+            User.push_notification_token.isnot(None)
         ).all()
         
-        print(f"📊 Found {len(ready_forecasts)} forecasts ready to send")
+        print(f"📊 Found {len(eligible_users)} users with notifications enabled and push tokens")
         
         success_count = 0
         error_count = 0
         skipped_count = 0
         
-        for forecast in ready_forecasts:
+        # Simple notification message
+        title = "FlareWeather"
+        body = "Good morning! Your personalized weather forecast is waiting for you."
+        
+        # Custom data to open app
+        data = {
+            "type": "daily_forecast_reminder",
+            "date": str(today)
+        }
+        
+        for user in eligible_users:
             try:
-                # Get user
-                user = db.query(User).filter(User.id == forecast.user_id).first()
-                if not user:
-                    print(f"⏭️  Skipping forecast {forecast.id}: User not found")
-                    skipped_count += 1
-                    continue
-                
-                # Only send to users with active access (subscribers or lifetime users)
-                if not has_active_access(db, user.id):
-                    print(f"⏭️  Skipping {user.email or user.id}: No active access (not subscribed or lifetime)")
-                    skipped_count += 1
-                    continue
-                
-                # Check if user has token and notifications enabled
-                if not user.push_notification_token:
-                    print(f"⏭️  Skipping {user.email or user.id}: No push token")
-                    skipped_count += 1
-                    continue
-                
-                if not user.push_notifications_enabled:
-                    print(f"⏭️  Skipping {user.email or user.id}: Notifications disabled")
-                    skipped_count += 1
-                    # Mark as sent anyway (user disabled notifications)
-                    forecast.notification_sent = True
-                    forecast.notification_sent_at = datetime.utcnow()
-                    db.commit()
-                    continue
-                
-                # Build notification
-                risk_level = forecast.daily_risk_level or "MODERATE"
-                summary = forecast.daily_forecast_summary or "Check your daily forecast"
-                
-                # Truncate summary for notification
-                if len(summary) > 50:
-                    summary = summary[:47] + "..."
-                
-                title = "Daily Flare Forecast"
-                body = f"Today's flare risk: {risk_level} - {summary}"
-                
-                # Custom data
-                data = {
-                    "type": "daily_forecast",
-                    "date": str(today),
-                    "risk_level": risk_level
-                }
-                
                 # Send notification
                 success = send_push_notification(
                     device_token=user.push_notification_token,
@@ -231,11 +199,6 @@ def send_daily_notifications():
                 )
                 
                 if success:
-                    # Mark as sent
-                    forecast.notification_sent = True
-                    forecast.notification_sent_at = datetime.utcnow()
-                    db.commit()
-                    
                     print(f"✅ Sent notification to {user.email or user.id}")
                     success_count += 1
                 else:
@@ -243,7 +206,7 @@ def send_daily_notifications():
                     error_count += 1
                 
             except Exception as e:
-                print(f"❌ Error processing forecast {forecast.id}: {e}")
+                print(f"❌ Error processing user {user.email or user.id}: {e}")
                 error_count += 1
                 import traceback
                 traceback.print_exc()
@@ -252,7 +215,6 @@ def send_daily_notifications():
         print(f"\n📊 Notification sending complete:")
         print(f"   ✅ Success: {success_count}")
         print(f"   ❌ Errors: {error_count}")
-        print(f"   ⏭️  Skipped: {skipped_count}")
         print(f"   📅 Date: {today}")
         
     finally:
