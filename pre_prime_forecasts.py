@@ -377,15 +377,21 @@ def pre_prime_forecasts():
                 # Get user location
                 location = get_user_location(user)
                 if not location:
-                    skipped_no_location += 1
-                    # Log all skipped users for diagnosis - show first 10
-                    if skipped_no_location <= 10:
-                        print(f"⏭️  Skipping {user.email or user.id}: No location stored (lat={user.last_location_latitude}, lon={user.last_location_longitude})")
-                    continue
-                
-                # Log successful location retrieval for first few
-                if success_count < 5:
-                    print(f"✅ Found location for {user.email or user.id}: {location['latitude']}, {location['longitude']}")
+                    # TEMPORARY FALLBACK: Use default location (San Francisco) if user doesn't have one
+                    # This allows forecasts to be generated while users haven't opened the app yet
+                    print(f"⚠️  No location for {user.email or user.id}, using default location (San Francisco)")
+                    location = {
+                        "latitude": 37.7749,
+                        "longitude": -122.4194,
+                        "name": "San Francisco, CA"
+                    }
+                    # Don't skip - use fallback location
+                    # skipped_no_location += 1
+                    # continue
+                else:
+                    # Log successful location retrieval for first few
+                    if success_count < 5:
+                        print(f"✅ Found location for {user.email or user.id}: {location['latitude']}, {location['longitude']}")
                 
                 print(f"🌤️  Pre-priming for {user.email or user.id}...")
                 
