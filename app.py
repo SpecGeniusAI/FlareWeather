@@ -1950,3 +1950,89 @@ async def trigger_daily_notifications(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to send notifications: {str(e)}")
+
+
+@app.get("/admin/user-diagnostics")
+async def get_user_diagnostics(
+    admin_key_header: Optional[str] = Header(None, alias="X-Admin-Key"),
+    admin_key: Optional[str] = Query(None, description="Admin API key (alternative to header)"),
+    db: Session = Depends(get_db)
+):
+    """
+    Diagnostic endpoint to check user data for pre-prime script.
+    Shows breakdown of users by access status, location, etc.
+    """
+    key = admin_key_header or admin_key
+    
+    if not verify_admin_key(key):
+        raise HTTPException(status_code=401, detail="Invalid admin API key")
+    
+    try:
+        from datetime import datetime, timedelta
+        from sqlalchemy import or_
+        from access_utils import has_active_access
+        
+        # Get all users
+        total_users = db.query(User).count()
+        
+        # Get active users (using same criteria as pre-prime script)
+        cutoff_date = datetime.utcnow() - timedelta(days=30)
+        active_users = db.query(User).filter(
+            or_(
+                User.updated_at >= cutoff_date,
+                User.push_notification_token.isnot(None),
+                User.last_location_latitude.isnot(None)
+            )
+        ).all()
+        
+        # Count users with locations
+        users_with_location = db.query(User).filter(
+            User.last_location_latitude.isnot(None),
+            User.last_location_longitude.isnot(None)
+        ).count()
+        
+        # Count users with push tokens
+        users_with_tokens = db.query(User).filter(
+            User.push_notification_token.isnot(None)
+        ).count()
+        
+        # Count users with active access
+        users_with_access = 0
+        users_with_access_and_location = 0
+        eligible_for_preprime = 0
+        
+        for user in active_users:
+            if has_active_access(db, user.id):
+                users_with_access += 1
+                if user.last_location_latitude and user.last_location_longitude:
+                    users_with_access_and_location += 1
+                    eligible_for_preprime += 1
+        
+        # Count users with notifications enabled
+        users_with_notifications_enabled = db.query(User).filter(
+            User.push_notifications_enabled == True
+        ).count()
+        
+        return {
+            "total_users": total_users,
+            "active_users": len(active_users),
+            "users_with_location": users_with_location,
+            "users_with_push_tokens": users_with_tokens,
+            "users_with_active_access": users_with_access,
+            "users_with_access_and_location": users_with_access_and_location,
+            "eligible_for_preprime": eligible_for_preprime,
+            "users_with_notifications_enabled": users_with_notifications_enabled,
+            "breakdown": {
+                "total": total_users,
+                "active": len(active_users),
+                "with_location": users_with_location,
+                "with_access": users_with_access,
+                "with_access_and_location": users_with_access_and_location,
+                "eligible_for_preprime": eligible_for_preprime
+            }
+        }
+    except Exception as e:
+        print(f"❌ Error getting user diagnostics: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to get diagnostics: {str(e)}")
