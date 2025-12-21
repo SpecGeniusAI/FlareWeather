@@ -30,7 +30,11 @@ EST = pytz.timezone("America/New_York")
 
 def get_user_location(user: User) -> Optional[Dict[str, float]]:
     """Get user's location from User table or return None."""
-    if user.last_location_latitude and user.last_location_longitude:
+    # Check if location exists and is valid (not 0,0 which is invalid)
+    if (user.last_location_latitude is not None and 
+        user.last_location_longitude is not None and
+        user.last_location_latitude != 0 and 
+        user.last_location_longitude != 0):
         return {
             "latitude": user.last_location_latitude,
             "longitude": user.last_location_longitude,
@@ -374,9 +378,14 @@ def pre_prime_forecasts():
                 location = get_user_location(user)
                 if not location:
                     skipped_no_location += 1
-                    # Log all skipped users for diagnosis
-                    print(f"⏭️  Skipping {user.email or user.id}: No location stored (lat={user.last_location_latitude}, lon={user.last_location_longitude})")
+                    # Log all skipped users for diagnosis - show first 10
+                    if skipped_no_location <= 10:
+                        print(f"⏭️  Skipping {user.email or user.id}: No location stored (lat={user.last_location_latitude}, lon={user.last_location_longitude})")
                     continue
+                
+                # Log successful location retrieval for first few
+                if success_count < 5:
+                    print(f"✅ Found location for {user.email or user.id}: {location['latitude']}, {location['longitude']}")
                 
                 print(f"🌤️  Pre-priming for {user.email or user.id}...")
                 
