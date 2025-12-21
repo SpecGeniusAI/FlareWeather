@@ -360,19 +360,22 @@ def pre_prime_forecasts():
         
         for user in active_users:
             try:
+                # TEMPORARILY: Skip access check to diagnose issue - remove this later
                 # Only pre-prime for users with active access (subscribers or lifetime users)
-                if not has_active_access(db, user.id):
+                has_access = has_active_access(db, user.id)
+                if not has_access:
                     skipped_no_access += 1
-                    if skipped_no_access <= 5:  # Only log first 5 to avoid spam
-                        print(f"⏭️  Skipping {user.email or user.id}: No active access (not subscribed or lifetime)")
-                    continue
+                    # Log all skipped users for diagnosis
+                    print(f"⏭️  Skipping {user.email or user.id}: No active access (free_access={user.free_access_enabled}, transaction_id={user.original_transaction_id is not None})")
+                    # TEMPORARILY: Continue anyway to test - comment out the continue
+                    # continue
                 
                 # Get user location
                 location = get_user_location(user)
                 if not location:
                     skipped_no_location += 1
-                    if skipped_no_location <= 5:  # Only log first 5 to avoid spam
-                        print(f"⏭️  Skipping {user.email or user.id}: No location stored (users need to open app and grant location permission)")
+                    # Log all skipped users for diagnosis
+                    print(f"⏭️  Skipping {user.email or user.id}: No location stored (lat={user.last_location_latitude}, lon={user.last_location_longitude})")
                     continue
                 
                 print(f"🌤️  Pre-priming for {user.email or user.id}...")
