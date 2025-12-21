@@ -334,13 +334,23 @@ def pre_prime_forecasts():
     today = date.today()
     
     try:
-        # Get active users (logged in within last 7 days)
-        cutoff_date = datetime.utcnow() - timedelta(days=7)
+        # Get active users - use multiple criteria to catch all active users:
+        # 1. Users who updated their profile recently (30 days - longer window)
+        # 2. Users who have push tokens (indicates recent app usage)
+        # 3. Users who have location stored (indicates they've used the app)
+        # This ensures we don't miss users who stay logged in but don't trigger profile updates
+        cutoff_date = datetime.utcnow() - timedelta(days=30)  # Extended to 30 days
+        
+        from sqlalchemy import or_
         active_users = db.query(User).filter(
-            User.updated_at >= cutoff_date
+            or_(
+                User.updated_at >= cutoff_date,  # Recently updated profile
+                User.push_notification_token.isnot(None),  # Has push token (recent app usage)
+                User.last_location_latitude.isnot(None)  # Has location stored (used the app)
+            )
         ).all()
         
-        print(f"📊 Found {len(active_users)} active users")
+        print(f"📊 Found {len(active_users)} active users (updated in last 30 days, or have push token, or have location)")
         
         # Count reasons for skipping
         skipped_no_access = 0
