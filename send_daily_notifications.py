@@ -131,7 +131,7 @@ def send_push_notification(
             for key, value in data.items():
                 payload[key] = value
         
-        # Send to APNs
+        # Send to APNs (requires HTTP/2, so use httpx instead of requests)
         url = f"{APNS_BASE_URL}/3/device/{device_token}"
         headers = {
             "Authorization": f"Bearer {apns_token}",
@@ -141,7 +141,32 @@ def send_push_notification(
             "Content-Type": "application/json"
         }
         
-        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        # Use httpx for HTTP/2 support (APNs requires HTTP/2)
+        try:
+            # Check if HTTP/2 is available
+            try:
+                import h2
+                http2_available = True
+            except ImportError:
+                http2_available = False
+                print("⚠️ HTTP/2 support not available - h2 package not installed")
+            
+            with httpx.Client(http2=True, timeout=10.0) as client:
+                response = client.post(url, json=payload, headers=headers)
+        except httpx.HTTPError as e:
+            # httpx-specific errors
+            error_message = f"httpx HTTP error: {str(e)}"
+            print(f"❌ {error_message}")
+            if return_error:
+                return (False, error_message)
+            return False
+        except Exception as e:
+            # Fallback for other errors
+            error_message = f"Connection error: {str(e)}"
+            print(f"❌ {error_message}")
+            if return_error:
+                return (False, error_message)
+            return False
         
         if response.status_code == 200:
             if return_error:
