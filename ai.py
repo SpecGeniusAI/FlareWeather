@@ -2772,9 +2772,9 @@ BAD EXAMPLE (repeating):
             if risk.upper() == "HIGH":
                 descriptor = random.choice([d for d in high_fallbacks if d not in used_descriptors] or high_fallbacks)
             elif risk.upper() == "MODERATE":
-                descriptor = random.choice(moderate_fallbacks)
+                descriptor = random.choice([d for d in moderate_fallbacks if d not in used_descriptors] or moderate_fallbacks)
             else:
-                descriptor = random.choice(low_fallbacks)
+                descriptor = random.choice([d for d in low_fallbacks if d not in used_descriptors] or low_fallbacks)
         
         # Ensure descriptor follows the format: "Risk Level — descriptor"
         if not descriptor.startswith(("Low flare risk", "Moderate risk", "High risk")):
