@@ -2293,7 +2293,15 @@ def generate_weekly_forecast_insight(
         pressure_trend_note = ""
         if pressure_trend and "drop" in pressure_trend.lower():
             pressure_trend_note = f" Pressure is {pressure_trend} later today, which will affect tomorrow's conditions - tomorrow should reflect this change, not show Low risk."
-        today_context = f"\n\nIMPORTANT CONTEXT: {today_risk_context}{pressure_trend_note} Consider this when determining risk levels for the week ahead. If today has variability (Moderate/High risk) or pressure is dropping, the week may show a transition pattern rather than all steady conditions."
+        
+        # Make today's context much more explicit and forceful
+        risk_level = today_risk_context.lower()
+        if "high" in risk_level:
+            today_context = f"\n\nCRITICAL CONTEXT: {today_risk_context} This means conditions TODAY are challenging. The week ahead should reflect this - you MUST include Moderate and High risk days. DO NOT show all Low risk days when today is High risk.{pressure_trend_note} If today is High risk, at least 3-4 days this week should also be Moderate or High risk. The weather patterns are NOT all stable."
+        elif "moderate" in risk_level:
+            today_context = f"\n\nIMPORTANT CONTEXT: {today_risk_context} This means conditions TODAY have variability. The week ahead should reflect this - include Moderate risk days, not all Low.{pressure_trend_note} If today is Moderate risk, at least 2-3 days this week should also be Moderate or High risk."
+        else:
+            today_context = f"\n\nIMPORTANT CONTEXT: {today_risk_context}{pressure_trend_note} Consider this when determining risk levels for the week ahead."
     
     prompt = f"""You are FlareWeather, a calm weekly planning assistant for weather-sensitive people.
 
@@ -2333,7 +2341,9 @@ ABSOLUTE REQUIREMENT: You MUST use the exact risk level from the [SUGGESTED RISK
 - If the hint says "Moderate", you MUST use "Moderate risk" for that day - NO EXCEPTIONS  
 - Only use "Low risk" if the hint explicitly says "Low"
 
-VALIDATION: Before returning your response, verify that you used the exact risk levels from the [SUGGESTED RISK] hints. If you see "Moderate" or "High" in the hints, those days MUST show "Moderate risk" or "High risk" in your output, NOT "Low risk".
+CRITICAL: If you see multiple [SUGGESTED RISK: Moderate] or [SUGGESTED RISK: High] hints in the weather data, you MUST use those risk levels. DO NOT change them to Low. The risk calculation is based on actual weather data and your conditions - trust it.
+
+VALIDATION: Before returning your response, verify that you used the exact risk levels from the [SUGGESTED RISK] hints. If you see "Moderate" or "High" in the hints, those days MUST show "Moderate risk" or "High risk" in your output, NOT "Low risk". If you return all Low risk when hints say Moderate/High, your response will be rejected and replaced.
 
 DO NOT default to Low risk for all days. The risk calculation considers your specific sensitivities ({diagnoses_str}) and all weather factors, not just pressure. The suggested risks are calculated from real weather data - trust them and use them exactly as provided.
 
@@ -2595,23 +2605,26 @@ BAD EXAMPLE (repeating):
     has_steady_conditions = any("steady conditions" in str(entry.get("descriptor", "")).lower() for entry in patterns)
     
     # CRITICAL: If we have forced hints, ALWAYS validate and replace if AI ignored them
-    # More aggressive: replace if more than 2 Low days (since we force 5 Moderate/High)
+    # EXTREMELY aggressive: replace if more than 1 Low day when we have forced hints (we force 5 Moderate/High)
     # Also replace if AI didn't match the forced risk hints
     ai_ignored_hints = False
     if len(day_risk_hints) > 0 and len(patterns) == len(day_risk_hints):
         # Check if AI risk levels match forced hints
         mismatches = 0
         for i, (hint, pattern) in enumerate(zip(day_risk_hints, patterns)):
-            pattern_risk = pattern.get("risk", "Low").strip()
-            if hint == "High" and pattern_risk.lower() != "high":
+            pattern_risk = pattern.get("risk", "Low").strip().lower()
+            if hint == "High" and pattern_risk != "high":
                 mismatches += 1
-            elif hint == "Moderate" and pattern_risk.lower() != "moderate":
+            elif hint == "Moderate" and pattern_risk != "moderate":
                 mismatches += 1
-        if mismatches > 2:  # If AI ignored more than 2 forced hints, replace
+        # If AI ignored ANY forced hints, replace (very aggressive)
+        if mismatches > 0:
             ai_ignored_hints = True
-            print(f"⚠️ AI ignored {mismatches} forced risk hints - will replace")
+            print(f"⚠️ AI ignored {mismatches} forced risk hints (out of {moderate_hints + high_hints} forced) - will replace with fallbacks")
     
-    should_replace = (all_low_in_response or low_count_in_response > 2 or has_steady_conditions or ai_ignored_hints) and len(day_risk_hints) > 0 and (moderate_hints > 0 or high_hints > 0)
+    # EXTREMELY aggressive replacement: replace if we have ANY forced hints and AI didn't match them
+    # OR if more than 1 Low day (since we force 5 Moderate/High, only 2 Low max)
+    should_replace = (all_low_in_response or low_count_in_response > 1 or has_steady_conditions or ai_ignored_hints) and len(day_risk_hints) > 0 and (moderate_hints > 0 or high_hints > 0)
     
     if should_replace:
         reason = []
