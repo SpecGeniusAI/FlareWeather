@@ -2228,23 +2228,80 @@ def generate_weekly_forecast_insight(
         prev_temp = temp
         prev_humidity = humidity
     
-    # CRITICAL: ALWAYS force variation - ensure at least 3-4 days are Moderate/High
-    # Don't wait for all Low - be proactive about variation
+    # Count risk levels from calculated risks (based on actual weather data)
     all_low = all(risk == "Low" for _, risk, _, _ in calculated_risks)
     low_count = sum(1 for _, risk, _, _ in calculated_risks if risk == "Low")
     moderate_count = sum(1 for _, risk, _, _ in calculated_risks if risk == "Moderate")
     high_count = sum(1 for _, risk, _, _ in calculated_risks if risk == "High")
     
-    # Force variation if we have fewer than 5 Moderate/High days (extremely aggressive - ensure meaningful variation)
-    # Only allow 2 Low days max out of 7 days
-    needs_variation = (moderate_count + high_count) < 5
+    print(f"📊 Risk summary (from actual weather data): {high_count} High, {moderate_count} Moderate, {low_count} Low")
     
-    print(f"📊 Risk summary: {high_count} High, {moderate_count} Moderate, {low_count} Low. Needs variation: {needs_variation}")
+    # Only force variation when there's actual evidence of weather variability:
+    # 1. Today is High/Moderate risk (context suggests ongoing variability)
+    # 2. There are actual weather changes in the forecast (pressure drops, temp swings, etc.)
+    # 3. There are problematic absolute conditions (high humidity, low pressure, etc.)
     
-    if needs_variation and len(calculated_risks) > 0:
-        print(f"⚠️ Only {moderate_count} Moderate and {high_count} High days - forcing variation (need at least 3)")
-        # Find days with largest absolute changes OR problematic absolute conditions
-        # Sort by approximate change magnitude OR absolute condition severity
+    should_force_variation = False
+    force_reason = []
+    
+    # Check if today's context suggests variability
+    if today_risk_context:
+        if "high" in today_risk_context.lower():
+            should_force_variation = True
+            force_reason.append("today is High risk")
+        elif "moderate" in today_risk_context.lower() and all_low:
+            # If today is Moderate but all days are Low, that's suspicious - check for actual changes
+            should_force_variation = True
+            force_reason.append("today is Moderate risk but forecast shows all Low")
+    
+    # Check if there are actual weather changes that warrant Moderate/High risk
+    # Look for days with significant changes or problematic conditions
+    def has_significant_weather_changes():
+        """Check if forecast has actual weather changes that would justify Moderate/High risk."""
+        significant_changes = 0
+        for _, _, _, day_data in calculated_risks:
+            temp = day_data.get("temperature", 0)
+            humidity = day_data.get("humidity", 0)
+            pressure = day_data.get("pressure", baseline_pressure if baseline_pressure else 1013)
+            
+            # Check for significant changes from baseline
+            pressure_delta = abs(pressure - (baseline_pressure if baseline_pressure else 1013))
+            temp_delta = abs(temp - (baseline_temp if baseline_temp else 20))
+            humidity_delta = abs(humidity - (baseline_humidity if baseline_humidity else 50))
+            
+            # Check for problematic absolute conditions
+            has_problematic_conditions = (
+                humidity >= 75 or humidity <= 35 or  # Extreme humidity
+                (temp <= 5 and humidity >= 65) or  # Cold and damp
+                temp >= 30 or  # Very hot
+                pressure <= 1000 or pressure >= 1030  # Extreme pressure
+            )
+            
+            # Check for significant changes
+            has_significant_changes = (
+                pressure_delta >= 3 or  # 3+ hPa change
+                temp_delta >= 4 or  # 4+ °C change
+                humidity_delta >= 15  # 15+ % change
+            )
+            
+            if has_problematic_conditions or has_significant_changes:
+                significant_changes += 1
+        
+        return significant_changes
+    
+    significant_weather_days = has_significant_weather_changes()
+    
+    # Only force variation if:
+    # - Today is High/Moderate AND forecast shows all Low (inconsistent)
+    # - OR there are actual significant weather changes but they're all showing as Low (calculation might be too conservative)
+    if all_low and significant_weather_days >= 3:
+        should_force_variation = True
+        force_reason.append(f"{significant_weather_days} days have significant weather changes but all showing Low")
+    
+    if should_force_variation and len(calculated_risks) > 0:
+        print(f"⚠️ Forcing variation based on actual weather evidence: {', '.join(force_reason)}")
+        
+        # Find days with largest changes or problematic conditions (based on actual data)
         def calculate_change_magnitude(day_data_tuple):
             _, _, _, day_data = day_data_tuple
             temp = day_data.get("temperature", 0)
@@ -2256,7 +2313,7 @@ def generate_weekly_forecast_insight(
             temp_delta = abs(temp - (baseline_temp if baseline_temp else 20))
             humidity_delta = abs(humidity - (baseline_humidity if baseline_humidity else 50))
             
-            # Also consider absolute conditions that are problematic even if stable
+            # Consider absolute conditions that are problematic
             absolute_severity = 0
             if humidity >= 75:  # High humidity is problematic
                 absolute_severity += 2
@@ -2274,43 +2331,50 @@ def generate_weekly_forecast_insight(
             # Weighted sum of changes + absolute severity
             return (pressure_delta * 2 + temp_delta * 1.5 + humidity_delta * 0.5) + absolute_severity
         
-        # Sort by change magnitude (descending)
+        # Sort by change magnitude (descending) - only days with actual changes
         sorted_by_change = sorted(calculated_risks, key=calculate_change_magnitude, reverse=True)
         
-        # Force 5-6 days to Moderate/High (extremely aggressive - ensure meaningful variation)
-        # For 7 days, force at least 5 to be Moderate or High (only 2 Low days max)
-        # Calculate how many we need to force
-        current_moderate_high = moderate_count + high_count
-        needed = max(5 - current_moderate_high, 0)  # Need at least 5 total (only 2 Low max)
-        forced_count = min(max(needed, 5), len(sorted_by_change))  # Force at least 5, up to 6 days max
-        print(f"🔧 Forcing {forced_count} days to Moderate/High risk (currently have {current_moderate_high} Moderate/High)")
-        
-        for i in range(forced_count):
-            label, _, _, day_data = sorted_by_change[i]
-            change_mag = calculate_change_magnitude(sorted_by_change[i])
+        # Only force days that have actual weather changes (change_magnitude > 1.5)
+        # Don't force days with truly stable conditions
+        forced_count = 0
+        for i, day_tuple in enumerate(sorted_by_change):
+            label, orig_risk, _, day_data = day_tuple
+            change_mag = calculate_change_magnitude(day_tuple)
             
-            # Update the risk hint for this day - extremely aggressive
-            # Make it High if change is even small; otherwise Moderate (very low threshold)
-            forced_risk = "High" if change_mag > 2 else "Moderate"  # Lowered threshold from 4 to 2 for maximum variation
-            
-            # Find and update in context_lines and day_risk_hints
-            for j, (orig_label, orig_risk, _, _) in enumerate(calculated_risks):
-                if orig_label == label:
-                    # Update the hint
-                    day_risk_hints[j] = forced_risk
-                    # Update context line
-                    for k, line in enumerate(context_lines):
-                        if line.startswith(f"- {label}:"):
-                            # Replace the risk in the context line
-                            context_lines[k] = line.replace(f"[SUGGESTED RISK: {orig_risk}", f"[SUGGESTED RISK: {forced_risk}")
+            # Only force if there's actual evidence (change or problematic conditions)
+            if change_mag > 1.5:  # Threshold for actual weather significance
+                # Determine risk based on actual change magnitude
+                if change_mag >= 4:
+                    forced_risk = "High"
+                elif change_mag >= 2:
+                    forced_risk = "Moderate"
+                else:
+                    # Small change, keep as Low
+                    continue
+                
+                # Only force if it's currently Low (don't downgrade Moderate/High)
+                if orig_risk == "Low":
+                    # Find and update in context_lines and day_risk_hints
+                    for j, (orig_label, _, _, _) in enumerate(calculated_risks):
+                        if orig_label == label:
+                            # Update the hint
+                            day_risk_hints[j] = forced_risk
+                            # Update context line
+                            for k, line in enumerate(context_lines):
+                                if line.startswith(f"- {label}:"):
+                                    # Replace the risk in the context line
+                                    context_lines[k] = line.replace(f"[SUGGESTED RISK: {orig_risk}", f"[SUGGESTED RISK: {forced_risk}")
+                                    break
+                            print(f"🔧 Forced {label} from Low to {forced_risk} (change magnitude: {change_mag:.1f} - actual weather change)")
+                            forced_count += 1
                             break
-                    print(f"🔧 Forced {label} from Low to {forced_risk} (change magnitude: {change_mag:.1f})")
-                    break
         
         # Log summary of forced changes
         moderate_count = sum(1 for r in day_risk_hints if r == "Moderate")
         high_count = sum(1 for r in day_risk_hints if r == "High")
-        print(f"📊 After forced variation: {high_count} High, {moderate_count} Moderate, {len(day_risk_hints) - moderate_count - high_count} Low")
+        print(f"📊 After forced variation (based on actual weather): {high_count} High, {moderate_count} Moderate, {len(day_risk_hints) - moderate_count - high_count} Low ({forced_count} days forced)")
+    else:
+        print(f"✅ No forced variation needed - risk levels reflect actual weather conditions")
 
     diagnoses_str = ", ".join(user_diagnoses) if user_diagnoses else "weather-sensitive conditions"
     sensitivities_str = ", ".join(user_sensitivities) if user_sensitivities else None
