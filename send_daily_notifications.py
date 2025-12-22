@@ -6,7 +6,7 @@ Simple approach: just sends a notification to open the app (no pre-priming neede
 import os
 import sys
 from datetime import datetime, date
-from typing import Optional
+from typing import Optional, Tuple
 import json
 from dotenv import load_dotenv
 
@@ -96,7 +96,7 @@ def send_push_notification(
     body: str,
     data: Optional[dict] = None,
     return_error: bool = False
-) -> tuple[bool, Optional[str]]:
+):
     """
     Send push notification via APNs.
     
