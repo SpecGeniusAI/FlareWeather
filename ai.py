@@ -1255,7 +1255,7 @@ Generate JSON:
   "daily_insight": {{
     "summary_sentence": "[Weather] which could [impact]. NO 'mild' language - use stronger descriptors for high humidity/pressure changes.",
     "why_line": "Explain mechanism briefly.",
-    "comfort_tip": "Up to 20 words. Eastern medicine. Include source like 'Chinese medicine recommends...'",
+    "comfort_tip": "Complete sentence (up to 20 words). Must be a full sentence with proper grammar and punctuation. Eastern medicine preferred. Include source like 'Chinese medicine recommends...' or 'Ayurveda suggests...'. Example: 'Chinese medicine recommends acupressure on the LI4 point for headache relief.'",
     "sign_off": "One calm sentence."
   }}
 }}
@@ -1367,18 +1367,33 @@ Style: Grade 12 vocab. Tentative language (may, might). Short sentences. NO 'mil
                     daily_summary = f"{_describe_temperature(temperature)} and {_describe_humidity(humidity)} which could create some physiological tension."
 
         # Validate comfort tip: allow generated tips with medical tradition sources (up to 20 words)
+        # Must be a complete sentence with proper grammar and punctuation
         if daily_comfort_tip:
             normalized_tip = daily_comfort_tip.strip()
             word_count = len(normalized_tip.split())
+            
+            # Check if it's a complete sentence (ends with period, exclamation, or question mark)
+            is_complete_sentence = normalized_tip.endswith('.') or normalized_tip.endswith('!') or normalized_tip.endswith('?')
+            
+            # Check if it has proper capitalization (starts with capital letter)
+            has_proper_capitalization = normalized_tip and normalized_tip[0].isupper()
+            
             # Allow tips up to 20 words, and check if it mentions a medical tradition source
             has_medical_source = any(source in normalized_tip.lower() for source in [
                 "western medicine", "chinese medicine", "tcm", "ayurveda", 
                 "traditional chinese", "traditional medicine", "suggests", "recommends"
             ])
+            
             # Allow if it has a medical source and is within word limit, OR if it's in the allowed list
             allowed_normalized = [tip.lower() for tip in ALLOWED_COMFORT_TIPS]
-            if word_count > 20 or (normalized_tip.lower() not in allowed_normalized and not has_medical_source):
-                # Too long or doesn't have medical source and not in allowed list
+            
+            # Reject if: too long, missing medical source (and not in allowed list), incomplete sentence, or improper capitalization
+            if word_count > 20 or (normalized_tip.lower() not in allowed_normalized and not has_medical_source) or not is_complete_sentence or not has_proper_capitalization:
+                # Format issue - reject and use fallback
+                if not is_complete_sentence:
+                    print(f"⚠️ Comfort tip rejected: incomplete sentence (missing punctuation): '{normalized_tip}'")
+                elif not has_proper_capitalization:
+                    print(f"⚠️ Comfort tip rejected: improper capitalization: '{normalized_tip}'")
                 daily_comfort_tip = ""
             else:
                 # Track AI-generated tips to prevent duplicates - check last 30 days
@@ -1450,6 +1465,17 @@ Style: Grade 12 vocab. Tentative language (may, might). Short sentences. NO 'mil
                 # All tips used recently, use a random one anyway (better than nothing)
                 daily_comfort_tip = random.choice(ALLOWED_COMFORT_TIPS)
                 print(f"✅ All tips used recently, using random tip: {daily_comfort_tip[:50]}...")
+        
+        # FINAL VALIDATION: Ensure comfort tip is properly formatted (complete sentence)
+        if daily_comfort_tip:
+            daily_comfort_tip = daily_comfort_tip.strip()
+            # Ensure it ends with punctuation
+            if not daily_comfort_tip.endswith(('.', '!', '?')):
+                daily_comfort_tip = daily_comfort_tip + '.'
+            # Ensure it starts with capital letter
+            if daily_comfort_tip and not daily_comfort_tip[0].isupper():
+                daily_comfort_tip = daily_comfort_tip[0].upper() + daily_comfort_tip[1:]
+            print(f"✅ Final comfort tip (formatted): {daily_comfort_tip}")
     except Exception as exc:  # noqa: BLE001
         print(f"❌ Error generating daily insight JSON: {exc}")
         import traceback
@@ -1478,6 +1504,16 @@ Style: Grade 12 vocab. Tentative language (may, might). Short sentences. NO 'mil
             recent_tips_lower = [t.lower() for t in recent_tips_list]
             available_tips = [tip for tip in ALLOWED_COMFORT_TIPS if tip.lower() not in recent_tips_lower]
             daily_comfort_tip = random.choice(available_tips) if available_tips else random.choice(ALLOWED_COMFORT_TIPS)
+        
+        # FINAL VALIDATION: Ensure comfort tip is properly formatted (complete sentence)
+        if daily_comfort_tip:
+            daily_comfort_tip = daily_comfort_tip.strip()
+            # Ensure it ends with punctuation
+            if not daily_comfort_tip.endswith(('.', '!', '?')):
+                daily_comfort_tip = daily_comfort_tip + '.'
+            # Ensure it starts with capital letter
+            if daily_comfort_tip and not daily_comfort_tip[0].isupper():
+                daily_comfort_tip = daily_comfort_tip[0].upper() + daily_comfort_tip[1:]
 
     if not daily_summary:
         # Generate summary based on calculated risk and conditions
