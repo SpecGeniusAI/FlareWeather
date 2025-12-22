@@ -1386,9 +1386,46 @@ Style: Grade 12 vocab. Tentative language (may, might). Short sentences. NO 'mil
                 tip_lower = normalized_tip.lower()
                 # Get all tips used in the last 30 days (query database if available)
                 recent_tips_list = _get_recent_tips(days=30, db_session=db_session)
-                # Check if this exact tip (or very similar) was recently used
-                if any(tip_lower == existing.lower() for existing in recent_tips_list):
+                
+                # Check for similarity: exact match OR same key phrases (to catch variations)
+                def tips_are_similar(tip1: str, tip2: str) -> bool:
+                    """Check if two tips are similar (exact match or share key phrases)."""
+                    tip1_lower = tip1.lower()
+                    tip2_lower = tip2.lower()
+                    
+                    # Exact match
+                    if tip1_lower == tip2_lower:
+                        return True
+                    
+                    # Extract key phrases (acupressure points, techniques, etc.)
+                    # Common patterns that indicate same tip even if wording differs:
+                    key_phrases = [
+                        "li4", "gb20", "baihui", "yongquan", "hegu", "zusanli", "neiguan", "fengchi",
+                        "acupressure", "tai-chi", "qigong", "ginger tea", "foot soaks", "moxibustion",
+                        "cupping", "warm compresses", "neck stretches", "breathing exercises"
+                    ]
+                    
+                    # Check if both tips mention the same key phrase
+                    for phrase in key_phrases:
+                        if phrase in tip1_lower and phrase in tip2_lower:
+                            # Same technique/point - likely the same tip
+                            return True
+                    
+                    # Check for very high word overlap (80%+ of words match)
+                    words1 = set(tip1_lower.split())
+                    words2 = set(tip2_lower.split())
+                    if len(words1) > 0 and len(words2) > 0:
+                        overlap = len(words1.intersection(words2))
+                        total_unique = len(words1.union(words2))
+                        if total_unique > 0 and (overlap / total_unique) > 0.7:  # 70% word overlap
+                            return True
+                    
+                    return False
+                
+                # Check if this tip (or very similar) was recently used
+                if any(tips_are_similar(tip_lower, existing.lower()) for existing in recent_tips_list):
                     # This tip was recently used (within last 30 days), regenerate it
+                    print(f"⚠️ Comfort tip too similar to recent tip - rejecting: {normalized_tip[:60]}...")
                     daily_comfort_tip = ""
                 else:
                     # Track this tip as used today
@@ -2376,12 +2413,10 @@ LOW RISK DAYS:
   * "gentle humidity"
   * "smooth conditions"
   * "easy-going pattern"
-  * "soft, steady trend"
   * "low-impact day"
   * "calm weather pattern"
   * "settled weather"
   * "consistent pattern"
-  * "steady trend"
 - FORBIDDEN vague descriptors (DO NOT USE): "more stable", "at ease", "more balanced", "steady conditions", "gentle conditions", "balanced conditions", or any other phrases not in the approved list above
 - CRITICAL: Even if multiple days are Low risk, each MUST have a DIFFERENT descriptor from the approved list. Never use the same descriptor twice in one week.
 
@@ -2540,23 +2575,24 @@ BAD EXAMPLE (repeating):
         print(f"   Day {i}: risk={p.get('risk', 'Low')}, descriptor='{p.get('descriptor', '')[:50]}...'")
 
     # Default fallback patterns using approved descriptors - expanded list for variety
+    # NOTE: "steady conditions" is FORBIDDEN - removed from all fallbacks
     low_fallbacks = [
-        "Low flare risk — steady pressure",
-        "Low flare risk — stable pattern",
+        "Low flare risk — stable pressure",
         "Low flare risk — predictable day",
         "Low flare risk — cool, calm air",
         "Low flare risk — gentle humidity",
         "Low flare risk — smooth conditions",
         "Low flare risk — easy-going pattern",
-        "Low flare risk — soft, steady trend",
         "Low flare risk — low-impact day",
         "Low flare risk — calm weather pattern",
         "Low flare risk — settled weather",
         "Low flare risk — consistent pattern",
-        "Low flare risk — steady trend",
         "Low flare risk — quiet weather day",
         "Low flare risk — unchanging conditions",
-        "Low flare risk — even pressure pattern"
+        "Low flare risk — even pressure pattern",
+        "Low flare risk — balanced conditions",
+        "Low flare risk — comfortable pattern",
+        "Low flare risk — gentle weather day"
     ]
     moderate_fallbacks = [
         "Moderate risk — noticeable pressure shifts",
@@ -2601,8 +2637,12 @@ BAD EXAMPLE (repeating):
     high_hints = sum(1 for r in day_risk_hints if r == "High")
     
     # ALWAYS check: If we have forced Moderate/High hints but AI returned mostly Low, replace
-    # Also check for "steady conditions" in descriptors - this is forbidden
-    has_steady_conditions = any("steady conditions" in str(entry.get("descriptor", "")).lower() for entry in patterns)
+    # Also check for "steady conditions" or similar forbidden phrases in descriptors
+    forbidden_phrases = ["steady conditions", "steady pattern", "steady trend", "all steady", "all low"]
+    has_forbidden_phrases = any(
+        any(phrase in str(entry.get("descriptor", "")).lower() for phrase in forbidden_phrases)
+        for entry in patterns
+    )
     
     # CRITICAL: If we have forced hints, ALWAYS validate and replace if AI ignored them
     # EXTREMELY aggressive: replace if more than 1 Low day when we have forced hints (we force 5 Moderate/High)
@@ -2624,13 +2664,15 @@ BAD EXAMPLE (repeating):
     
     # EXTREMELY aggressive replacement: replace if we have ANY forced hints and AI didn't match them
     # OR if more than 1 Low day (since we force 5 Moderate/High, only 2 Low max)
-    should_replace = (all_low_in_response or low_count_in_response > 1 or has_steady_conditions or ai_ignored_hints) and len(day_risk_hints) > 0 and (moderate_hints > 0 or high_hints > 0)
+    # OR if forbidden phrases like "steady conditions" appear
+    should_replace = (all_low_in_response or low_count_in_response > 1 or has_forbidden_phrases or ai_ignored_hints) and len(day_risk_hints) > 0 and (moderate_hints > 0 or high_hints > 0)
     
     if should_replace:
         reason = []
         if all_low_in_response: reason.append("all Low")
-        if low_count_in_response > 4: reason.append(f"{low_count_in_response} Low days")
-        if has_steady_conditions: reason.append("forbidden 'steady conditions'")
+        if low_count_in_response > 1: reason.append(f"{low_count_in_response} Low days (max 2 allowed)")
+        if has_forbidden_phrases: reason.append("forbidden phrases like 'steady conditions'")
+        if ai_ignored_hints: reason.append(f"AI ignored {mismatches} forced risk hints")
         print(f"❌ AI ignored forced risks ({moderate_hints} Moderate, {high_hints} High hints provided, but: {', '.join(reason)}). Replacing with fallbacks that respect suggested risks.")
         # Replace patterns with fallbacks that match the forced risk hints
         # Ensure unique descriptors by tracking used ones
@@ -2690,8 +2732,8 @@ BAD EXAMPLE (repeating):
         
         # Fallback to old format if needed for backward compatibility
         if not descriptor:
-            weather_pattern = entry.get("weather_pattern", "steady pattern")
-            body_feel = entry.get("body_feel", "may feel steady on the body")
+            weather_pattern = entry.get("weather_pattern", "stable pattern")
+            body_feel = entry.get("body_feel", "may feel stable on the body")
             if weather_pattern and body_feel:
                 descriptor = f"{weather_pattern} — {body_feel}"
             else:
