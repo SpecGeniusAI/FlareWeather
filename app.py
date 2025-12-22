@@ -2109,11 +2109,13 @@ async def send_test_notification(
                 "missing_config": missing
             }
 
-        success = send_push_notification(
+        # Call send_push_notification with return_error=True to get error details
+        success, apns_error = send_push_notification(
             device_token=user.push_notification_token,
             title=title,
             body=body,
-            data=data
+            data=data,
+            return_error=True
         )
 
         if success:
@@ -2129,14 +2131,19 @@ async def send_test_notification(
             import os
             apns_configured = bool(APNS_KEY_ID and APNS_TEAM_ID and (APNS_KEY_CONTENT or (APNS_KEY_PATH and os.path.exists(APNS_KEY_PATH))))
             
-            return {
+            response = {
                 "success": False,
-                "message": f"Failed to send notification to {email}. Check Railway logs for APNs error details.",
+                "message": f"Failed to send notification to {email}",
                 "has_token": True,
                 "notifications_enabled": True,
                 "apns_configured": apns_configured,
                 "token_preview": f"{user.push_notification_token[:20]}..." if user.push_notification_token else None
             }
+            
+            if apns_error:
+                response["apns_error"] = apns_error[:500]  # Limit length
+            
+            return response
             
     except HTTPException:
         raise

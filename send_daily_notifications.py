@@ -94,18 +94,23 @@ def send_push_notification(
     device_token: str,
     title: str,
     body: str,
-    data: Optional[dict] = None
-) -> bool:
+    data: Optional[dict] = None,
+    return_error: bool = False
+) -> tuple[bool, Optional[str]]:
     """
     Send push notification via APNs.
     
     Returns:
         True if successful, False otherwise
     """
+    error_message = None
     try:
         # Get APNs token
         apns_token = get_apns_token()
         if not apns_token:
+            error_message = "Failed to generate APNs JWT token"
+            if return_error:
+                return (False, error_message)
             return False
         
         # Build notification payload
@@ -138,27 +143,38 @@ def send_push_notification(
         response = requests.post(url, json=payload, headers=headers, timeout=10)
         
         if response.status_code == 200:
+            if return_error:
+                return (True, None)
             return True
         else:
             error_details = response.text
             try:
                 error_json = response.json()
                 if "reason" in error_json:
-                    error_details = f"{response.status_code} - Reason: {error_json['reason']}"
+                    error_details = f"HTTP {response.status_code} - Reason: {error_json['reason']}"
+                    if "description" in error_json:
+                        error_details += f" - {error_json['description']}"
             except:
-                pass
+                error_details = f"HTTP {response.status_code} - {response.text[:200]}"
             
-            print(f"❌ APNs error: {response.status_code} - {error_details}")
+            error_message = error_details
+            print(f"❌ APNs error: {error_details}")
             print(f"   Device token: {device_token[:20]}...")
             print(f"   APNs URL: {url}")
             print(f"   Bundle ID: {APNS_BUNDLE_ID}")
             print(f"   Using sandbox: {APNS_USE_SANDBOX}")
+            
+            if return_error:
+                return (False, error_message)
             return False
             
     except Exception as e:
+        error_message = f"Exception: {str(e)}"
         print(f"❌ Error sending push notification: {e}")
         import traceback
         traceback.print_exc()
+        if return_error:
+            return (False, error_message)
         return False
 
 
