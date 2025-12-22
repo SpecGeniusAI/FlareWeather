@@ -201,40 +201,23 @@ struct HomeView: View {
     
     // Handle location change
     private func handleLocationChange(_ new: CLLocation?) {
-        guard let location = new else { return }
-
-        // Check if location actually changed significantly (more than 1km)
-        // BUT: Always refresh if we don't have a previous location (first time or manual change)
-        // Also: If user manually changed location, always refresh regardless of distance
-        var shouldRefresh = true
-        if let oldLocation = locationManager.location {
-            let distance = location.distance(from: oldLocation)
-            if distance < 1000 {
-                // Only skip if it's a small automatic change (not a manual location change)
-                // Manual location changes should always trigger refresh
-                print("⏭️ HomeView: Location change too small (\(Int(distance))m), skipping automatic refresh")
-                shouldRefresh = false
-            }
-        }
-        
-        // Always refresh if location was manually set (check if manual location is set)
-        if !locationManager.useDeviceLocation && locationManager.manualLocationName != nil {
-            shouldRefresh = true
-            print("📍 HomeView: Manual location detected - forcing refresh")
+        guard let location = new else { 
+            print("📍 HomeView: Location changed to nil, skipping")
+            return 
         }
 
-        if shouldRefresh {
-            print("🌤️ HomeView: Location changed to \(location.coordinate.latitude), \(location.coordinate.longitude), fetching weather...")
-            Task {
-                // Force refresh when location changes to ensure we get fresh data
-                await weatherService.fetchWeatherData(for: location, forceRefresh: true)
-                // Also fetch hourly forecast for new location
-                await weatherService.fetchHourlyForecast(for: location)
-                // Refresh analysis with new location
-                await refreshAnalysis(force: true, includeWeeklyForecast: false)
-                // Send location to backend if user is logged in
-                await sendLocationToBackend(location: location)
-            }
+        // Always refresh on location change - don't skip based on distance
+        // Manual location changes and significant device location changes both need refresh
+        print("🌤️ HomeView: Location changed to \(location.coordinate.latitude), \(location.coordinate.longitude), fetching weather...")
+        Task {
+            // Force refresh when location changes to ensure we get fresh data
+            await weatherService.fetchWeatherData(for: location, forceRefresh: true)
+            // Also fetch hourly forecast for new location
+            await weatherService.fetchHourlyForecast(for: location)
+            // Refresh analysis with new location
+            await refreshAnalysis(force: true, includeWeeklyForecast: false)
+            // Send location to backend if user is logged in
+            await sendLocationToBackend(location: location)
         }
     }
     

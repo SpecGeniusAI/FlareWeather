@@ -1050,28 +1050,23 @@ struct LocationSettingsView: View {
             DispatchQueue.main.async {
                 // Store old location to force change detection
                 let oldLocation = self.locationManager.location
-                self.locationManager.location = location
-                // Also reload to ensure it's properly set
-                self.locationManager.loadManualLocation()
-                print("✅ Saved manual location: \(locationToSave) at \(location.coordinate.latitude), \(location.coordinate.longitude)")
                 
-                // Force a location change notification by temporarily setting to nil then back
-                // This ensures HomeView detects the change even if coordinates are similar
-                if let oldLoc = oldLocation {
-                    let distance = location.distance(from: oldLoc)
-                    if distance < 1000 {
-                        // If distance is small, force update by clearing and resetting
-                        print("📍 Forcing location update (distance: \(Int(distance))m)")
-                        self.locationManager.location = nil
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                            self.locationManager.location = location
-                        }
+                // Force a location change by temporarily setting to nil then to new location
+                // This ensures HomeView detects the change regardless of distance
+                print("📍 Forcing location update to: \(locationToSave)")
+                self.locationManager.location = nil
+                
+                // Small delay to ensure nil is processed, then set new location
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    self.locationManager.location = location
+                    // Also reload to ensure it's properly set
+                    self.locationManager.loadManualLocation()
+                    print("✅ Saved manual location: \(locationToSave) at \(location.coordinate.latitude), \(location.coordinate.longitude)")
+                    
+                    // Send location to backend if user is logged in
+                    Task {
+                        await self.sendLocationToBackend(location: location, locationName: locationToSave)
                     }
-                }
-                
-                // Send location to backend if user is logged in
-                Task {
-                    await self.sendLocationToBackend(location: location, locationName: locationToSave)
                 }
             }
         }
