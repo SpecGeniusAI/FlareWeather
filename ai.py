@@ -2245,14 +2245,20 @@ def generate_weekly_forecast_insight(
     force_reason = []
     
     # Check if today's context suggests variability
+    today_is_high = False
+    today_is_moderate = False
     if today_risk_context:
-        if "high" in today_risk_context.lower():
+        today_risk_lower = today_risk_context.lower()
+        if "high" in today_risk_lower:
+            today_is_high = True
             should_force_variation = True
-            force_reason.append("today is High risk")
-        elif "moderate" in today_risk_context.lower() and all_low:
-            # If today is Moderate but all days are Low, that's suspicious - check for actual changes
-            should_force_variation = True
-            force_reason.append("today is Moderate risk but forecast shows all Low")
+            force_reason.append("today is High risk - forecast should reflect this")
+        elif "moderate" in today_risk_lower:
+            today_is_moderate = True
+            # If today is Moderate but forecast shows all Low, that's inconsistent
+            if all_low or (moderate_count + high_count) < 2:
+                should_force_variation = True
+                force_reason.append("today is Moderate risk but forecast shows insufficient variation")
     
     # Check if there are actual weather changes that warrant Moderate/High risk
     # Look for days with significant changes or problematic conditions
@@ -2291,9 +2297,16 @@ def generate_weekly_forecast_insight(
     
     significant_weather_days = has_significant_weather_changes()
     
-    # Only force variation if:
-    # - Today is High/Moderate AND forecast shows all Low (inconsistent)
-    # - OR there are actual significant weather changes but they're all showing as Low (calculation might be too conservative)
+    # If today is High risk, we need at least 3-4 Moderate/High days in the forecast
+    # If today is Moderate risk, we need at least 2-3 Moderate/High days
+    if today_is_high and (moderate_count + high_count) < 3:
+        should_force_variation = True
+        force_reason.append(f"today is High risk but only {moderate_count + high_count} Moderate/High days (need at least 3)")
+    elif today_is_moderate and (moderate_count + high_count) < 2:
+        should_force_variation = True
+        force_reason.append(f"today is Moderate risk but only {moderate_count + high_count} Moderate/High days (need at least 2)")
+    
+    # Also check if there are actual significant weather changes but they're all showing as Low
     if all_low and significant_weather_days >= 3:
         should_force_variation = True
         force_reason.append(f"{significant_weather_days} days have significant weather changes but all showing Low")
@@ -2336,15 +2349,26 @@ def generate_weekly_forecast_insight(
         
         # Only force days that have actual weather changes (change_magnitude > 1.5)
         # Don't force days with truly stable conditions
+        # BUT: If today is High risk, be more aggressive to ensure forecast reflects this
         forced_count = 0
+        target_moderate_high = 3 if today_is_high else (2 if today_is_moderate else 0)
+        current_moderate_high_after_force = moderate_count + high_count
+        
         for i, day_tuple in enumerate(sorted_by_change):
+            # If we've reached our target and today isn't High/Moderate, stop forcing
+            if not today_is_high and not today_is_moderate and current_moderate_high_after_force >= target_moderate_high:
+                break
+            
             label, orig_risk, _, day_data = day_tuple
             change_mag = calculate_change_magnitude(day_tuple)
             
             # Only force if there's actual evidence (change or problematic conditions)
-            if change_mag > 1.5:  # Threshold for actual weather significance
+            # Lower threshold if today is High risk (be more aggressive)
+            threshold = 1.0 if today_is_high else 1.5
+            if change_mag > threshold:  # Threshold for actual weather significance
                 # Determine risk based on actual change magnitude
-                if change_mag >= 4:
+                # If today is High, be more likely to assign High risk
+                if change_mag >= 4 or (today_is_high and change_mag >= 2.5):
                     forced_risk = "High"
                 elif change_mag >= 2:
                     forced_risk = "Moderate"
@@ -2367,6 +2391,10 @@ def generate_weekly_forecast_insight(
                                     break
                             print(f"🔧 Forced {label} from Low to {forced_risk} (change magnitude: {change_mag:.1f} - actual weather change)")
                             forced_count += 1
+                            current_moderate_high_after_force += 1
+                            # Stop if we've reached target (unless today is High and we need more)
+                            if current_moderate_high_after_force >= target_moderate_high and not today_is_high:
+                                break
                             break
         
         # Log summary of forced changes
