@@ -50,10 +50,27 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             return
         }
         
-        // Get backend URL
-        guard let backendURL = Bundle.main.object(forInfoDictionaryKey: "BackendURL") as? String,
-              let url = URL(string: "\(backendURL)/user/push-token") else {
-            print("❌ Invalid backend URL")
+        // Get backend URL - try multiple sources
+        var backendURL: String? = nil
+        
+        // Try Info.plist first
+        if let url = Bundle.main.object(forInfoDictionaryKey: "BackendURL") as? String, !url.isEmpty {
+            backendURL = url
+            print("✅ Found BackendURL in Info.plist: \(url)")
+        }
+        // Try environment variable (for Xcode scheme)
+        else if let url = ProcessInfo.processInfo.environment["BACKEND_URL"], !url.isEmpty {
+            backendURL = url
+            print("✅ Found BackendURL in environment: \(url)")
+        }
+        // Fallback to hardcoded production URL
+        else {
+            backendURL = "https://flareweather-production.up.railway.app"
+            print("⚠️ BackendURL not found in Info.plist or environment, using fallback: \(backendURL!)")
+        }
+        
+        guard let url = URL(string: "\(backendURL!)/user/push-token") else {
+            print("❌ Invalid backend URL: \(backendURL ?? "nil")")
             return
         }
         
@@ -64,6 +81,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         
         let body = ["push_token": token]
         request.httpBody = try? JSONEncoder().encode(body)
+        
+        print("📤 Sending push token to: \(url.absoluteString)")
         
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
