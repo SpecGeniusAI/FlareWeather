@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from database import SessionLocal, User, init_db
 import pytz
 import requests
+import httpx
 
 load_dotenv()
 
