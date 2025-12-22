@@ -2085,27 +2085,57 @@ async def send_test_notification(
             "type": "daily_forecast_reminder",
             "date": str(date_type.today())
         }
+
+        # Check APNs configuration first
+        from send_daily_notifications import get_apns_token, APNS_KEY_ID, APNS_TEAM_ID, APNS_KEY_CONTENT, APNS_KEY_PATH
         
+        apns_token = get_apns_token()
+        if not apns_token:
+            # Check what's missing
+            missing = []
+            if not APNS_KEY_ID:
+                missing.append("APNS_KEY_ID")
+            if not APNS_TEAM_ID:
+                missing.append("APNS_TEAM_ID")
+            if not APNS_KEY_CONTENT and (not APNS_KEY_PATH or not os.path.exists(APNS_KEY_PATH)):
+                missing.append("APNS_KEY_CONTENT or APNS_KEY_PATH")
+            
+            return {
+                "success": False,
+                "message": f"APNs not configured. Missing: {', '.join(missing)}",
+                "has_token": True,
+                "notifications_enabled": True,
+                "apns_configured": False,
+                "missing_config": missing
+            }
+
         success = send_push_notification(
             device_token=user.push_notification_token,
             title=title,
             body=body,
             data=data
         )
-        
+
         if success:
             return {
                 "success": True,
                 "message": f"Test notification sent to {email}",
                 "has_token": True,
-                "notifications_enabled": True
+                "notifications_enabled": True,
+                "apns_configured": True
             }
         else:
+            # Try to get more error details
+            import os
+            apns_configured = bool(APNS_KEY_ID and APNS_TEAM_ID and (APNS_KEY_CONTENT or (APNS_KEY_PATH and os.path.exists(APNS_KEY_PATH))))
+            
             return {
                 "success": False,
-                "message": f"Failed to send notification to {email}",
+                "message": f"Failed to send notification to {email}. Check Railway logs for APNs error details.",
                 "has_token": True,
-                "notifications_enabled": True
+                "notifications_enabled": True,
+                "apns_configured": apns_configured,
+                "token_preview": f"{user.push_notification_token[:20]}..." if user.push_notification_token else None
             }
             
     except HTTPException:

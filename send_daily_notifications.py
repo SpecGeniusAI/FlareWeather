@@ -140,7 +140,19 @@ def send_push_notification(
         if response.status_code == 200:
             return True
         else:
-            print(f"❌ APNs error: {response.status_code} - {response.text}")
+            error_details = response.text
+            try:
+                error_json = response.json()
+                if "reason" in error_json:
+                    error_details = f"{response.status_code} - Reason: {error_json['reason']}"
+            except:
+                pass
+            
+            print(f"❌ APNs error: {response.status_code} - {error_details}")
+            print(f"   Device token: {device_token[:20]}...")
+            print(f"   APNs URL: {url}")
+            print(f"   Bundle ID: {APNS_BUNDLE_ID}")
+            print(f"   Using sandbox: {APNS_USE_SANDBOX}")
             return False
             
     except Exception as e:
