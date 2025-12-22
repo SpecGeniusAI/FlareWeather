@@ -2748,9 +2748,10 @@ BAD EXAMPLE (repeating):
         descriptor = _filter_app_messages(descriptor) or descriptor
         
         # VALIDATION: Reject vague descriptors not in approved list
+        # Includes "steady conditions", "steady pattern", "steady trend" - all forbidden
         vague_forbidden = [
-            "more stable", "at ease", "more balanced", "steady conditions", 
-            "gentle conditions", "balanced conditions", "more predictable",
+            "more stable", "at ease", "more balanced", "steady conditions", "steady pattern", "steady trend",
+            "gentle conditions", "balanced conditions", "more predictable", "all steady", "all low",
             "easier day", "calmer day", "better conditions", "a bit easier",
             "bit easier", "easier", "slightly easier", "somewhat easier",
             "a bit achy", "bit achy", "achy", "slightly uncomfortable",
