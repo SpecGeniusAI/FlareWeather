@@ -108,6 +108,29 @@ struct HomeView: View {
             }
         }
         
+        // AGGRESSIVE: Always try to register for notifications and send token
+        // This ensures token is sent even if permission was already granted
+        Task {
+            let center = UNUserNotificationCenter.current()
+            let settings = try? await center.notificationSettings()
+            
+            if settings?.authorizationStatus == .authorized {
+                // Permission already granted - re-register to get token
+                print("📱 Re-registering for remote notifications to ensure token is sent")
+                await MainActor.run {
+                    UIApplication.shared.registerForRemoteNotifications()
+                }
+                // Try sending token multiple times with delays
+                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+                AppDelegate.sendPushTokenIfNeeded()
+                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 more seconds
+                AppDelegate.sendPushTokenIfNeeded()
+            }
+        }
+        
+        // Also send push token if user is logged in and token exists
+        AppDelegate.checkAndSendTokenOnLaunch()
+        
         // Initialize profile hashes on first appear
         if lastDiagnosesHash == nil {
             lastDiagnosesHash = getUserProfileHash()
@@ -205,7 +228,7 @@ struct HomeView: View {
     // Send location to backend
     private func sendLocationToBackend(location: CLLocation) async {
         guard authManager.isAuthenticated,
-              let authToken = authManager.authToken else {
+              let authToken = authManager.accessToken else {
             return
         }
         

@@ -59,21 +59,45 @@ struct FlareWeatherApp: App {
     }
     
     private func requestNotificationPermissions() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
-            if granted {
-                print("✅ Notification permissions granted")
-                // Register for remote notifications on main thread
+        // Check current authorization status first
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            if settings.authorizationStatus == .notDetermined {
+                // Not determined - request permission
+                UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
+                    if granted {
+                        print("✅ Notification permissions granted")
+                        DispatchQueue.main.async {
+                            UIApplication.shared.registerForRemoteNotifications()
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            AppDelegate.sendPushTokenIfNeeded()
+                        }
+                    } else if let error = error {
+                        print("❌ Notification permission error: \(error.localizedDescription)")
+                    } else {
+                        print("⚠️ Notification permissions denied")
+                    }
+                }
+            } else if settings.authorizationStatus == .authorized {
+                // Already authorized - ALWAYS re-register to ensure token is sent to backend
+                // This is critical: if user already granted permission, we need to re-register
+                // to get the token and send it to backend
+                print("✅ Notification permissions already authorized - re-registering to ensure token is sent")
                 DispatchQueue.main.async {
                     UIApplication.shared.registerForRemoteNotifications()
                 }
-                // Also send token if user is already logged in
+                // Try multiple times with delays to ensure token is sent
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     AppDelegate.sendPushTokenIfNeeded()
                 }
-            } else if let error = error {
-                print("❌ Notification permission error: \(error.localizedDescription)")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    AppDelegate.sendPushTokenIfNeeded()
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+                    AppDelegate.sendPushTokenIfNeeded()
+                }
             } else {
-                print("⚠️ Notification permissions denied")
+                print("⚠️ Notification permissions status: \(settings.authorizationStatus.rawValue)")
             }
         }
     }
