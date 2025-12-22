@@ -26,9 +26,17 @@ final class NotificationManager: ObservableObject {
                     self.refreshAuthorizationStatus()
                     // Register for remote notifications if granted
                     if granted {
+                        print("✅ Notification permission granted in onboarding - registering for remote notifications")
                         UIApplication.shared.registerForRemoteNotifications()
-                        // Send token after a brief delay to ensure it's registered
+                        // Send token multiple times with delays to ensure it's registered
+                        // This is critical during signup/onboarding flow
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            AppDelegate.sendPushTokenIfNeeded()
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                            AppDelegate.sendPushTokenIfNeeded()
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
                             AppDelegate.sendPushTokenIfNeeded()
                         }
                     }
@@ -439,7 +447,16 @@ struct PermissionsStepView: View {
                 
                 if notificationManager.authorizationStatus == .notDetermined {
                     Button {
-                        Task { await notificationManager.requestAuthorization() }
+                        Task {
+                            print("📱 Settings onboarding: Requesting notification permission...")
+                            await notificationManager.requestAuthorization()
+                            // Try sending token multiple times to ensure it's registered
+                            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+                            AppDelegate.sendPushTokenIfNeeded()
+                            try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 more seconds
+                            AppDelegate.sendPushTokenIfNeeded()
+                            print("📱 Settings onboarding: Notification permission flow complete")
+                        }
                     } label: {
                         HStack {
                             Image(systemName: "bell.badge")

@@ -257,11 +257,17 @@ struct NotificationPermissionView: View {
                 if notificationManager.authorizationStatus == .notDetermined {
                     Button {
                         Task {
+                            print("📱 Onboarding: Requesting notification permission...")
                             await notificationManager.requestAuthorization()
-                            // Send token if permission was granted
+                            // The requestAuthorization already handles token registration and sending
+                            // But we'll also try sending again here as a backup
+                            // Wait longer to ensure token is received from iOS
+                            try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 second delay
                             AppDelegate.sendPushTokenIfNeeded()
-                            // After requesting, continue regardless of result
-                            try? await Task.sleep(nanoseconds: 500_000_000) // Brief delay
+                            // Try one more time after another delay
+                            try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 more seconds
+                            AppDelegate.sendPushTokenIfNeeded()
+                            print("📱 Onboarding: Notification permission flow complete")
                             onContinue()
                         }
                     } label: {

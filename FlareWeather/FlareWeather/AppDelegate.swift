@@ -19,13 +19,20 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         let tokenParts = deviceToken.map { data in String(format: "%02.2hhx", data) }
         let token = tokenParts.joined()
         
-        print("📱 APNs Device Token: \(token)")
+        print("📱 APNs Device Token received: \(token.prefix(20))...")
         
         // Store token locally
         UserDefaults.standard.set(token, forKey: "apnsDeviceToken")
         
         // Send to backend if user is authenticated
+        // Try multiple times with delays to ensure it's sent successfully
         Task {
+            await sendTokenToBackend(token: token)
+            // Retry after a delay in case auth wasn't ready yet (e.g., during signup)
+            try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+            await sendTokenToBackend(token: token)
+            // One more retry after login completes
+            try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 more seconds
             await sendTokenToBackend(token: token)
         }
     }
