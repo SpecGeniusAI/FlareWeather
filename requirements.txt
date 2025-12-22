@@ -9,6 +9,7 @@ pydantic
 email-validator
 requests
 httpx[http2]
+h2
 chromadb
 python-jose[cryptography]
 passlib[bcrypt]
