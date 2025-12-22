@@ -1048,10 +1048,26 @@ struct LocationSettingsView: View {
             // Update LocationManager to use the new manual location
             // This will trigger onChange in HomeView
             DispatchQueue.main.async {
+                // Store old location to force change detection
+                let oldLocation = self.locationManager.location
                 self.locationManager.location = location
                 // Also reload to ensure it's properly set
                 self.locationManager.loadManualLocation()
                 print("✅ Saved manual location: \(locationToSave) at \(location.coordinate.latitude), \(location.coordinate.longitude)")
+                
+                // Force a location change notification by temporarily setting to nil then back
+                // This ensures HomeView detects the change even if coordinates are similar
+                if let oldLoc = oldLocation {
+                    let distance = location.distance(from: oldLoc)
+                    if distance < 1000 {
+                        // If distance is small, force update by clearing and resetting
+                        print("📍 Forcing location update (distance: \(Int(distance))m)")
+                        self.locationManager.location = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            self.locationManager.location = location
+                        }
+                    }
+                }
                 
                 // Send location to backend if user is logged in
                 Task {
