@@ -2087,7 +2087,7 @@ async def send_test_notification(
         }
 
         # Check APNs configuration first
-        from send_daily_notifications import get_apns_token, APNS_KEY_ID, APNS_TEAM_ID, APNS_KEY_CONTENT, APNS_KEY_PATH
+        from send_daily_notifications import get_apns_token, APNS_KEY_ID, APNS_TEAM_ID, APNS_KEY_CONTENT, APNS_KEY_PATH, APNS_USE_SANDBOX, APNS_BASE_URL
         
         apns_token = get_apns_token()
         if not apns_token:
@@ -2137,11 +2137,16 @@ async def send_test_notification(
                 "has_token": True,
                 "notifications_enabled": True,
                 "apns_configured": apns_configured,
-                "token_preview": f"{user.push_notification_token[:20]}..." if user.push_notification_token else None
+                "token_preview": f"{user.push_notification_token[:20]}..." if user.push_notification_token else None,
+                "apns_environment": "sandbox" if APNS_USE_SANDBOX else "production",
+                "apns_url": APNS_BASE_URL
             }
             
             if apns_error:
                 response["apns_error"] = apns_error[:500]  # Limit length
+                # Add helpful hint for BadDeviceToken
+                if "BadDeviceToken" in apns_error:
+                    response["hint"] = "BadDeviceToken usually means token/environment mismatch. Check if APNS_USE_SANDBOX matches your app environment (true for TestFlight/dev, false for App Store)."
             
             return response
             
