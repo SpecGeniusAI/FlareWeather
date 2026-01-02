@@ -1211,6 +1211,11 @@ async def analyze_data(request: CorrelationRequest, background_tasks: Background
         # Use citations from AI function (they're already formatted)
         citations = paper_citations if paper_citations else citations
         
+        # Debug: Log what we received for weekly forecast
+        print(f"🔍 DEBUG: request.skip_weekly = {request.skip_weekly}")
+        print(f"🔍 DEBUG: request.weekly_forecast = {request.weekly_forecast}")
+        print(f"🔍 DEBUG: len(request.weekly_forecast) = {len(request.weekly_forecast) if request.weekly_forecast else 0}")
+        
         # Prepare weekly forecast data for AI (skip if skip_weekly=True for faster response)
         if not request.skip_weekly and request.weekly_forecast and len(request.weekly_forecast) > 0:
             weekly_forecast_data = []
