@@ -2728,6 +2728,10 @@ Move at the pace that feels right.
         // For daily insight, we want to skip this to make the API call faster
         if includeWeeklyForecast, let weatherService = weatherService {
             let weeklyForecastData = weatherService.weeklyForecast
+            print("📊 Weekly forecast data available: \(weeklyForecastData.count) days")
+            if weeklyForecastData.isEmpty {
+                print("⚠️ WARNING: includeWeeklyForecast=true but weeklyForecast is empty - weekly insight will be skipped")
+            }
             for dayForecast in weeklyForecastData {
                 weeklyForecast.append(WeatherSnapshotPayload(
                     timestamp: formatter.string(from: dayForecast.date),

@@ -659,6 +659,11 @@ struct HomeView: View {
                 Task {
                     print("🔄 Manual insight refresh triggered from card button")
                     // Manual refresh should bypass all caches and get fresh data
+                    // First ensure weekly forecast is loaded
+                    if let location = getEffectiveLocation() {
+                        await weatherService.fetchWeeklyForecast(for: location)
+                        print("📊 Weekly forecast count: \(weatherService.weeklyForecast.count)")
+                    }
                     // Include weekly forecast for complete refresh
                     await refreshAnalysis(force: true, includeWeeklyForecast: true)
                     await MainActor.run {
@@ -881,11 +886,21 @@ struct HomeView: View {
         let subject = "My FlareWeather Story"
         let body = "Hi FlareWeather team,\n\nI've been using the app and wanted to share my experience:\n\n"
         
+        // Properly encode for mailto: URL (newlines should be %0A)
         let encodedSubject = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let encodedBody = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let encodedBody = body
+            .replacingOccurrences(of: "\n", with: "%0A")
+            .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         
         if let url = URL(string: "mailto:\(email)?subject=\(encodedSubject)&body=\(encodedBody)") {
-            UIApplication.shared.open(url)
+            if UIApplication.shared.canOpenURL(url) {
+                UIApplication.shared.open(url)
+                print("✅ Opened email client for feedback")
+            } else {
+                print("❌ Cannot open email client - URL: \(url)")
+            }
+        } else {
+            print("❌ Invalid email URL")
         }
     }
 
@@ -915,11 +930,15 @@ struct HomeView: View {
             await weatherService.refreshWeatherData(for: location)
             // Fetch all forecasts (user explicitly wants fresh data)
             await weatherService.fetchHourlyForecast(for: location)
+            // CRITICAL: Fetch weekly forecast FIRST and wait for it to complete
             await weatherService.fetchWeeklyForecast(for: location)
+            print("📊 Weekly forecast count after fetch: \(weatherService.weeklyForecast.count)")
         }
         
         // Force refresh analysis with all data (bypasses time-based caching and input hash checks)
         // This ensures user gets completely fresh insights when they manually refresh
+        // Wait a moment to ensure weekly forecast data is available
+        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 second delay
         await refreshAnalysis(force: true, includeWeeklyForecast: true)
         
         // Ensure weekly data is enabled after refresh
