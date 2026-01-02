@@ -2575,6 +2575,14 @@ BAD EXAMPLE (repeating):
 
     weekly_summary = response_data.get("weekly_summary", "").strip()
     weekly_summary = _filter_app_messages(weekly_summary) or weekly_summary
+    
+    # CRITICAL: Validate weekly summary for forbidden phrases
+    weekly_summary_forbidden = ["steady week", "mostly steady", "consistent conditions", "all steady", "steady conditions", "steady pattern"]
+    weekly_summary_lower = weekly_summary.lower()
+    has_forbidden_summary = any(phrase in weekly_summary_lower for phrase in weekly_summary_forbidden)
+    if has_forbidden_summary:
+        print(f"❌ Weekly summary contains forbidden phrase: '{weekly_summary[:100]}...'")
+        # Don't reject the whole response, but we'll flag it for replacement
 
     patterns = response_data.get("daily_patterns", [])
     if not isinstance(patterns, list):
@@ -2662,12 +2670,13 @@ BAD EXAMPLE (repeating):
             ai_ignored_hints = True
             print(f"⚠️ AI ignored {mismatches} calculated risk hints - will replace with fallbacks")
     
-    # Replace only if AI ignored calculated hints OR used forbidden phrases
-    should_replace = has_forbidden_phrases or (ai_ignored_hints and mismatches > 0)
+    # Replace only if AI ignored calculated hints OR used forbidden phrases (in daily breakdown OR weekly summary)
+    should_replace = has_forbidden_phrases or has_forbidden_summary or (ai_ignored_hints and mismatches > 0)
     
     if should_replace:
         reason = []
-        if has_forbidden_phrases: reason.append("forbidden phrases like 'steady conditions'")
+        if has_forbidden_phrases: reason.append("forbidden phrases like 'steady conditions' in daily breakdown")
+        if has_forbidden_summary: reason.append("forbidden phrases like 'steady week' or 'consistent conditions' in weekly summary")
         if ai_ignored_hints: reason.append(f"AI ignored {mismatches} calculated risk hints")
         print(f"❌ AI response has issues ({', '.join(reason)}). Replacing with fallbacks that match calculated risks.")
         # Replace patterns with fallbacks that match the calculated risk hints
@@ -2928,6 +2937,23 @@ BAD EXAMPLE (repeating):
     # Extract preparation tip if provided
     preparation_tip = response_data.get("preparation_tip", "").strip()
     preparation_tip = _filter_app_messages(preparation_tip) or preparation_tip
+    
+    # CRITICAL: Replace weekly summary if it contains forbidden phrases
+    if has_forbidden_summary:
+        print(f"🔄 Replacing weekly summary that contained forbidden phrases")
+        # Generate a new summary based on the actual risk levels in daily breakdown
+        high_count = sum(1 for entry in daily_breakdown if "High risk" in entry.get("insight", ""))
+        moderate_count = sum(1 for entry in daily_breakdown if "Moderate risk" in entry.get("insight", ""))
+        low_count = sum(1 for entry in daily_breakdown if "Low" in entry.get("insight", ""))
+        
+        if high_count > 0:
+            weekly_summary = f"The week ahead brings challenging weather patterns which could increase flare risk, especially on days with pressure shifts or high humidity."
+        elif moderate_count > 0:
+            weekly_summary = f"Variable conditions this week which could affect flare risk, with some days requiring more attention than others."
+        else:
+            weekly_summary = f"The week ahead shows relatively stable weather patterns which could help maintain lower flare risk levels."
+        
+        print(f"✅ Replaced weekly summary: '{weekly_summary[:100]}...'")
     
     payload = json.dumps({
         "weekly_summary": weekly_summary,
