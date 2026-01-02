@@ -1230,9 +1230,17 @@ async def analyze_data(request: CorrelationRequest, background_tasks: Background
             
             if weekly_forecast_data:
                 print(f"📊 Prepared {len(weekly_forecast_data)} daily forecast points for weekly insight")
-                # Debug: Print first few days of forecast data to verify we have real values
+                # Debug: Print first few days of forecast data to verify we have real values (not defaults)
                 for i, day_data in enumerate(weekly_forecast_data[:3]):
-                    print(f"   Day {i}: temp={day_data.get('temperature', 0):.1f}°C, humidity={day_data.get('humidity', 0):.0f}%, pressure={day_data.get('pressure', 0):.1f}hPa")
+                    pressure = day_data.get('pressure', 0)
+                    humidity = day_data.get('humidity', 0)
+                    # Check if values look like defaults
+                    is_default_pressure = abs(pressure - 1013.25) < 0.1
+                    is_default_humidity = abs(humidity - 50.0) < 0.1
+                    default_warning = ""
+                    if is_default_pressure and is_default_humidity:
+                        default_warning = " ⚠️ LOOKS LIKE DEFAULTS!"
+                    print(f"   Day {i}: temp={day_data.get('temperature', 0):.1f}°C, humidity={humidity:.0f}%, pressure={pressure:.1f}hPa{default_warning}")
                 # Generate weekly forecast insight
                 try:
                     # Pass today's risk level, current weather, and pressure trend to weekly forecast
