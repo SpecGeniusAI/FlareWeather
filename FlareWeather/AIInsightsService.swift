@@ -2481,7 +2481,17 @@ Move at the pace that feels right.
                         print("  [\(index)] \(source)")
                     }
                 }
-                applyWeeklyInsight(decoded.weekly_forecast_insight)
+                
+                // Debug: Log what we received for weekly_forecast_insight
+                let receivedWeeklyInsight = decoded.weekly_forecast_insight
+                if let insight = receivedWeeklyInsight {
+                    print("📥 Received weekly_forecast_insight from backend: \(insight.prefix(200))...")
+                    print("📥 Weekly insight length: \(insight.count) characters")
+                } else {
+                    print("❌ weekly_forecast_insight is nil or empty from backend response")
+                }
+                
+                applyWeeklyInsight(receivedWeeklyInsight)
                 
                 // Filter app-specific messages from these fields before displaying
                 supportNote = filterAppMessages(decoded.support_note)
