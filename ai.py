@@ -2685,7 +2685,7 @@ BAD EXAMPLE (repeating):
         used_fallbacks = set()
         
         # Shuffle fallback lists to ensure variety
-        import random
+        # Note: random is already imported at the top of the file
         shuffled_high = high_fallbacks.copy()
         shuffled_moderate = moderate_fallbacks.copy()
         shuffled_low = low_fallbacks.copy()
