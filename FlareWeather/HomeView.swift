@@ -112,9 +112,9 @@ struct HomeView: View {
         // This ensures token is sent even if permission was already granted
         Task {
             let center = UNUserNotificationCenter.current()
-            let settings = try? await center.notificationSettings()
+            let settings = await center.notificationSettings()
             
-            if settings?.authorizationStatus == .authorized {
+            if settings.authorizationStatus == .authorized {
                 // Permission already granted - re-register to get token
                 print("📱 Re-registering for remote notifications to ensure token is sent")
                 await MainActor.run {
