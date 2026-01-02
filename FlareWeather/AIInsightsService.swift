@@ -1241,14 +1241,15 @@ Move at the pace that feels right.
     private func applyWeeklyInsight(_ insight: String?) {
         guard let insight = insight, !insight.isEmpty else {
             // If no insight provided, create default fallback data so card still shows
-            let defaultSummary = "A mostly steady week ahead with consistent conditions."
+            // NOTE: Do NOT use "steady" or "consistent conditions" - these are forbidden phrases
+            let defaultSummary = "Weekly forecast data is being processed. Please refresh in a moment."
             let weekdayLabels = getNextSevenWeekdays()
             var defaultDays: [WeeklyInsightDay] = []
             
             for weekday in weekdayLabels {
                 defaultDays.append(WeeklyInsightDay(
                     label: weekday,
-                    detail: "low flare risk"
+                    detail: "Low flare risk — stable pressure"
                 ))
             }
             
