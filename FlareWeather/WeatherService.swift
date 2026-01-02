@@ -312,7 +312,7 @@ class WeatherService: ObservableObject {
                     print("⚠️ Day \(index) (\(dayWeather.date)): No hourly data, using fallback estimates")
                 }
                 
-                print("📊 Day \(index) (\(dayWeather.date)): pressure=\(estimatedPressure:.1f)hPa, humidity=\(estimatedHumidity:.0f)%, temp=\(high)/\(low)°C, hourly_count=\(dayHourlyForecasts.count)")
+                print("📊 Day \(index) (\(dayWeather.date)): pressure=\(String(format: "%.1f", estimatedPressure))hPa, humidity=\(String(format: "%.0f", estimatedHumidity))%, temp=\(String(format: "%.1f", high))/\(String(format: "%.1f", low))°C, hourly_count=\(dayHourlyForecasts.count)")
                 
                 return DailyForecast(
                     date: dayWeather.date,
