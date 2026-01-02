@@ -2171,12 +2171,13 @@ def generate_weekly_forecast_insight(
     prev_temp = today_temp if today_temp is not None else 20.0  # Default 20°C
     prev_humidity = today_humidity if today_humidity is not None else 50.0  # Default 50%
     
-    # Store baseline for forced variation logic
     baseline_pressure = prev_pressure
     baseline_temp = prev_temp
     baseline_humidity = prev_humidity
-    
-    print(f"📊 Weekly forecast baseline: pressure={prev_pressure:.1f}hPa, temp={prev_temp:.1f}°C, humidity={prev_humidity:.0f}%")
+    pressure_str = f"{prev_pressure:.1f}hPa" if prev_pressure is not None else "None"
+    temp_str = f"{prev_temp:.1f}°C" if prev_temp is not None else "None"
+    humidity_str = f"{prev_humidity:.0f}%" if prev_humidity is not None else "None"
+    print(f"📊 Weekly forecast baseline: pressure={pressure_str}, temp={temp_str}, humidity={humidity_str}")
     day_risk_hints = []  # Track suggested risk levels based on data
 
     # Track all calculated risks to ensure variation
@@ -2312,228 +2313,11 @@ def generate_weekly_forecast_insight(
         prev_humidity = humidity
     
     # Count risk levels from calculated risks (based on actual weather data)
-    all_low = all(risk == "Low" for _, risk, _, _ in calculated_risks)
     low_count = sum(1 for _, risk, _, _ in calculated_risks if risk == "Low")
     moderate_count = sum(1 for _, risk, _, _ in calculated_risks if risk == "Moderate")
     high_count = sum(1 for _, risk, _, _ in calculated_risks if risk == "High")
     
     print(f"📊 Risk summary (from actual weather data): {high_count} High, {moderate_count} Moderate, {low_count} Low")
-    
-    # Only force variation when there's actual evidence of weather variability:
-    # 1. Today is High/Moderate risk (context suggests ongoing variability)
-    # 2. There are actual weather changes in the forecast (pressure drops, temp swings, etc.)
-    # 3. There are problematic absolute conditions (high humidity, low pressure, etc.)
-    
-    should_force_variation = False
-    force_reason = []
-    
-    # Check if today's context suggests variability
-    today_is_high = False
-    today_is_moderate = False
-    if today_risk_context:
-        today_risk_lower = today_risk_context.lower()
-        if "high" in today_risk_lower:
-            today_is_high = True
-            should_force_variation = True
-            force_reason.append("today is High risk - forecast should reflect this")
-        elif "moderate" in today_risk_lower:
-            today_is_moderate = True
-            # If today is Moderate but forecast shows all Low, that's inconsistent
-            if all_low or (moderate_count + high_count) < 2:
-                should_force_variation = True
-                force_reason.append("today is Moderate risk but forecast shows insufficient variation")
-    
-    # Check if there are actual weather changes that warrant Moderate/High risk
-    # Look for days with significant changes or problematic conditions
-    def has_significant_weather_changes():
-        """Check if forecast has actual weather changes that would justify Moderate/High risk."""
-        significant_changes = 0
-        for _, _, _, day_data in calculated_risks:
-            temp = day_data.get("temperature", 0)
-            humidity = day_data.get("humidity", 0)
-            pressure = day_data.get("pressure", baseline_pressure if baseline_pressure else 1013)
-            
-            # Check for significant changes from baseline
-            pressure_delta = abs(pressure - (baseline_pressure if baseline_pressure else 1013))
-            temp_delta = abs(temp - (baseline_temp if baseline_temp else 20))
-            humidity_delta = abs(humidity - (baseline_humidity if baseline_humidity else 50))
-            
-            # Check for problematic absolute conditions
-            has_problematic_conditions = (
-                humidity >= 75 or humidity <= 35 or  # Extreme humidity
-                (temp <= 5 and humidity >= 65) or  # Cold and damp
-                temp >= 30 or  # Very hot
-                pressure <= 1000 or pressure >= 1030  # Extreme pressure
-            )
-            
-            # Check for significant changes
-            has_significant_changes = (
-                pressure_delta >= 3 or  # 3+ hPa change
-                temp_delta >= 4 or  # 4+ °C change
-                humidity_delta >= 15  # 15+ % change
-            )
-            
-            if has_problematic_conditions or has_significant_changes:
-                significant_changes += 1
-        
-        return significant_changes
-    
-    significant_weather_days = has_significant_weather_changes()
-    
-    # If today is High risk, we need at least 3-4 Moderate/High days in the forecast
-    # If today is Moderate risk, we need at least 2-3 Moderate/High days
-    if today_is_high and (moderate_count + high_count) < 3:
-        should_force_variation = True
-        force_reason.append(f"today is High risk but only {moderate_count + high_count} Moderate/High days (need at least 3)")
-    elif today_is_moderate and (moderate_count + high_count) < 2:
-        should_force_variation = True
-        force_reason.append(f"today is Moderate risk but only {moderate_count + high_count} Moderate/High days (need at least 2)")
-    
-    # Also check if there are actual significant weather changes but they're all showing as Low
-    if all_low and significant_weather_days >= 3:
-        should_force_variation = True
-        force_reason.append(f"{significant_weather_days} days have significant weather changes but all showing Low")
-    
-    if should_force_variation and len(calculated_risks) > 0:
-        print(f"⚠️ Forcing variation based on actual weather evidence: {', '.join(force_reason)}")
-        
-        # Find days with largest changes or problematic conditions (based on actual data)
-        def calculate_change_magnitude(day_data_tuple):
-            _, _, _, day_data = day_data_tuple
-            temp = day_data.get("temperature", 0)
-            humidity = day_data.get("humidity", 0)
-            pressure = day_data.get("pressure", baseline_pressure if baseline_pressure else 1013)
-            
-            # Calculate deltas from baseline
-            pressure_delta = abs(pressure - (baseline_pressure if baseline_pressure else 1013))
-            temp_delta = abs(temp - (baseline_temp if baseline_temp else 20))
-            humidity_delta = abs(humidity - (baseline_humidity if baseline_humidity else 50))
-            
-            # Consider absolute conditions that are problematic
-            absolute_severity = 0
-            if humidity >= 75:  # High humidity is problematic
-                absolute_severity += 2
-            elif humidity <= 35:  # Very dry is problematic
-                absolute_severity += 1.5
-            if temp <= 5 and humidity >= 65:  # Cold and damp
-                absolute_severity += 2
-            elif temp >= 30:  # Very hot
-                absolute_severity += 1.5
-            if pressure <= 1000:  # Low pressure
-                absolute_severity += 1.5
-            elif pressure >= 1030:  # Very high pressure
-                absolute_severity += 1
-            
-            # Weighted sum of changes + absolute severity
-            return (pressure_delta * 2 + temp_delta * 1.5 + humidity_delta * 0.5) + absolute_severity
-        
-        # Sort by change magnitude (descending) - only days with actual changes
-        sorted_by_change = sorted(calculated_risks, key=calculate_change_magnitude, reverse=True)
-        
-        # If today is High risk, be VERY aggressive - force at least 3-4 Moderate/High days
-        # Even if weather changes are small, we need to reflect that today is challenging
-        forced_count = 0
-        target_moderate_high = 4 if today_is_high else (3 if today_is_moderate else 0)  # Increased target for High
-        current_moderate_high_after_force = moderate_count + high_count
-        
-        # If today is High and we don't have enough Moderate/High days, force them even with smaller changes
-        if today_is_high and current_moderate_high_after_force < target_moderate_high:
-            print(f"⚠️ Today is High risk but only {current_moderate_high_after_force} Moderate/High days - forcing more aggressively")
-            # Force the top days by change magnitude, even if changes are smaller
-            # When today is High, we need to ensure the forecast reflects ongoing challenges
-            for i, day_tuple in enumerate(sorted_by_change):
-                if current_moderate_high_after_force >= target_moderate_high:
-                    break
-                
-                label, orig_risk, _, day_data = day_tuple
-                change_mag = calculate_change_magnitude(day_tuple)
-                
-                # When today is High, be much more aggressive - force even smaller changes
-                # Lower threshold significantly when today is High
-                threshold = 0.5 if today_is_high else 1.5
-                
-                if change_mag > threshold or (today_is_high and i < target_moderate_high):  # Force top N days if today is High
-                    # Determine risk based on actual change magnitude
-                    # If today is High, be more likely to assign High risk
-                    if change_mag >= 4 or (today_is_high and change_mag >= 2.0):  # Lowered threshold for High when today is High
-                        forced_risk = "High"
-                    elif change_mag >= 1.5 or (today_is_high and change_mag >= 0.5):  # Much lower threshold when today is High
-                        forced_risk = "Moderate"
-                    else:
-                        # Very small change, but if today is High and we need more, make it Moderate
-                        if today_is_high and current_moderate_high_after_force < target_moderate_high:
-                            forced_risk = "Moderate"
-                        else:
-                            continue
-                    
-                    # Only force if it's currently Low (don't downgrade Moderate/High)
-                    if orig_risk == "Low":
-                        # Find and update in context_lines and day_risk_hints
-                        for j, (orig_label, _, _, _) in enumerate(calculated_risks):
-                            if orig_label == label:
-                                # Update the hint
-                                day_risk_hints[j] = forced_risk
-                                # Update context line
-                                for k, line in enumerate(context_lines):
-                                    if line.startswith(f"- {label}:"):
-                                        # Replace the risk in the context line
-                                        context_lines[k] = line.replace(f"[SUGGESTED RISK: {orig_risk}", f"[SUGGESTED RISK: {forced_risk}")
-                                        break
-                                print(f"🔧 Forced {label} from Low to {forced_risk} (change magnitude: {change_mag:.1f} - today is High risk, being aggressive)")
-                                forced_count += 1
-                                current_moderate_high_after_force += 1
-                                break
-        else:
-            # Normal forcing logic for Moderate or when we already have enough
-            for i, day_tuple in enumerate(sorted_by_change):
-                # If we've reached our target and today isn't High/Moderate, stop forcing
-                if not today_is_high and not today_is_moderate and current_moderate_high_after_force >= target_moderate_high:
-                    break
-                
-                label, orig_risk, _, day_data = day_tuple
-                change_mag = calculate_change_magnitude(day_tuple)
-                
-                # Only force if there's actual evidence (change or problematic conditions)
-                # Lower threshold if today is High risk (be more aggressive)
-                threshold = 1.0 if today_is_high else 1.5
-                if change_mag > threshold:  # Threshold for actual weather significance
-                    # Determine risk based on actual change magnitude
-                    # If today is High, be more likely to assign High risk
-                    if change_mag >= 4 or (today_is_high and change_mag >= 2.5):
-                        forced_risk = "High"
-                    elif change_mag >= 2:
-                        forced_risk = "Moderate"
-                    else:
-                        # Small change, keep as Low
-                        continue
-                    
-                    # Only force if it's currently Low (don't downgrade Moderate/High)
-                    if orig_risk == "Low":
-                        # Find and update in context_lines and day_risk_hints
-                        for j, (orig_label, _, _, _) in enumerate(calculated_risks):
-                            if orig_label == label:
-                                # Update the hint
-                                day_risk_hints[j] = forced_risk
-                                # Update context line
-                                for k, line in enumerate(context_lines):
-                                    if line.startswith(f"- {label}:"):
-                                        # Replace the risk in the context line
-                                        context_lines[k] = line.replace(f"[SUGGESTED RISK: {orig_risk}", f"[SUGGESTED RISK: {forced_risk}")
-                                        break
-                                print(f"🔧 Forced {label} from Low to {forced_risk} (change magnitude: {change_mag:.1f} - actual weather change)")
-                                forced_count += 1
-                                current_moderate_high_after_force += 1
-                                # Stop if we've reached target (unless today is High and we need more)
-                                if current_moderate_high_after_force >= target_moderate_high and not today_is_high:
-                                    break
-                                break
-        
-        # Log summary of forced changes
-        moderate_count = sum(1 for r in day_risk_hints if r == "Moderate")
-        high_count = sum(1 for r in day_risk_hints if r == "High")
-        print(f"📊 After forced variation (based on actual weather): {high_count} High, {moderate_count} Moderate, {len(day_risk_hints) - moderate_count - high_count} Low ({forced_count} days forced)")
-    else:
-        print(f"✅ No forced variation needed - risk levels reflect actual weather conditions")
 
     diagnoses_str = ", ".join(user_diagnoses) if user_diagnoses else "weather-sensitive conditions"
     sensitivities_str = ", ".join(user_sensitivities) if user_sensitivities else None
@@ -2849,54 +2633,39 @@ BAD EXAMPLE (repeating):
     if len(patterns) > len(weekday_labels):
         patterns = patterns[:len(weekday_labels)]
 
-    # CRITICAL: Validate that AI used the forced risk levels
-    # If we forced variation but AI returned all Low, reject and use fallbacks with forced risks
-    all_low_in_response = all(entry.get("risk", "Low").strip().lower() == "low" for entry in patterns)
-    low_count_in_response = sum(1 for entry in patterns if entry.get("risk", "Low").strip().lower() == "low")
-    
-    # Also check if we have forced risks that should be used
-    moderate_hints = sum(1 for r in day_risk_hints if r == "Moderate")
-    high_hints = sum(1 for r in day_risk_hints if r == "High")
-    
-    # ALWAYS check: If we have forced Moderate/High hints but AI returned mostly Low, replace
-    # Also check for "steady conditions" or similar forbidden phrases in descriptors
+    # Validate that AI used the suggested risk levels from actual weather calculations
+    # Check for "steady conditions" or similar forbidden phrases in descriptors
     forbidden_phrases = ["steady conditions", "steady pattern", "steady trend", "all steady", "all low"]
     has_forbidden_phrases = any(
         any(phrase in str(entry.get("descriptor", "")).lower() for phrase in forbidden_phrases)
         for entry in patterns
     )
     
-    # CRITICAL: If we have forced hints, ALWAYS validate and replace if AI ignored them
-    # EXTREMELY aggressive: replace if more than 1 Low day when we have forced hints (we force 5 Moderate/High)
-    # Also replace if AI didn't match the forced risk hints
+    # Check if AI risk levels match the calculated risk hints (based on actual weather)
     ai_ignored_hints = False
+    mismatches = 0
     if len(day_risk_hints) > 0 and len(patterns) == len(day_risk_hints):
-        # Check if AI risk levels match forced hints
-        mismatches = 0
+        # Check if AI risk levels match calculated hints
         for i, (hint, pattern) in enumerate(zip(day_risk_hints, patterns)):
             pattern_risk = pattern.get("risk", "Low").strip().lower()
             if hint == "High" and pattern_risk != "high":
                 mismatches += 1
             elif hint == "Moderate" and pattern_risk != "moderate":
                 mismatches += 1
-        # If AI ignored ANY forced hints, replace (very aggressive)
+        # If AI ignored calculated hints, replace (but only if they're based on actual weather, not forced)
         if mismatches > 0:
             ai_ignored_hints = True
-            print(f"⚠️ AI ignored {mismatches} forced risk hints (out of {moderate_hints + high_hints} forced) - will replace with fallbacks")
+            print(f"⚠️ AI ignored {mismatches} calculated risk hints - will replace with fallbacks")
     
-    # EXTREMELY aggressive replacement: replace if we have ANY forced hints and AI didn't match them
-    # OR if more than 1 Low day (since we force 5 Moderate/High, only 2 Low max)
-    # OR if forbidden phrases like "steady conditions" appear
-    should_replace = (all_low_in_response or low_count_in_response > 1 or has_forbidden_phrases or ai_ignored_hints) and len(day_risk_hints) > 0 and (moderate_hints > 0 or high_hints > 0)
+    # Replace only if AI ignored calculated hints OR used forbidden phrases
+    should_replace = has_forbidden_phrases or (ai_ignored_hints and mismatches > 0)
     
     if should_replace:
         reason = []
-        if all_low_in_response: reason.append("all Low")
-        if low_count_in_response > 1: reason.append(f"{low_count_in_response} Low days (max 2 allowed)")
         if has_forbidden_phrases: reason.append("forbidden phrases like 'steady conditions'")
-        if ai_ignored_hints: reason.append(f"AI ignored {mismatches} forced risk hints")
-        print(f"❌ AI ignored forced risks ({moderate_hints} Moderate, {high_hints} High hints provided, but: {', '.join(reason)}). Replacing with fallbacks that respect suggested risks.")
-        # Replace patterns with fallbacks that match the forced risk hints
+        if ai_ignored_hints: reason.append(f"AI ignored {mismatches} calculated risk hints")
+        print(f"❌ AI response has issues ({', '.join(reason)}). Replacing with fallbacks that match calculated risks.")
+        # Replace patterns with fallbacks that match the calculated risk hints
         # Ensure unique descriptors by tracking used ones
         patterns = []
         used_fallbacks = set()
