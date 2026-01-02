@@ -2184,6 +2184,25 @@ def generate_weekly_forecast_insight(
     
     print(f"🔍 Starting weekly insight generation for {len(ordered_entries)} days")
     
+    # Determine today's risk level and conditions for consistency check
+    today_risk_level = None
+    today_conditions = {}
+    if today_risk_context:
+        # Extract risk level from context (e.g., "Today's flare risk is High.")
+        today_risk_lower = today_risk_context.lower()
+        if "high" in today_risk_lower:
+            today_risk_level = "High"
+        elif "moderate" in today_risk_lower:
+            today_risk_level = "Moderate"
+        
+        # Store today's conditions for comparison
+        if today_pressure is not None:
+            today_conditions["pressure"] = today_pressure
+        if today_temp is not None:
+            today_conditions["temp"] = today_temp
+        if today_humidity is not None:
+            today_conditions["humidity"] = today_humidity
+    
     for label, day_data in zip(weekday_labels, ordered_entries):
         temp = day_data.get("temperature", 0)
         humidity = day_data.get("humidity", 0)
@@ -2206,6 +2225,34 @@ def generate_weekly_forecast_insight(
             diagnoses=user_diagnoses,
             sensitivities=user_sensitivities
         )
+        
+        # CRITICAL FIX: If today is High risk and conditions are steady, future days should also be High
+        # Check if conditions are similar to today (within small tolerance)
+        if today_risk_level == "High" and today_conditions:
+            conditions_similar = True
+            if "pressure" in today_conditions:
+                pressure_diff = abs(pressure - today_conditions["pressure"])
+                if pressure_diff > 2:  # More than 2 hPa difference
+                    conditions_similar = False
+            if "temp" in today_conditions:
+                temp_diff = abs(temp - today_conditions["temp"])
+                if temp_diff > 2:  # More than 2°C difference
+                    conditions_similar = False
+            if "humidity" in today_conditions:
+                humidity_diff = abs(humidity - today_conditions["humidity"])
+                if humidity_diff > 5:  # More than 5% difference
+                    conditions_similar = False
+            
+            # If conditions are similar to today and today is High, maintain High risk
+            if conditions_similar and suggested_risk == "Low":
+                print(f"🔧 {label}: Today is High risk with steady conditions - maintaining High risk (was {suggested_risk})")
+                suggested_risk = "High"
+                risk_factors.append("conditions similar to today's High risk day")
+            elif conditions_similar and suggested_risk == "Moderate":
+                # If conditions are similar and today is High, upgrade Moderate to High
+                print(f"🔧 {label}: Today is High risk with steady conditions - upgrading Moderate to High")
+                suggested_risk = "High"
+                risk_factors.append("conditions similar to today's High risk day")
         
         # Store calculated risk for variation check
         risk_score_approx = {"High": 3, "Moderate": 2, "Low": 1}.get(suggested_risk, 1)
