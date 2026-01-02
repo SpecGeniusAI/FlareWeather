@@ -246,12 +246,19 @@ class WeatherService: ObservableObject {
         print("🌤️ WeatherService: Fetching weekly forecast from WeatherKit")
         
         do {
-            // Fetch base weather first (includes dailyForecast property)
+            // Fetch base weather first (includes dailyForecast and hourlyForecast properties)
             let weather = try await weatherKitService.weather(for: location)
+            
+            // Get current weather for baseline pressure/humidity
+            let currentPressure = weather.currentWeather.pressure.converted(to: UnitPressure.hectopascals).value
+            let currentHumidity = weather.currentWeather.humidity * 100.0
+            
+            // Get hourly forecast to estimate daily pressure/humidity
+            let hourlyForecast = Array(weather.hourlyForecast.prefix(168)) // Next 7 days (24h * 7)
             
             // Access the daily forecast - it's a Forecast<DayWeather> collection
             // Convert to array and take first 7 days
-            let forecasts: [DailyForecast] = weather.dailyForecast.prefix(7).map { dayWeather in
+            let forecasts: [DailyForecast] = weather.dailyForecast.prefix(7).enumerated().map { index, dayWeather in
                 // Temperature in Celsius
                 let highTemp = dayWeather.highTemperature.converted(to: UnitTemperature.celsius).value
                 let lowTemp = dayWeather.lowTemperature.converted(to: UnitTemperature.celsius).value
@@ -266,10 +273,43 @@ class WeatherService: ObservableObject {
                 let high = highTemp.isFinite && !highTemp.isNaN ? highTemp : 0.0
                 let low = lowTemp.isFinite && !lowTemp.isNaN ? lowTemp : 0.0
                 
-                // Note: DayWeather doesn't have humidity or pressure properties
-                // Use default values for daily forecasts
-                let hum: Double = 50.0 // Default humidity
-                let press: Double = 1013.25 // Default pressure
+                // Estimate pressure and humidity from hourly forecast for this day
+                // DayWeather doesn't have pressure/humidity, so we estimate from hourly data
+                let dayStart = dayWeather.date
+                let dayEnd = Calendar.current.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
+                
+                // Find hourly forecasts for this day
+                let dayHourlyForecasts = hourlyForecast.filter { hourWeather in
+                    hourWeather.date >= dayStart && hourWeather.date < dayEnd
+                }
+                
+                // Calculate average pressure and humidity for this day from hourly data
+                var estimatedPressure = currentPressure
+                var estimatedHumidity = currentHumidity
+                
+                if !dayHourlyForecasts.isEmpty {
+                    let pressures = dayHourlyForecasts.compactMap { hourWeather -> Double? in
+                        let pressure = hourWeather.pressure.converted(to: UnitPressure.hectopascals).value
+                        return pressure.isFinite && !pressure.isNaN ? pressure : nil
+                    }
+                    let humidities = dayHourlyForecasts.compactMap { hourWeather -> Double? in
+                        let humidity = hourWeather.humidity * 100.0
+                        return humidity.isFinite && !humidity.isNaN ? humidity : nil
+                    }
+                    
+                    if !pressures.isEmpty {
+                        estimatedPressure = pressures.reduce(0, +) / Double(pressures.count)
+                    }
+                    if !humidities.isEmpty {
+                        estimatedHumidity = humidities.reduce(0, +) / Double(humidities.count)
+                    }
+                } else {
+                    // Fallback: use current values with slight variation based on day index
+                    // This at least provides some variation for risk calculation
+                    let dayOffset = Double(index)
+                    estimatedPressure = currentPressure + (dayOffset * 0.5) // Small variation
+                    estimatedHumidity = currentHumidity + (dayOffset * 1.0) // Small variation
+                }
                 
                 return DailyForecast(
                     date: dayWeather.date,
@@ -277,8 +317,8 @@ class WeatherService: ObservableObject {
                     lowTemp: low,
                     condition: condition,
                     icon: symbolName, // WeatherKit uses SF Symbols (e.g., "sun.max.fill")
-                    humidity: hum,
-                    pressure: press
+                    humidity: estimatedHumidity,
+                    pressure: estimatedPressure
                 )
             }
             
