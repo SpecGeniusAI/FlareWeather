@@ -1336,6 +1336,10 @@ async def analyze_data(request: CorrelationRequest, background_tasks: Background
             logout_message=logout_message
         )
         
+        # Debug: Log what we're returning for weekly insight
+        print(f"📤 Returning weekly_forecast_insight: {weekly_forecast_insight[:200] if weekly_forecast_insight else 'None'}...")
+        print(f"📤 Returning weekly_insight_sources count: {len(weekly_insight_sources) if weekly_insight_sources else 0}")
+        
         return response
         
     except HTTPException:
