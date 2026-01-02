@@ -309,7 +309,10 @@ class WeatherService: ObservableObject {
                     let dayOffset = Double(index)
                     estimatedPressure = currentPressure + (dayOffset * 0.5) // Small variation
                     estimatedHumidity = currentHumidity + (dayOffset * 1.0) // Small variation
+                    print("⚠️ Day \(index) (\(dayWeather.date)): No hourly data, using fallback estimates")
                 }
+                
+                print("📊 Day \(index) (\(dayWeather.date)): pressure=\(estimatedPressure:.1f)hPa, humidity=\(estimatedHumidity:.0f)%, temp=\(high)/\(low)°C, hourly_count=\(dayHourlyForecasts.count)")
                 
                 return DailyForecast(
                     date: dayWeather.date,
