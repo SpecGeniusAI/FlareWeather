@@ -2203,6 +2203,8 @@ def generate_weekly_forecast_insight(
             today_conditions["temp"] = today_temp
         if today_humidity is not None:
             today_conditions["humidity"] = today_humidity
+        
+        print(f"🔍 Today's context: risk={today_risk_level}, pressure={today_pressure}, temp={today_temp}, humidity={today_humidity}")
     
     for label, day_data in zip(weekday_labels, ordered_entries):
         temp = day_data.get("temperature", 0)
@@ -2247,6 +2249,9 @@ def generate_weekly_forecast_insight(
             # If conditions are similar to today and today is High, maintain High risk
             if conditions_similar and suggested_risk == "Low":
                 print(f"🔧 {label}: Today is High risk with steady conditions - maintaining High risk (was {suggested_risk})")
+                print(f"   Pressure: {pressure:.1f} vs today {today_conditions.get('pressure', 'N/A')}, diff: {abs(pressure - today_conditions.get('pressure', pressure)):.1f}")
+                print(f"   Temp: {temp:.1f} vs today {today_conditions.get('temp', 'N/A')}, diff: {abs(temp - today_conditions.get('temp', temp)):.1f}")
+                print(f"   Humidity: {humidity:.0f} vs today {today_conditions.get('humidity', 'N/A')}, diff: {abs(humidity - today_conditions.get('humidity', humidity)):.0f}")
                 suggested_risk = "High"
                 risk_factors.append("conditions similar to today's High risk day")
             elif conditions_similar and suggested_risk == "Moderate":

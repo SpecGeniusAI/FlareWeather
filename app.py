@@ -1230,6 +1230,9 @@ async def analyze_data(request: CorrelationRequest, background_tasks: Background
             
             if weekly_forecast_data:
                 print(f"📊 Prepared {len(weekly_forecast_data)} daily forecast points for weekly insight")
+                # Debug: Print first few days of forecast data to verify we have real values
+                for i, day_data in enumerate(weekly_forecast_data[:3]):
+                    print(f"   Day {i}: temp={day_data.get('temperature', 0):.1f}°C, humidity={day_data.get('humidity', 0):.0f}%, pressure={day_data.get('pressure', 0):.1f}hPa")
                 # Generate weekly forecast insight
                 try:
                     # Pass today's risk level, current weather, and pressure trend to weekly forecast
@@ -1237,6 +1240,7 @@ async def analyze_data(request: CorrelationRequest, background_tasks: Background
                     today_pressure = current_weather.get("pressure") if current_weather else None
                     today_temp = current_weather.get("temperature") if current_weather else None
                     today_humidity = current_weather.get("humidity") if current_weather else None
+                    print(f"📊 Weekly forecast context: today_risk={today_risk_context}, today_pressure={today_pressure}, today_temp={today_temp}, today_humidity={today_humidity}")
                     
                     # Calculate tomorrow's expected pressure based on hourly forecast (pressure drops later today affect tomorrow)
                     tomorrow_expected_pressure = None
