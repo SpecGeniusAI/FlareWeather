@@ -2373,14 +2373,7 @@ Move at the pace that feels right.
             behaviorPrompt = nil
             weeklyInsightSources = []
             lastSuccessfulInsightMessage = nil
-            // Clear weekly insights when forcing refresh to ensure fresh data
-            if force {
-                weeklyInsightDays = []
-                weeklyInsightSummary = nil
-                weeklyForecastInsight = nil
-                print("🔄 Force refresh: Cleared weekly insight cache")
-            }
-            // Don't clear weeklyInsightDays or weeklyInsightSummary - preserve them (unless force refresh)
+            // Don't clear weeklyInsightDays or weeklyInsightSummary - preserve them
         }
         // If we have insights, don't touch them - keep everything as-is
         errorMessage = nil
@@ -2670,6 +2663,15 @@ Move at the pace that feels right.
     // New function for weather-only analysis (no symptoms)
     // includeWeeklyForecast: Set to false for fast daily insight, true for weekly insights
     func analyzeWithWeatherOnly(weatherService: WeatherService? = nil, userProfile: UserProfile? = nil, force: Bool = false, includeWeeklyForecast: Bool = false) async {
+        // Clear weekly insights when forcing refresh to ensure fresh data
+        if force {
+            await MainActor.run {
+                weeklyInsightDays = []
+                weeklyInsightSummary = nil
+                weeklyForecastInsight = nil
+                print("🔄 Force refresh: Cleared weekly insight cache")
+            }
+        }
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         

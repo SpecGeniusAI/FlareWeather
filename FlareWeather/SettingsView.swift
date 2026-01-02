@@ -1048,9 +1048,6 @@ struct LocationSettingsView: View {
             // Update LocationManager to use the new manual location
             // This will trigger onChange in HomeView
             DispatchQueue.main.async {
-                // Store old location to force change detection
-                let oldLocation = self.locationManager.location
-                
                 // Force a location change by temporarily setting to nil then to new location
                 // This ensures HomeView detects the change regardless of distance
                 print("📍 Forcing location update to: \(locationToSave)")
