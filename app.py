@@ -1275,6 +1275,8 @@ async def analyze_data(request: CorrelationRequest, background_tasks: Background
                     )
                     weekly_forecast_insight = weekly_forecast_insight_text
                     print(f"✅ Generated weekly forecast insight")
+                    print(f"📊 Weekly insight preview (first 200 chars): {weekly_forecast_insight[:200] if weekly_forecast_insight else 'None'}...")
+                    print(f"📊 Weekly insight sources: {len(weekly_insight_sources) if weekly_insight_sources else 0} sources")
                 except Exception as e:
                     print(f"❌ Error generating weekly forecast insight: {e}")
                     import traceback
