@@ -1216,8 +1216,16 @@ async def analyze_data(request: CorrelationRequest, background_tasks: Background
         print(f"🔍 DEBUG: request.weekly_forecast = {request.weekly_forecast}")
         print(f"🔍 DEBUG: len(request.weekly_forecast) = {len(request.weekly_forecast) if request.weekly_forecast else 0}")
         
+        # Debug: Check condition components
+        condition1 = not request.skip_weekly
+        condition2 = bool(request.weekly_forecast)
+        condition3 = len(request.weekly_forecast) > 0 if request.weekly_forecast else False
+        print(f"🔍 DEBUG: Condition check - not skip_weekly: {condition1}, has weekly_forecast: {condition2}, len > 0: {condition3}")
+        print(f"🔍 DEBUG: Combined condition result: {condition1 and condition2 and condition3}")
+        
         # Prepare weekly forecast data for AI (skip if skip_weekly=True for faster response)
         if not request.skip_weekly and request.weekly_forecast and len(request.weekly_forecast) > 0:
+            print(f"🔍 DEBUG: Entered weekly forecast generation block")
             weekly_forecast_data = []
             for day_payload in request.weekly_forecast:
                 try:
