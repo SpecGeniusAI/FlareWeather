@@ -2373,7 +2373,14 @@ Move at the pace that feels right.
             behaviorPrompt = nil
             weeklyInsightSources = []
             lastSuccessfulInsightMessage = nil
-            // Don't clear weeklyInsightDays or weeklyInsightSummary - preserve them
+            // Clear weekly insights when forcing refresh to ensure fresh data
+            if force {
+                weeklyInsightDays = []
+                weeklyInsightSummary = nil
+                weeklyForecastInsight = nil
+                print("🔄 Force refresh: Cleared weekly insight cache")
+            }
+            // Don't clear weeklyInsightDays or weeklyInsightSummary - preserve them (unless force refresh)
         }
         // If we have insights, don't touch them - keep everything as-is
         errorMessage = nil
