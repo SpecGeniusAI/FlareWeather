@@ -2383,55 +2383,103 @@ def generate_weekly_forecast_insight(
         # Sort by change magnitude (descending) - only days with actual changes
         sorted_by_change = sorted(calculated_risks, key=calculate_change_magnitude, reverse=True)
         
-        # Only force days that have actual weather changes (change_magnitude > 1.5)
-        # Don't force days with truly stable conditions
-        # BUT: If today is High risk, be more aggressive to ensure forecast reflects this
+        # If today is High risk, be VERY aggressive - force at least 3-4 Moderate/High days
+        # Even if weather changes are small, we need to reflect that today is challenging
         forced_count = 0
-        target_moderate_high = 3 if today_is_high else (2 if today_is_moderate else 0)
+        target_moderate_high = 4 if today_is_high else (3 if today_is_moderate else 0)  # Increased target for High
         current_moderate_high_after_force = moderate_count + high_count
         
-        for i, day_tuple in enumerate(sorted_by_change):
-            # If we've reached our target and today isn't High/Moderate, stop forcing
-            if not today_is_high and not today_is_moderate and current_moderate_high_after_force >= target_moderate_high:
-                break
-            
-            label, orig_risk, _, day_data = day_tuple
-            change_mag = calculate_change_magnitude(day_tuple)
-            
-            # Only force if there's actual evidence (change or problematic conditions)
-            # Lower threshold if today is High risk (be more aggressive)
-            threshold = 1.0 if today_is_high else 1.5
-            if change_mag > threshold:  # Threshold for actual weather significance
-                # Determine risk based on actual change magnitude
-                # If today is High, be more likely to assign High risk
-                if change_mag >= 4 or (today_is_high and change_mag >= 2.5):
-                    forced_risk = "High"
-                elif change_mag >= 2:
-                    forced_risk = "Moderate"
-                else:
-                    # Small change, keep as Low
-                    continue
+        # If today is High and we don't have enough Moderate/High days, force them even with smaller changes
+        if today_is_high and current_moderate_high_after_force < target_moderate_high:
+            print(f"⚠️ Today is High risk but only {current_moderate_high_after_force} Moderate/High days - forcing more aggressively")
+            # Force the top days by change magnitude, even if changes are smaller
+            # When today is High, we need to ensure the forecast reflects ongoing challenges
+            for i, day_tuple in enumerate(sorted_by_change):
+                if current_moderate_high_after_force >= target_moderate_high:
+                    break
                 
-                # Only force if it's currently Low (don't downgrade Moderate/High)
-                if orig_risk == "Low":
-                    # Find and update in context_lines and day_risk_hints
-                    for j, (orig_label, _, _, _) in enumerate(calculated_risks):
-                        if orig_label == label:
-                            # Update the hint
-                            day_risk_hints[j] = forced_risk
-                            # Update context line
-                            for k, line in enumerate(context_lines):
-                                if line.startswith(f"- {label}:"):
-                                    # Replace the risk in the context line
-                                    context_lines[k] = line.replace(f"[SUGGESTED RISK: {orig_risk}", f"[SUGGESTED RISK: {forced_risk}")
-                                    break
-                            print(f"🔧 Forced {label} from Low to {forced_risk} (change magnitude: {change_mag:.1f} - actual weather change)")
-                            forced_count += 1
-                            current_moderate_high_after_force += 1
-                            # Stop if we've reached target (unless today is High and we need more)
-                            if current_moderate_high_after_force >= target_moderate_high and not today_is_high:
+                label, orig_risk, _, day_data = day_tuple
+                change_mag = calculate_change_magnitude(day_tuple)
+                
+                # When today is High, be much more aggressive - force even smaller changes
+                # Lower threshold significantly when today is High
+                threshold = 0.5 if today_is_high else 1.5
+                
+                if change_mag > threshold or (today_is_high and i < target_moderate_high):  # Force top N days if today is High
+                    # Determine risk based on actual change magnitude
+                    # If today is High, be more likely to assign High risk
+                    if change_mag >= 4 or (today_is_high and change_mag >= 2.0):  # Lowered threshold for High when today is High
+                        forced_risk = "High"
+                    elif change_mag >= 1.5 or (today_is_high and change_mag >= 0.5):  # Much lower threshold when today is High
+                        forced_risk = "Moderate"
+                    else:
+                        # Very small change, but if today is High and we need more, make it Moderate
+                        if today_is_high and current_moderate_high_after_force < target_moderate_high:
+                            forced_risk = "Moderate"
+                        else:
+                            continue
+                    
+                    # Only force if it's currently Low (don't downgrade Moderate/High)
+                    if orig_risk == "Low":
+                        # Find and update in context_lines and day_risk_hints
+                        for j, (orig_label, _, _, _) in enumerate(calculated_risks):
+                            if orig_label == label:
+                                # Update the hint
+                                day_risk_hints[j] = forced_risk
+                                # Update context line
+                                for k, line in enumerate(context_lines):
+                                    if line.startswith(f"- {label}:"):
+                                        # Replace the risk in the context line
+                                        context_lines[k] = line.replace(f"[SUGGESTED RISK: {orig_risk}", f"[SUGGESTED RISK: {forced_risk}")
+                                        break
+                                print(f"🔧 Forced {label} from Low to {forced_risk} (change magnitude: {change_mag:.1f} - today is High risk, being aggressive)")
+                                forced_count += 1
+                                current_moderate_high_after_force += 1
                                 break
-                            break
+        else:
+            # Normal forcing logic for Moderate or when we already have enough
+            for i, day_tuple in enumerate(sorted_by_change):
+                # If we've reached our target and today isn't High/Moderate, stop forcing
+                if not today_is_high and not today_is_moderate and current_moderate_high_after_force >= target_moderate_high:
+                    break
+                
+                label, orig_risk, _, day_data = day_tuple
+                change_mag = calculate_change_magnitude(day_tuple)
+                
+                # Only force if there's actual evidence (change or problematic conditions)
+                # Lower threshold if today is High risk (be more aggressive)
+                threshold = 1.0 if today_is_high else 1.5
+                if change_mag > threshold:  # Threshold for actual weather significance
+                    # Determine risk based on actual change magnitude
+                    # If today is High, be more likely to assign High risk
+                    if change_mag >= 4 or (today_is_high and change_mag >= 2.5):
+                        forced_risk = "High"
+                    elif change_mag >= 2:
+                        forced_risk = "Moderate"
+                    else:
+                        # Small change, keep as Low
+                        continue
+                    
+                    # Only force if it's currently Low (don't downgrade Moderate/High)
+                    if orig_risk == "Low":
+                        # Find and update in context_lines and day_risk_hints
+                        for j, (orig_label, _, _, _) in enumerate(calculated_risks):
+                            if orig_label == label:
+                                # Update the hint
+                                day_risk_hints[j] = forced_risk
+                                # Update context line
+                                for k, line in enumerate(context_lines):
+                                    if line.startswith(f"- {label}:"):
+                                        # Replace the risk in the context line
+                                        context_lines[k] = line.replace(f"[SUGGESTED RISK: {orig_risk}", f"[SUGGESTED RISK: {forced_risk}")
+                                        break
+                                print(f"🔧 Forced {label} from Low to {forced_risk} (change magnitude: {change_mag:.1f} - actual weather change)")
+                                forced_count += 1
+                                current_moderate_high_after_force += 1
+                                # Stop if we've reached target (unless today is High and we need more)
+                                if current_moderate_high_after_force >= target_moderate_high and not today_is_high:
+                                    break
+                                break
         
         # Log summary of forced changes
         moderate_count = sum(1 for r in day_risk_hints if r == "Moderate")
