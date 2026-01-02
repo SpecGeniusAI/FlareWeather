@@ -2766,7 +2766,6 @@ BAD EXAMPLE (repeating):
         "Low flare risk — quiet weather day",
         "Low flare risk — unchanging conditions",
         "Low flare risk — even pressure pattern",
-        "Low flare risk — balanced conditions",
         "Low flare risk — comfortable pattern",
         "Low flare risk — gentle weather day"
     ]
