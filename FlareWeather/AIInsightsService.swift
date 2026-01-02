@@ -2304,7 +2304,7 @@ Move at the pace that feels right.
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
     }
     
-    func analyze(symptoms: [SymptomEntryPayload], weather: [WeatherSnapshotPayload], hourlyForecast: [WeatherSnapshotPayload]? = nil, weeklyForecast: [WeatherSnapshotPayload]? = nil, diagnoses: [String]? = nil, sensitivities: [String]? = nil) async {
+    func analyze(symptoms: [SymptomEntryPayload], weather: [WeatherSnapshotPayload], hourlyForecast: [WeatherSnapshotPayload]? = nil, weeklyForecast: [WeatherSnapshotPayload]? = nil, diagnoses: [String]? = nil, sensitivities: [String]? = nil, skipWeekly: Bool = false) async {
         // Cancel any existing request
         task?.cancel()
         
@@ -2391,6 +2391,10 @@ Move at the pace that feels right.
             return
         }
         
+        // Only skip weekly if explicitly requested AND no weekly forecast data provided
+        // If weekly forecast data is provided, we should generate the weekly insight
+        let shouldSkipWeekly = skipWeekly && (weeklyForecast == nil || weeklyForecast?.isEmpty == true)
+        
         let requestBody = CorrelationRequest(
             symptoms: symptoms,
             weather: weather,
@@ -2399,8 +2403,14 @@ Move at the pace that feels right.
             user_id: nil,
             diagnoses: diagnoses,
             sensitivities: sensitivities,
-            skip_weekly: true  // Skip weekly forecast generation for faster daily insight (target: 2 seconds)
+            skip_weekly: shouldSkipWeekly  // Only skip if explicitly requested and no weekly data
         )
+        
+        if !shouldSkipWeekly && (weeklyForecast != nil && !weeklyForecast!.isEmpty) {
+            print("📊 Including weekly forecast data in API request (\(weeklyForecast!.count) days)")
+        } else if shouldSkipWeekly {
+            print("⏭️ Skipping weekly forecast generation (skipWeekly=true or no weekly data)")
+        }
         guard let jsonData = try? JSONEncoder().encode(requestBody) else {
             print("❌ Failed to encode request body")
             isLoading = false
@@ -2821,13 +2831,15 @@ Move at the pace that feels right.
         hasAnalysisInSession = true
         
         // Send request with empty symptoms array, hourly forecast, and weekly forecast
+        // If includeWeeklyForecast is true, don't skip weekly (we want the weekly insight)
         await analyze(
             symptoms: [],
             weather: weather,
             hourlyForecast: hourlyForecast.isEmpty ? nil : hourlyForecast,
             weeklyForecast: weeklyForecast.isEmpty ? nil : weeklyForecast,
             diagnoses: diagnoses,
-            sensitivities: sensitivities
+            sensitivities: sensitivities,
+            skipWeekly: !includeWeeklyForecast  // Only skip if we're not including weekly forecast
         )
         lastAnalysisTime = Date()
     }
