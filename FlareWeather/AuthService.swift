@@ -156,31 +156,95 @@ final class AuthService: ObservableObject {
         print("📤 Login request to: \(url)")
         print("📤 Login request body: \(String(data: jsonData, encoding: .utf8) ?? "nil")")
         
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            print("❌ AuthService: Invalid response type")
-            throw URLError(.badServerResponse)
-        }
-        
-        print("📥 Login response status: \(http.statusCode)")
-        if let responseString = String(data: data, encoding: .utf8) {
-            print("📥 Login response body: \(responseString)")
-        }
-        
-        guard (200..<300).contains(http.statusCode) else {
-            if let errorData = try? JSONDecoder().decode([String: String].self, from: data),
-               let detail = errorData["detail"] {
-                print("❌ AuthService: Server error: \(detail)")
-                throw AuthError.serverError(detail)
+        // Retry logic for network errors (up to 3 attempts)
+        var lastError: Error?
+        for attempt in 1...3 {
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse else {
+                    print("❌ AuthService: Invalid response type")
+                    throw URLError(.badServerResponse)
+                }
+                
+                print("📥 Login response status: \(http.statusCode)")
+                if let responseString = String(data: data, encoding: .utf8) {
+                    print("📥 Login response body: \(responseString)")
+                }
+                
+                guard (200..<300).contains(http.statusCode) else {
+                    if let errorData = try? JSONDecoder().decode([String: String].self, from: data),
+                       let detail = errorData["detail"] {
+                        print("❌ AuthService: Server error: \(detail)")
+                        throw AuthError.serverError(detail)
+                    }
+                    let errorMessage = "Login failed with status \(http.statusCode)"
+                    print("❌ AuthService: \(errorMessage)")
+                    throw AuthError.serverError(errorMessage)
+                }
+                
+                let authResponse = try JSONDecoder().decode(AuthResponse.self, from: data)
+                print("✅ Login successful: \(authResponse.email)")
+                return authResponse
+            } catch let error as URLError {
+                lastError = error
+                print("❌ AuthService: Network error on attempt \(attempt)/3: \(error.localizedDescription)")
+                
+                // Check if it's a retryable error
+                let retryableErrors: [URLError.Code] = [
+                    .cannotConnectToHost,
+                    .cannotFindHost,
+                    .networkConnectionLost,
+                    .notConnectedToInternet,
+                    .timedOut,
+                    .dnsLookupFailed
+                ]
+                
+                if retryableErrors.contains(error.code) && attempt < 3 {
+                    // Exponential backoff: 1s, 2s, 4s
+                    let delay = pow(2.0, Double(attempt - 1))
+                    print("🔄 AuthService: Retrying in \(delay) seconds...")
+                    try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                    continue
+                } else {
+                    // Convert to user-friendly error message
+                    let userMessage: String
+                    switch error.code {
+                    case .cannotConnectToHost, .cannotFindHost:
+                        userMessage = "Couldn't connect to server. Please check your internet connection and try again."
+                    case .notConnectedToInternet, .networkConnectionLost:
+                        userMessage = "No internet connection. Please check your network settings."
+                    case .timedOut:
+                        userMessage = "Connection timed out. The server may be busy. Please try again."
+                    case .dnsLookupFailed:
+                        userMessage = "Couldn't reach server. Please check your internet connection."
+                    default:
+                        userMessage = "Network error: \(error.localizedDescription)"
+                    }
+                    throw AuthError.serverError(userMessage)
+                }
+            } catch {
+                // Non-network errors (like decoding errors) shouldn't be retried
+                throw error
             }
-            let errorMessage = "Login failed with status \(http.statusCode)"
-            print("❌ AuthService: \(errorMessage)")
-            throw AuthError.serverError(errorMessage)
         }
         
-        let authResponse = try JSONDecoder().decode(AuthResponse.self, from: data)
-        print("✅ Login successful: \(authResponse.email)")
-        return authResponse
+        // If we get here, all retries failed
+        if let urlError = lastError as? URLError {
+            let userMessage: String
+            switch urlError.code {
+            case .cannotConnectToHost, .cannotFindHost:
+                userMessage = "Couldn't connect to server after multiple attempts. Please check your internet connection."
+            case .notConnectedToInternet, .networkConnectionLost:
+                userMessage = "No internet connection. Please check your network settings."
+            case .timedOut:
+                userMessage = "Connection timed out. The server may be busy. Please try again later."
+            default:
+                userMessage = "Network error: \(urlError.localizedDescription)"
+            }
+            throw AuthError.serverError(userMessage)
+        }
+        
+        throw AuthError.serverError("Login failed. Please try again.")
     }
     
     func getCurrentUser(token: String) async throws -> UserResponse {
