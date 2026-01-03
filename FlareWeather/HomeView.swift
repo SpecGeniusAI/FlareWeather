@@ -916,8 +916,20 @@ struct HomeView: View {
             return
         }
         
-        if let user = authManager.currentUser, user.access_required == true {
-            showingAccessExpiredPopup = true
+        // Check if user has access (subscription OR free lifetime access)
+        if let user = authManager.currentUser {
+            // If user has access (either subscription or free lifetime), don't show popup
+            if let hasAccess = user.has_access, hasAccess {
+                showingAccessExpiredPopup = false
+                return
+            }
+            
+            // Only show popup if access is required (user doesn't have access)
+            if user.access_required == true {
+                showingAccessExpiredPopup = true
+            } else {
+                showingAccessExpiredPopup = false
+            }
         }
     }
     
