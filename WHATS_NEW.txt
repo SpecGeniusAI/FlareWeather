@@ -1,31 +1,27 @@
 What's New in This Version
 
-We've made FlareWeather faster, smarter, and more helpful:
+Weekly Forecast Improvements
+• Weekly flare risk forecasts now accurately reflect actual weather conditions for each day
+• Improved accuracy when today's risk is high - future days maintain appropriate risk levels when conditions remain similar
+• Enhanced weather data processing for more precise daily risk assessments
+• Fixed issue where weekly forecast showed "steady conditions" for all days
+• Improved weekly forecast data accuracy using detailed hourly weather information
 
-⚡ Faster Insights
-Daily health insights now generate in seconds, so you get personalized weather guidance when you need it.
+Sign-In & Access Improvements
+• Automatic retry for network connection failures during sign-in
+• Better error messages for connection issues
+• Fixed issue where free lifetime access users were incorrectly shown subscription prompts
 
-🧘 Enhanced Comfort Tips
-Comfort tips now include practices from Chinese medicine, Ayurveda, and Western medicine, with clear sources so you can learn more about each approach.
+Bug Fixes
+• Enhanced validation to ensure forecasts reflect real weather patterns
+• Fixed weekly forecast generation errors
 
-📚 More Specific Explanations
-"Why" explanations are now more detailed and educational, helping you understand exactly how weather changes affect your body.
+User Experience
+• Better formatting and grammar in daily comfort tips
+• Improved weekly insight summaries with more accurate descriptions
+• Enhanced reliability of weather data updates
 
-🔄 Automatic Updates
-Weather and insights automatically refresh when you return to the app, so you always have the latest information.
-
-📅 Improved Weekly View
-Weekly insights now appear before the forecast, making it easier to plan your week ahead.
-
-🍎 Sign In with Apple
-Quick and secure account creation with Sign In with Apple.
-
-✨ Better Variety
-Insights and comfort tips now offer more variety, so you get fresh, relevant guidance every day—even on low-risk days.
-
-🎯 Loading Indicators
-Clear visual feedback when insights are processing, so you know the app is working for you.
-
-We're constantly improving FlareWeather to help you stay ahead of weather-related symptoms. Thank you for being part of our community!
-
-
+Performance & Reliability
+• Improved app refresh behavior for weekly forecasts
+• Better error handling and data validation
+• Enhanced backend processing for weekly insights
