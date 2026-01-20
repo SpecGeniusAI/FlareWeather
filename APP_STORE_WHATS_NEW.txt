@@ -1,0 +1,11 @@
+What's New in Version 1.12
+
+We've made significant improvements to your weekly forecast experience and app reliability:
+
+• Weekly forecasts now load automatically when you open the app (no more fallback messages)
+• Weekly forecasts accurately reflect actual weather conditions for each day
+• Fixed issue where weekly forecasts showed "steady conditions" for all days
+• Improved sign-in reliability with automatic retry for connection issues
+• Better error messages when network connection fails
+• Fixed issue where free lifetime access users were incorrectly shown subscription prompts
+• Enhanced weather data processing for more precise daily risk assessments
