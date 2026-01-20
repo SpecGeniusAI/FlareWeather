@@ -510,7 +510,10 @@ struct HomeView: View {
                             hasInitialAnalysis = false
                             hasGeneratedDailyInsightSession = false
                         }
-                        await refreshAnalysis(force: true, includeWeeklyForecast: false)
+                        // Fetch weekly forecast BEFORE analysis so it's included
+                        print("🔄 Fetching weekly forecast for stale data refresh...")
+                        await weatherService.fetchWeeklyForecast(for: location)
+                        await refreshAnalysis(force: true, includeWeeklyForecast: true)
                         // Update insight date
                         lastInsightDateString = todayString
                     }
