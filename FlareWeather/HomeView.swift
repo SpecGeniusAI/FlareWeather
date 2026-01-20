@@ -92,17 +92,22 @@ struct HomeView: View {
             Task {
                 // Small delay to let UI render first, then start analysis
                 try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-                if getEffectiveLocation() != nil {
+                if let location = getEffectiveLocation() {
+                    // Fetch weekly forecast BEFORE analysis so it's included
+                    print("🔄 Pre-fetching weekly forecast for initial load...")
+                    await weatherService.fetchWeeklyForecast(for: location)
+                    
                     // Fetch user profile for diagnoses
                     let userRequest: NSFetchRequest<UserProfile> = UserProfile.fetchRequest()
                     userRequest.sortDescriptors = [NSSortDescriptor(keyPath: \UserProfile.createdAt, ascending: false)]
                     let userProfile = try? viewContext.fetch(userRequest).first
                     
+                    // Include weekly forecast in initial analysis
                     await aiService.analyzeWithWeatherOnly(
                         weatherService: weatherService,
                         userProfile: userProfile,
                         force: false,
-                        includeWeeklyForecast: false
+                        includeWeeklyForecast: true
                     )
                 }
             }
