@@ -1284,7 +1284,7 @@ Style: Grade 12 vocab. Tentative language (may, might). Short sentences. NO 'mil
                 json_prompt = prompt + "\n\nIMPORTANT: Respond ONLY with valid JSON matching the structure above. No markdown, no extra text."
                 
                 message = claude_client.messages.create(
-                    model="claude-3-5-haiku-20241022",  # Fastest Claude model
+                    model="claude-haiku-4-5-20250120",  # Upgraded from 3.5 Haiku (retired Feb 2026)
                     max_tokens=280,  # Balanced for speed and completeness
                     temperature=0.3,  # Slightly higher for better quality while still fast
                     system="You translate weather moods into calm, compassionate guidance for weather-sensitive people. Always respond with valid JSON only.",
@@ -2519,7 +2519,7 @@ BAD EXAMPLE (repeating):
             json_prompt = prompt + "\n\nIMPORTANT: Respond ONLY with valid JSON. Do not include any text before or after the JSON object. The JSON must match the exact structure specified above."
             
             message = claude_client.messages.create(
-                model="claude-3-5-haiku-20241022",
+                model="claude-haiku-4-5-20250120",  # Upgraded from 3.5 Haiku
                 max_tokens=800,  # Weekly insights need more tokens
                 temperature=0.5,
                 system=weekly_system_prompt,
