@@ -35,6 +35,9 @@ def _create_engine(url: str):
     try:
         if url.startswith(("postgresql://", "postgres://")):
             print("📊 Using PostgreSQL database (production)")
+            # Public Railway URL (proxy/rlwy) requires SSL; private may not
+            if ("proxy" in url or "rlwy" in url) and "sslmode=" not in url:
+                url = url + ("&" if "?" in url else "?") + "sslmode=require"
             # 10s timeout - fail fast instead of hanging if DB unreachable
             return create_engine(url, pool_pre_ping=True, connect_args={"connect_timeout": 10})
         print("📊 Using SQLite database (local development)")
