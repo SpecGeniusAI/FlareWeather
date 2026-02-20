@@ -1369,6 +1369,66 @@ async def analyze_data(request: CorrelationRequest, background_tasks: Background
 # Admin endpoints for free access management
 # ============================================================================
 
+@app.get("/admin/user-lookup")
+async def admin_user_lookup(
+    email: str = Query(..., description="User email to look up"),
+    admin_key_header: Optional[str] = Header(None, alias="X-Admin-Key"),
+    admin_key: Optional[str] = Query(None, description="Admin API key"),
+    db: Session = Depends(get_db)
+):
+    """
+    Look up a user by email for login troubleshooting.
+    Returns: exists, has_password, signup_method (email vs Apple), created_at
+    """
+    key = admin_key_header or admin_key
+    if not verify_admin_key(key):
+        raise HTTPException(status_code=401, detail="Invalid admin API key")
+    normalized = (email or "").strip().lower()
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Email required")
+    user = db.query(User).filter(func.lower(User.email) == normalized).first()
+    if not user:
+        return {"exists": False, "email": email, "message": "User not found - they may need to sign up first"}
+    return {
+        "exists": True,
+        "email": user.email,
+        "user_id": user.id,
+        "has_password": bool(user.hashed_password),
+        "signup_method": "email" if user.hashed_password else "Apple Sign In only",
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "message": "Use email/password" if user.hashed_password else "Account uses Apple Sign In - must use Sign in with Apple",
+    }
+
+
+@app.get("/admin/list-users")
+async def admin_list_users(
+    limit: int = Query(100, ge=1, le=500, description="Max users to return"),
+    admin_key_header: Optional[str] = Header(None, alias="X-Admin-Key"),
+    admin_key: Optional[str] = Query(None, description="Admin API key"),
+    db: Session = Depends(get_db)
+):
+    """
+    List users for admin review. Returns email, id, created_at, signup method.
+    """
+    key = admin_key_header or admin_key
+    if not verify_admin_key(key):
+        raise HTTPException(status_code=401, detail="Invalid admin API key")
+    users = db.query(User).order_by(User.created_at.desc()).limit(limit).all()
+    return {
+        "total": len(users),
+        "users": [
+            {
+                "email": u.email,
+                "id": u.id,
+                "created_at": u.created_at.isoformat() if u.created_at else None,
+                "has_password": bool(u.hashed_password),
+                "signup_method": "email" if u.hashed_password else "Apple",
+            }
+            for u in users
+        ],
+    }
+
+
 def verify_admin_key(admin_key: Optional[str] = None) -> bool:
     """
     Verify admin API key from environment variable.
