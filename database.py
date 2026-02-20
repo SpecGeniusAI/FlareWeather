@@ -35,7 +35,8 @@ def _create_engine(url: str):
     try:
         if url.startswith(("postgresql://", "postgres://")):
             print("📊 Using PostgreSQL database (production)")
-            return create_engine(url, pool_pre_ping=True)
+            # 10s timeout - fail fast instead of hanging if DB unreachable
+            return create_engine(url, pool_pre_ping=True, connect_args={"connect_timeout": 10})
         print("📊 Using SQLite database (local development)")
         return create_engine(
             url,
