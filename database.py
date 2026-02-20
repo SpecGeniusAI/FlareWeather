@@ -2,6 +2,7 @@
 Database models and connection for FlareWeather API
 """
 from sqlalchemy import create_engine, Column, String, DateTime, Text, Boolean, Float, Integer, Index, Date, JSON
+from sqlalchemy.pool import NullPool
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
@@ -35,11 +36,12 @@ def _create_engine(url: str):
     try:
         if url.startswith(("postgresql://", "postgres://")):
             print("📊 Using PostgreSQL database (production)")
-            # Public Railway URL (proxy/rlwy) requires SSL; private may not
+            # Public Railway URL - try prefer (use SSL if available, don't force)
             if ("proxy" in url or "rlwy" in url) and "sslmode=" not in url:
-                url = url + ("&" if "?" in url else "?") + "sslmode=require"
+                url = url + ("&" if "?" in url else "?") + "sslmode=prefer"
+            # NullPool: no connection reuse - Railway may kill idle pooled connections
             # 10s timeout - fail fast instead of hanging if DB unreachable
-            return create_engine(url, pool_pre_ping=True, connect_args={"connect_timeout": 10})
+            return create_engine(url, poolclass=NullPool, connect_args={"connect_timeout": 10})
         print("📊 Using SQLite database (local development)")
         return create_engine(
             url,
