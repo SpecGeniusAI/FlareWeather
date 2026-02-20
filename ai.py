@@ -807,6 +807,26 @@ def _personalization_score(
     return min(5, score)
 
 
+def _capitalize_sentences(text: Optional[str]) -> Optional[str]:
+    """
+    Ensure every sentence starts with a capital letter.
+    Splits on . ! ? and capitalizes the first letter of each part.
+    """
+    if not text or not text.strip():
+        return text
+    # Split on sentence-ending punctuation, keeping the delimiter
+    parts = re.split(r'(?<=[.!?])\s+', text.strip())
+    result = []
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        if part[0].islower():
+            part = part[0].upper() + part[1:]
+        result.append(part)
+    return " ".join(result) if result else text
+
+
 def _filter_app_messages(text: Optional[str]) -> Optional[str]:
     """
     Remove any app-specific messages about logging, updating, or using Flare.
@@ -1247,20 +1267,22 @@ CRITICAL RISK GUIDANCE: Based on weather conditions, the calculated risk is {cal
 
 FORBIDDEN LANGUAGE: Never use "mild" in the summary_sentence. For high humidity (80%+), use stronger language like "heavy humidity", "damp conditions", "moisture-laden air". For extreme humidity (90%+), use "very heavy humidity", "saturated air", "intense moisture". Avoid weak descriptors.
 
+FORMATTING: Every sentence MUST start with a capital letter. Use proper punctuation. No run-on sentences.
+
 Generate JSON:
 {{
   "risk": "{calculated_risk} | MODERATE | HIGH",
-  "forecast": "Actionable headline. No numbers. No 'mild' language.",
-  "why": "Brief why bodies may notice.",
+  "forecast": "Actionable, specific headline. No numbers. No 'mild' language. Be concrete (e.g. 'prioritize rest today' not 'take it easy').",
+  "why": "Brief, specific mechanism. Connect weather to body sensations (e.g. pressure drop affects fluid in tissues; humidity increases inflammation). Avoid generic 'bodies may notice' filler.",
   "daily_insight": {{
-    "summary_sentence": "[Weather] which could [impact]. NO 'mild' language - use stronger descriptors for high humidity/pressure changes.",
-    "why_line": "Explain mechanism briefly.",
-    "comfort_tip": "Complete sentence (up to 20 words). Must be a full sentence with proper grammar and punctuation. Eastern medicine preferred. Include source like 'Chinese medicine recommends...' or 'Ayurveda suggests...'. Example: 'Chinese medicine recommends acupressure on the LI4 point for headache relief.'",
-    "sign_off": "One calm sentence."
+    "summary_sentence": "[Specific weather description] which could [specific body impact]. Be vivid: name the weather factor and the sensation. BAD: 'Weather may affect how you feel.' GOOD: 'Dropping pressure and rising humidity could make joints feel stiffer and sinuses fuller.' NO 'mild'.",
+    "why_line": "One concrete sentence explaining the mechanism. Reference actual physiology when possible. BAD: 'The weather might have an effect.' GOOD: 'Pressure shifts can change fluid balance in tissues, which sensitive bodies often register.'",
+    "comfort_tip": "Complete sentence (up to 20 words). Must start with capital, end with period. Eastern medicine preferred. Include source: 'Chinese medicine recommends...' or 'Ayurveda suggests...'. Example: 'Chinese medicine recommends acupressure on the LI4 point for headache relief.'",
+    "sign_off": "One warm, specific encouragement. Avoid generic 'take care' or 'move at your pace'. GOOD: 'Rest when your body asks for it today.'"
   }}
 }}
 
-Style: Grade 12 vocab. Tentative language (may, might). Short sentences. NO 'mild' descriptors."""
+Style: Grade 12 vocab. Tentative language (may, might). Short, vivid sentences. Be specific, not generic."""
 
     risk = "MODERATE"
     forecast_from_model: Optional[str] = None
@@ -1686,10 +1708,11 @@ Style: Grade 12 vocab. Tentative language (may, might). Short sentences. NO 'mil
         daily_comfort_tip = random.choice(available_tips) if available_tips else random.choice(ALLOWED_COMFORT_TIPS)
         _track_comfort_tip(daily_comfort_tip)
     
-    filtered_summary = _filter_app_messages(daily_summary) or daily_summary
-    filtered_why_line = _filter_app_messages(daily_why_line) or daily_why_line
-    filtered_comfort = _filter_app_messages(daily_comfort_tip) or daily_comfort_tip
-    filtered_sign_off = _filter_app_messages(daily_sign_off) or daily_sign_off
+    # Apply sentence-level capitalization so every sentence starts with a capital
+    filtered_summary = _capitalize_sentences(_filter_app_messages(daily_summary) or daily_summary) or daily_summary
+    filtered_why_line = _capitalize_sentences(_filter_app_messages(daily_why_line) or daily_why_line) or daily_why_line
+    filtered_comfort = _capitalize_sentences(_filter_app_messages(daily_comfort_tip) or daily_comfort_tip) or daily_comfort_tip
+    filtered_sign_off = _capitalize_sentences(_filter_app_messages(daily_sign_off) or daily_sign_off) or daily_sign_off
 
     formatted_daily_message = _format_daily_message(
         filtered_summary,
@@ -1703,7 +1726,7 @@ Style: Grade 12 vocab. Tentative language (may, might). Short sentences. NO 'mil
     else:
         forecast = _filter_app_messages(_choose_forecast(risk, severity_label))
 
-    why_text = _filter_app_messages(daily_why_line) or _filter_app_messages(why_from_model) or ""
+    why_text = _capitalize_sentences(_filter_app_messages(daily_why_line) or _filter_app_messages(why_from_model) or "") or ""
 
     support_note = _filter_app_messages(
         _choose_support_note(user_diagnoses, severity_label, signed_delta, direction, risk)
@@ -2955,10 +2978,14 @@ BAD EXAMPLE (repeating):
         
         print(f"✅ Replaced weekly summary: '{weekly_summary[:100]}...'")
     
+    # Apply sentence-level capitalization to weekly content
+    weekly_summary = _capitalize_sentences(weekly_summary) or weekly_summary
+    preparation_tip = _capitalize_sentences(preparation_tip) if preparation_tip else None
+    
     payload = json.dumps({
         "weekly_summary": weekly_summary,
         "daily_breakdown": daily_breakdown,
-        "preparation_tip": preparation_tip if preparation_tip else None
+        "preparation_tip": preparation_tip
     })
 
     return (payload, sources)

@@ -284,8 +284,28 @@ final class AIInsightsService: ObservableObject {
             text = text.replacingOccurrences(of: term, with: "", options: [.caseInsensitive])
         }
         
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "  ", with: " ") // Final cleanup
+        return capitalizeSentences(cleaned)
+    }
+    
+    /// Ensure every sentence starts with a capital letter (after . ! ?)
+    private func capitalizeSentences(_ text: String) -> String {
+        guard !text.isEmpty else { return text }
+        var result = ""
+        var capitalizeNext = true
+        for char in text {
+            if capitalizeNext && char.isLetter {
+                result.append(char.uppercased())
+                capitalizeNext = false
+            } else {
+                result.append(char)
+                if ".!?".contains(char) {
+                    capitalizeNext = true
+                }
+            }
+        }
+        return result
     }
     
     /// Fix broken weekly summary templates caused by missing/null values
@@ -2415,9 +2435,8 @@ Move at the pace that feels right.
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = jsonData
-        // Timeout for analyze endpoint - optimized for faster responses
-        // Claude Haiku: 2-4s, gpt-4o-mini: 5-8s, with fallbacks: up to 15s
-        request.timeoutInterval = 20.0  // Reduced from 60s - should be enough with optimizations
+        // Timeout for analyze endpoint - weekly forecast = 2 AI calls, Railway cold start can add 10-20s
+        request.timeoutInterval = 90.0  // Daily + weekly insight can take 30-60s on cold start
         
         print("📤 Sending request to: \(url) [Request ID: \(requestId)]")
         
